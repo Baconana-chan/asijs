@@ -1,0 +1,23 @@
+{
+  "name": "@baconana/asijs",
+  "version": "1.0.1",
+  "exports": {
+    ".": "./src/index.ts",
+    "./jsx-runtime": "./src/jsx-runtime.ts",
+    "./jsx-dev-runtime": "./src/jsx-dev-runtime.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "publish": {
+    "exclude": [
+      "test",
+      "examples",
+      "bench",
+      "dist",
+      "node_modules",
+      ".github",
+      "*.test.ts",
+      "*.config.js",
+      "*.config.ts"
+    ]
+  }
+}

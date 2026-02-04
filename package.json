@@ -47,7 +47,8 @@
     "build:js": "bun build src/index.ts src/cli.ts src/jsx-runtime.ts src/jsx-dev-runtime.ts --outdir dist --target node --minify --external @sinclair/typebox --splitting",
     "build:types": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "publish:jsr": "bunx jsr publish"
   },
   "keywords": [
     "bun",

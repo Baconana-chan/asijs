@@ -6,6 +6,7 @@
   
   [![CI](https://github.com/user/asijs/actions/workflows/ci.yml/badge.svg)](https://github.com/user/asijs/actions/workflows/ci.yml)
   [![npm version](https://badge.fury.io/js/asijs.svg)](https://badge.fury.io/js/asijs)
+  [![JSR](https://jsr.io/badges/@baconana/asijs)](https://jsr.io/@baconana/asijs)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 </div>
 
@@ -25,8 +26,23 @@
 
 ## 📦 Installation
 
+**npm:**
+```bash
+npm install asijs
+```
+
+**Bun:**
 ```bash
 bun add asijs
+```
+
+**JSR (Deno/Bun):**
+```bash
+# Deno
+deno add @baconana/asijs
+
+# Bun
+bunx jsr add @baconana/asijs
 ```
 
 ### Quick Start with CLI
