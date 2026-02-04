@@ -179,7 +179,7 @@ export function compileHandler(
         const mw = middlewares[index++];
         const result = await mw(ctx, next);
         if (result instanceof Response) return result;
-        return result as Response;
+        return result as unknown as Response;
       }
       
       const result = await handler(ctx);

@@ -471,7 +471,7 @@ function devMiddleware(
       } as InspectedRequest);
     }
     
-    return response;
+    return response as Response;
   };
 }
 
@@ -581,8 +581,7 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
         app.get(`${dashboardPath}/requests/:id`, (ctx) => {
           const request = inspector.get(ctx.params.id);
           if (!request) {
-            ctx.setStatus(404);
-            return { error: "Request not found" };
+            return ctx.status(404).jsonResponse({ error: "Request not found" });
           }
           return request;
         });
@@ -663,8 +662,7 @@ export function delay(ms: number): Middleware {
 export function chaos(failureRate = 0.1, statusCode = 500): Middleware {
   return async (ctx, next) => {
     if (Math.random() < failureRate) {
-      ctx.setStatus(statusCode);
-      return { error: "Chaos monkey strikes!" };
+      return ctx.status(statusCode).jsonResponse({ error: "Chaos monkey strikes!" });
     }
     return next();
   };

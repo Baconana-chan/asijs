@@ -163,7 +163,7 @@ async function hmacSign(data: string, key: CryptoKey): Promise<string> {
 async function hmacVerify(data: string, signature: string, key: CryptoKey): Promise<boolean> {
   const encoder = new TextEncoder();
   const signatureBytes = base64UrlDecode(signature);
-  return crypto.subtle.verify("HMAC", key, signatureBytes, encoder.encode(data));
+  return crypto.subtle.verify("HMAC", key, signatureBytes as BufferSource, encoder.encode(data));
 }
 
 function parseExpiresIn(expiresIn: string | number): number {

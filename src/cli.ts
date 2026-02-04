@@ -902,7 +902,7 @@ async function prompt(message: string): Promise<string> {
   process.stdout.write(message);
   
   const buf = new Uint8Array(1024);
-  const n = await Bun.stdin.read(buf);
+  const n = await (Bun.stdin as any).read(buf);
   
   if (n === null) return "";
   return new TextDecoder().decode(buf.subarray(0, n)).trim();

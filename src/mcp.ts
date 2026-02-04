@@ -413,7 +413,7 @@ export class MCPServer {
     
     // Handle JSON-RPC requests
     server.post("/", async (ctx) => {
-      const body = await ctx.body<MCPRequest>();
+      const body = await ctx.json<MCPRequest>();
       const response = await this.handleRequest(body);
       return response;
     });

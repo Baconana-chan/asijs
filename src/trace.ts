@@ -478,7 +478,7 @@ export function traceMiddleware(options: TraceOptions = {}): Middleware {
       traceStore.delete(requestId);
     }
     
-    return response;
+    return response as Response;
   };
 }
 
@@ -493,9 +493,9 @@ export function trace(options: TraceOptions = {}): AsiPlugin {
     middleware: [traceMiddleware(options)],
     
     decorate: {
-      getRequestId: (ctx: Context) => ctx.getState<string>("requestId"),
-      getTraceInfo: (ctx: Context) => ctx.getState<TraceInfo>("traceInfo"),
-      getTiming: (ctx: Context) => ctx.getState<Timing>("timing"),
+      getRequestId: (ctx: Context) => (ctx.store as Record<string, unknown>)["requestId"] as string | undefined,
+      getTraceInfo: (ctx: Context) => (ctx.store as Record<string, unknown>)["traceInfo"] as TraceInfo | undefined,
+      getTiming: (ctx: Context) => (ctx.store as Record<string, unknown>)["timing"] as Timing | undefined,
     },
   });
 }

@@ -383,7 +383,7 @@ export function treaty<TApp = unknown>(
         
         return createPathProxy(updatedParts, allParams);
       },
-    }) as PathProxy;
+    }) as unknown as PathProxy;
   }
   
   return createPathProxy();

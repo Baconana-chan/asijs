@@ -29,7 +29,7 @@
  * ```
  */
 
-import { createPlugin, type AsiPlugin } from "./plugin";
+import { createPlugin, type AsiPlugin, type PluginHost } from "./plugin";
 import type { Asi } from "./asi";
 
 // ===== Types =====
@@ -94,8 +94,8 @@ export class LifecycleManager {
   /**
    * Bind to an Asi app instance
    */
-  bind(app: Asi): void {
-    this.app = app;
+  bind(app: PluginHost | Asi): void {
+    this.app = app as Asi;
   }
   
   /**
@@ -303,15 +303,13 @@ export function healthCheck(options: HealthCheckOptions = {}): AsiPlugin {
         // Check if shutdown is in progress
         const lifecycle = app.getState<LifecycleManager>("lifecycleManager");
         if (lifecycle?.shuttingDown) {
-          ctx.setStatus(503);
-          return { ready: false, reason: "shutting_down" };
+          return ctx.status(503).jsonResponse({ ready: false, reason: "shutting_down" });
         }
         
         if (check) {
           const result = await check();
           if (!result.healthy) {
-            ctx.setStatus(503);
-            return { ready: false, ...result.details };
+            return ctx.status(503).jsonResponse({ ready: false, ...result.details });
           }
         }
         

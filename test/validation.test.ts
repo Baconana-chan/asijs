@@ -30,7 +30,7 @@ describe("Validation", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.name).toBe("Alice");
       expect(json.age).toBe(25);
     });

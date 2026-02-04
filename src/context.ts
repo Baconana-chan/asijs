@@ -232,7 +232,7 @@ export class Context<
       this._body = await this.request.json();
       this._bodyParsed = true;
     }
-    return this._body as T;
+    return this._body as unknown as T;
   }
 
   /** Получить body как текст */

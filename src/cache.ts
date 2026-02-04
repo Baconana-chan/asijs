@@ -176,7 +176,7 @@ export async function generateETag(
   }
   
   // Use Bun's fast hash if available, otherwise Web Crypto
-  const hashBuffer = await crypto.subtle.digest("SHA-1", data);
+  const hashBuffer = await crypto.subtle.digest("SHA-1", data as BufferSource);
   const hashArray = new Uint8Array(hashBuffer);
   const hashHex = Array.from(hashArray.slice(0, 8))
     .map(b => b.toString(16).padStart(2, "0"))

@@ -446,7 +446,7 @@ export function generateNonce(): string {
 export function nonceMiddleware(): Middleware {
   return async (ctx, next) => {
     const nonce = generateNonce();
-    ctx.setState("cspNonce", nonce);
+    (ctx.store as Record<string, unknown>)["cspNonce"] = nonce;
     return next();
   };
 }

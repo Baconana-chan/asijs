@@ -244,7 +244,7 @@ export class Asi {
   private globalBeforeHandlers: BeforeHandler[] = [];
   private globalAfterHandlers: AfterHandler[] = [];
   private pathMiddlewares: Map<string, Middleware[]> = new Map();
-  private server: Server | null = null;
+  private server: Server<any> | null = null;
   private config: AsiConfig;
   
   private customErrorHandler: ErrorHandler | null = null;
@@ -446,7 +446,7 @@ export class Asi {
   }
 
   /** Добавить роут с любым методом */
-  route(method: RouteMethod, path: string, handler: Handler, options?: RouteOptions): this {
+  route(method: RouteMethod, path: string, handler: Handler, options?: RouteOptions<any, any, any, any, any>): this {
     const wrappedHandler = this.wrapHandler(handler, options);
     const middlewares = [...this.globalMiddlewares];
     this.router.add(method, path, wrappedHandler, middlewares);
@@ -464,7 +464,7 @@ export class Asi {
   }
 
   /** Обернуть handler с валидацией и хуками */
-  private wrapHandler(handler: Handler, options?: RouteOptions): Handler {
+  private wrapHandler(handler: Handler, options?: RouteOptions<any, any, any, any, any>): Handler {
     const schema = options?.schema;
     const hasValidation = schema?.body || schema?.query || schema?.params;
     const hasHooks = options?.beforeHandle || options?.afterHandle;
@@ -803,7 +803,7 @@ export class Asi {
     const groupMiddlewares: Middleware[] = [...parentMiddlewares];
 
     // Внутренний метод для добавления роута с group middleware
-    const addGroupRoute = (method: RouteMethod, path: string, handler: Handler, options?: RouteOptions) => {
+    const addGroupRoute = (method: RouteMethod, path: string, handler: Handler, options?: RouteOptions<any, any, any, any, any>) => {
       const wrappedHandler = this.wrapHandler(handler, options);
       // Добавляем global + group middleware
       const allMiddlewares = [...this.globalMiddlewares, ...groupMiddlewares];
@@ -812,27 +812,27 @@ export class Asi {
 
     const groupBuilder: GroupBuilder = {
       get: (path, handler, options) => {
-        addGroupRoute("GET", path, handler, options);
+        addGroupRoute("GET", path, handler as Handler, options as any);
         return groupBuilder;
       },
       post: (path, handler, options) => {
-        addGroupRoute("POST", path, handler, options);
+        addGroupRoute("POST", path, handler as Handler, options as any);
         return groupBuilder;
       },
       put: (path, handler, options) => {
-        addGroupRoute("PUT", path, handler, options);
+        addGroupRoute("PUT", path, handler as Handler, options as any);
         return groupBuilder;
       },
       delete: (path, handler, options) => {
-        addGroupRoute("DELETE", path, handler, options);
+        addGroupRoute("DELETE", path, handler as Handler, options as any);
         return groupBuilder;
       },
       patch: (path, handler, options) => {
-        addGroupRoute("PATCH", path, handler, options);
+        addGroupRoute("PATCH", path, handler as Handler, options as any);
         return groupBuilder;
       },
       all: (path, handler, options) => {
-        addGroupRoute("ALL", path, handler, options);
+        addGroupRoute("ALL", path, handler as Handler, options as any);
         return groupBuilder;
       },
       use: (middleware) => {
@@ -1157,7 +1157,7 @@ export class Asi {
         // значит он уже вызвал next() и результат уже получен через рекурсию.
         // Не вызываем next() повторно!
         // Возвращаем placeholder который будет заменён
-        return result as Response;
+        return result as unknown as Response;
       }
 
       // Выполнение основного handler
@@ -1355,7 +1355,7 @@ export class Asi {
   }
 
   /** Запустить сервер */
-  listen(port?: number, callback?: () => void): Server {
+  listen(port?: number, callback?: () => void): Server<any> {
     // PORT from env takes priority, then argument, then config
     const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : undefined;
     const basePort = port ?? envPort ?? this.config.port ?? 3000;
@@ -1453,7 +1453,7 @@ export class Asi {
   }
   
   /** Создать Bun.serve() сервер (внутренний метод) */
-  private _createServer(port: number, hasWebSocket: boolean): Server {
+  private _createServer(port: number, hasWebSocket: boolean): Server<any> {
     return Bun.serve({
       port,
       hostname: this.config.hostname,
@@ -1515,7 +1515,6 @@ export class Asi {
       
       // Bun.serve() performance options
       reusePort: this.config.reusePort,
-      lowMemoryMode: this.config.lowMemoryMode,
       maxRequestBodySize: this.config.maxRequestBodySize,
       idleTimeout: this.config.idleTimeout,
       
@@ -1523,7 +1522,7 @@ export class Asi {
       ...(this.config.tls && {
         tls: this.config.tls,
       }),
-    });
+    } as any);
   }
 
   /** Остановить сервер */

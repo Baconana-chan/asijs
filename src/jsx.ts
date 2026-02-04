@@ -45,10 +45,10 @@ export interface JSXProps {
   [key: string]: unknown;
 }
 
-export type JSXComponent<P = JSXProps> = (props: P) => JSXElement | Promise<JSXElement>;
+export type JSXComponent<P extends Record<string, unknown> = JSXProps> = (props: P) => JSXElement | Promise<JSXElement>;
 
 export interface JSXElement {
-  type: string | JSXComponent;
+  type: string | JSXComponent<any>;
   props: JSXProps;
   key?: string | number;
 }
@@ -61,12 +61,12 @@ export type JSXNode = JSXElement | string | number | boolean | null | undefined 
  * JSX factory function - creates JSX elements
  * Used by the JSX transform when "jsx": "react-jsx" or "jsx": "preserve"
  */
-export function jsx(
-  type: string | JSXComponent,
-  props: JSXProps,
+export function jsx<P extends Record<string, unknown> = JSXProps>(
+  type: string | JSXComponent<P>,
+  props: P,
   key?: string | number
 ): JSXElement {
-  return { type, props, key };
+  return { type, props: props as JSXProps, key };
 }
 
 export const jsxs = jsx;
@@ -456,7 +456,7 @@ export interface SuspenseProps {
  * Renders fallback while waiting for async children
  */
 export function Suspense(props: SuspenseProps): JSXElement {
-  return jsx("asi-suspense", props);
+  return jsx("asi-suspense", props as unknown as Record<string, unknown>);
 }
 
 /**

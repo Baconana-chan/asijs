@@ -133,12 +133,12 @@ export function action<TInput extends TSchema, TOutput>(
 export function simpleAction<TOutput>(
   handler: (ctx: Context) => Promise<TOutput>,
   options?: Omit<ActionOptions, "name"> & { name?: string }
-): ServerAction<typeof Type.Object, TOutput> {
+): ServerAction<TSchema, TOutput> {
   return {
     __isAction: true,
     name: options?.name || "",
-    inputSchema: Type.Object({}),
-    handler: async (_input, ctx) => handler(ctx),
+    inputSchema: Type.Object({}) as TSchema,
+    handler: async (_input, ctx) => handler(ctx as Context),
     middleware: options?.middleware,
   };
 }
@@ -330,10 +330,10 @@ export function registerActions<T extends ActionsRegistry>(
         ): Promise<unknown> => {
           if (index >= middlewares.length) {
             // Execute handler
-            return actionDef.handler(input, ctx);
+            return actionDef.handler(input, ctx as Context);
           }
           
-          return middlewares[index](ctx, input, () => runMiddleware(middlewares, index + 1));
+          return middlewares[index](ctx as Context, input, () => runMiddleware(middlewares, index + 1));
         };
 
         const middlewares = actionDef.middleware || [];
@@ -345,7 +345,7 @@ export function registerActions<T extends ActionsRegistry>(
         });
       } catch (error) {
         if (onError) {
-          return onError(error as Error, name, ctx);
+          return onError(error as Error, name, ctx as Context);
         }
 
         if (error instanceof ActionError) {
@@ -546,7 +546,7 @@ export function registerBatchActions(
         }
 
         // Execute
-        const data = await actionDef.handler(call.input, ctx);
+        const data = await actionDef.handler(call.input, ctx as Context);
         results.push({
           action: call.action,
           success: true,
@@ -587,12 +587,12 @@ export function formAction<TInput extends TSchema, TOutput>(
       const input: Record<string, unknown> = {};
 
       for (const [key, value] of formData.entries()) {
-        if (value instanceof File) {
+        if (typeof File !== "undefined" && (value as any) instanceof File) {
           input[key] = value;
         } else {
           // Try to parse as JSON for complex types
           try {
-            input[key] = JSON.parse(value);
+            input[key] = JSON.parse(value as string);
           } catch {
             input[key] = value;
           }
