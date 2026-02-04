@@ -69,7 +69,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Baconana-chan/asijs.git"
+    "url": "git+https://github.com/Baconana-chan/asijs.git"
   },
   "homepage": "https://github.com/Baconana-chan/asijs#readme",
   "bugs": {
