@@ -150,7 +150,13 @@ function buildUrl(
 /**
  * Create a simple fetch client for manual use
  */
-export function createClient(config: ClientConfig) {
+export function createClient(config: ClientConfig): {
+  request: <T = unknown>(
+    method: HTTPMethod,
+    path: string,
+    options?: RequestOptions
+  ) => Promise<ClientResponse<T>>;
+} {
   const fetchFn = config.fetch ?? globalThis.fetch;
 
   async function request<T = unknown>(

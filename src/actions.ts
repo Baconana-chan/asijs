@@ -262,7 +262,7 @@ export class ActionError extends Error {
     this.details = details;
   }
 
-  toJSON() {
+  toJSON(): { error: string; code: string; details?: unknown } {
     return {
       error: this.message,
       code: this.code,

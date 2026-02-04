@@ -640,7 +640,7 @@ export function createMCPServer(
 
 // ===== Built-in Documentation =====
 
-const ASIJS_DOCS = `# AsiJS Framework Documentation
+const ASIJS_DOCS: string = `# AsiJS Framework Documentation
 
 ## Overview
 AsiJS is a Bun-first web framework designed for maximum performance and developer experience.
