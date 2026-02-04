@@ -33,6 +33,20 @@ export interface DatabaseClient {
 }
 
 /**
+ * Context type with database helpers
+ */
+export interface DatabaseContext extends Context {
+  /** Drizzle database client */
+  db?: unknown;
+  /** Drizzle schema */
+  schema?: unknown;
+  /** Prisma client */
+  prisma?: unknown;
+  /** Kysely client */
+  kysely?: unknown;
+}
+
+/**
  * Database configuration
  */
 export interface DatabaseConfig {
@@ -889,18 +903,3 @@ export async function rollbackMigration(
 }
 
 // ============================================================================
-// Type Extensions
-// ============================================================================
-
-declare module "./types" {
-  interface Context {
-    /** Drizzle database client */
-    db?: unknown;
-    /** Drizzle schema */
-    schema?: unknown;
-    /** Prisma client */
-    prisma?: unknown;
-    /** Kysely client */
-    kysely?: unknown;
-  }
-}

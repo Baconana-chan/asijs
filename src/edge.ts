@@ -12,6 +12,8 @@
  * All runtimes use the standard Fetch API
  */
 
+import type { Context } from "./context";
+
 // Edge adapters work with any Asi-like app that has a handle/fetch method
 type AsiApp = {
   handle?: (request: Request) => Promise<Response>;
@@ -45,6 +47,16 @@ export interface ExecutionContext {
  */
 export interface CloudflareEnv {
   [key: string]: unknown;
+}
+
+/**
+ * Context type with edge execution data
+ */
+export interface EdgeContext extends Context {
+  /** Cloudflare/Edge environment bindings */
+  env?: CloudflareEnv;
+  /** Cloudflare execution context */
+  executionContext?: ExecutionContext;
 }
 
 /**
@@ -632,14 +644,3 @@ function getStatusText(status: number): string {
 }
 
 // ============================================================================
-// Types for Context Enhancement
-// ============================================================================
-
-declare module "./types" {
-  interface Context {
-    /** Cloudflare/Edge environment bindings */
-    env?: CloudflareEnv;
-    /** Cloudflare execution context */
-    executionContext?: ExecutionContext;
-  }
-}

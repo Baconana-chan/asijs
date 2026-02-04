@@ -348,6 +348,7 @@ export {
   type LambdaEdgeEvent,
   type LambdaEdgeResponse,
   type AdapterOptions,
+  type EdgeContext,
 } from "./edge";
 
 // Test Utilities
@@ -402,6 +403,7 @@ export {
   type PoolStats,
   type Repository,
   type Migration,
+  type DatabaseContext,
 } from "./database";
 
 export type { TSchema, Static } from "@sinclair/typebox";
