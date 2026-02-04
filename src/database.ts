@@ -517,7 +517,10 @@ export class ConnectionPool<T extends DatabaseClient> {
       waiting(conn);
 
       // Compact queue occasionally
-      if (this.waitingIndex > 64 && this.waitingIndex * 2 >= this.waiting.length) {
+      if (
+        this.waitingIndex > 64 &&
+        this.waitingIndex * 2 >= this.waiting.length
+      ) {
         this.waiting = this.waiting.slice(this.waitingIndex);
         this.waitingIndex = 0;
       }

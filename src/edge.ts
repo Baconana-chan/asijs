@@ -497,7 +497,7 @@ export function createStaticHandler(
       );
     }
 
-    return new Response(asset.content, {
+    return new Response(asset.content as unknown as BodyInit, {
       headers: {
         "Content-Type": asset.contentType,
         "Cache-Control": cacheControl,
