@@ -127,11 +127,15 @@ const RTL_LOCALES = new Set([
 
 export class I18n {
   private options: Required<I18nOptions>;
+  private localeSet: Set<string>;
+  private languageFallback: Map<string, string>;
   private pluralRules: Map<string, Intl.PluralRules> = new Map();
   private numberFormats: Map<string, Intl.NumberFormat> = new Map();
   private dateFormats: Map<string, Intl.DateTimeFormat> = new Map();
   private relativeFormats: Map<string, Intl.RelativeTimeFormat> = new Map();
   private listFormats: Map<string, Intl.ListFormat> = new Map();
+  private acceptLanguageCache: Map<string, string | null> = new Map();
+  private optionsKeyCache: WeakMap<object, string> = new WeakMap();
 
   constructor(options: I18nOptions) {
     this.options = {
@@ -145,6 +149,15 @@ export class I18n {
       queryParam: options.queryParam ?? "lang",
       pathPrefix: options.pathPrefix ?? false,
     };
+
+    this.localeSet = new Set(options.locales);
+    this.languageFallback = new Map();
+    for (const locale of options.locales) {
+      const lang = locale.split("-")[0];
+      if (!this.languageFallback.has(lang)) {
+        this.languageFallback.set(lang, locale);
+      }
+    }
 
     // Pre-create Intl formatters for all locales
     for (const locale of options.locales) {
@@ -192,8 +205,7 @@ export class I18n {
   }
 
   private detectFromPath(ctx: Context): string | null {
-    const path = new URL(ctx.request.url).pathname;
-    const segments = path.split("/").filter(Boolean);
+    const segments = ctx.path.split("/").filter(Boolean);
 
     if (segments.length > 0) {
       const potentialLocale = segments[0];
@@ -206,57 +218,69 @@ export class I18n {
   }
 
   private detectFromQuery(ctx: Context): string | null {
-    const url = new URL(ctx.request.url);
-    return url.searchParams.get(this.options.queryParam);
+    const query = ctx.query as Record<string, string>;
+    return query[this.options.queryParam] ?? null;
   }
 
   private detectFromCookie(ctx: Context): string | null {
-    const cookies = ctx.request.headers.get("cookie");
-    if (!cookies) return null;
-
-    const match = cookies.match(
-      new RegExp(`${this.options.cookieName}=([^;]+)`),
-    );
-    return match?.[1] ?? null;
+    return ctx.cookies[this.options.cookieName] ?? null;
   }
 
   private detectFromHeader(ctx: Context): string | null {
     const acceptLanguage = ctx.request.headers.get("accept-language");
     if (!acceptLanguage) return null;
 
-    // Parse Accept-Language header
-    const languages = acceptLanguage
-      .split(",")
-      .map((lang) => {
-        const [code, q = "q=1"] = lang.trim().split(";");
-        const quality = parseFloat(q.split("=")[1]) || 1;
-        return { code: code.trim(), quality };
-      })
-      .sort((a, b) => b.quality - a.quality);
+    if (this.acceptLanguageCache.has(acceptLanguage)) {
+      return this.acceptLanguageCache.get(acceptLanguage) ?? null;
+    }
 
-    // Find first supported locale
-    for (const { code } of languages) {
-      // Try exact match
-      if (this.isSupported(code)) {
-        return code;
+    let bestLocale: string | null = null;
+    let bestQ = -1;
+
+    const parts = acceptLanguage.split(",");
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+      if (!part) continue;
+
+      const semi = part.indexOf(";");
+      const code = (semi === -1 ? part : part.slice(0, semi)).trim();
+      if (!code) continue;
+
+      let q = 1;
+      if (semi !== -1) {
+        const qPart = part.slice(semi + 1).trim();
+        if (qPart.startsWith("q=")) {
+          const parsed = parseFloat(qPart.slice(2));
+          if (!Number.isNaN(parsed)) q = parsed;
+        }
       }
-      // Try language only (e.g., "en" from "en-US")
-      const lang = code.split("-")[0];
-      if (this.isSupported(lang)) {
-        return lang;
-      }
-      // Try finding a locale that starts with the language
-      const match = this.options.locales.find((l) => l.startsWith(lang + "-"));
-      if (match) {
-        return match;
+
+      if (q < bestQ) continue;
+
+      const matched = this.matchLocale(code);
+      if (matched) {
+        bestQ = q;
+        bestLocale = matched;
+        if (bestQ === 1) {
+          // Cannot do better than q=1 for later entries
+          // but keep scanning in case of earlier unsupported entries
+        }
       }
     }
 
-    return null;
+    this.acceptLanguageCache.set(acceptLanguage, bestLocale);
+    return bestLocale;
   }
 
   private isSupported(locale: string): boolean {
-    return this.options.locales.includes(locale);
+    return this.localeSet.has(locale);
+  }
+
+  private matchLocale(code: string): string | null {
+    if (this.localeSet.has(code)) return code;
+    const lang = code.split("-")[0];
+    if (this.localeSet.has(lang)) return lang;
+    return this.languageFallback.get(lang) ?? null;
   }
 
   /**
@@ -382,7 +406,7 @@ export class I18n {
     value: number,
     options?: Intl.NumberFormatOptions,
   ): string {
-    const key = `${locale}:${JSON.stringify(options)}`;
+    const key = `${locale}:${this.getOptionsKey(options)}`;
     let formatter = this.numberFormats.get(key);
     if (!formatter) {
       formatter = new Intl.NumberFormat(locale, options);
@@ -399,7 +423,7 @@ export class I18n {
     value: Date | number | string,
     options?: Intl.DateTimeFormatOptions,
   ): string {
-    const key = `${locale}:${JSON.stringify(options)}`;
+    const key = `${locale}:${this.getOptionsKey(options)}`;
     let formatter = this.dateFormats.get(key);
     if (!formatter) {
       formatter = new Intl.DateTimeFormat(locale, options);
@@ -418,7 +442,7 @@ export class I18n {
     unit: Intl.RelativeTimeFormatUnit,
     options?: Intl.RelativeTimeFormatOptions,
   ): string {
-    const key = `${locale}:${JSON.stringify(options)}`;
+    const key = `${locale}:${this.getOptionsKey(options)}`;
     let formatter = this.relativeFormats.get(key);
     if (!formatter) {
       formatter = new Intl.RelativeTimeFormat(locale, options);
@@ -451,13 +475,22 @@ export class I18n {
     values: string[],
     options?: Intl.ListFormatOptions,
   ): string {
-    const key = `${locale}:${JSON.stringify(options)}`;
+    const key = `${locale}:${this.getOptionsKey(options)}`;
     let formatter = this.listFormats.get(key);
     if (!formatter) {
       formatter = new Intl.ListFormat(locale, options);
       this.listFormats.set(key, formatter);
     }
     return formatter.format(values);
+  }
+
+  private getOptionsKey(options?: object): string {
+    if (!options) return "";
+    const cached = this.optionsKeyCache.get(options);
+    if (cached) return cached;
+    const key = JSON.stringify(options);
+    this.optionsKeyCache.set(options, key);
+    return key;
   }
 
   /**

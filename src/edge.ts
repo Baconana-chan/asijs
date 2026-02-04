@@ -137,6 +137,8 @@ export function toFetchHandler(
     afterResponse,
   } = options;
 
+  const handler = getAppHandler(app);
+
   return async (request: Request, env?: unknown, ctx?: ExecutionContext) => {
     try {
       // Apply before hook
@@ -146,10 +148,13 @@ export function toFetchHandler(
       }
 
       // Handle base path stripping
-      if (basePath && new URL(req.url).pathname.startsWith(basePath)) {
-        const url = new URL(req.url);
-        url.pathname = url.pathname.slice(basePath.length) || "/";
-        req = new Request(url.toString(), req);
+      if (basePath) {
+        const path = getPathname(req.url);
+        if (path.startsWith(basePath)) {
+          const url = new URL(req.url);
+          url.pathname = path.slice(basePath.length) || "/";
+          req = new Request(url.toString(), req);
+        }
       }
 
       // Store env and ctx in request for access in handlers
@@ -160,8 +165,6 @@ export function toFetchHandler(
         req as Request & { env?: unknown; executionContext?: ExecutionContext }
       ).executionContext = ctx;
 
-      // Get the compiled handler from the app
-      const handler = getAppHandler(app);
       const response = await handler(req);
 
       // Apply after hook
@@ -485,8 +488,7 @@ export function createStaticHandler(
   const { cacheControl = "public, max-age=31536000, immutable" } = options;
 
   return async (request: Request) => {
-    const url = new URL(request.url);
-    const path = url.pathname;
+    const path = getPathname(request.url);
 
     const asset = assets.get(path);
     if (!asset) {
@@ -495,7 +497,7 @@ export function createStaticHandler(
       );
     }
 
-    return new Response(new Uint8Array(asset.content).buffer as ArrayBuffer, {
+    return new Response(asset.content, {
       headers: {
         "Content-Type": asset.contentType,
         "Cache-Control": cacheControl,
@@ -511,8 +513,7 @@ export function combineHandlers(
   routes: Array<{ pattern: string | RegExp; handler: FetchHandler }>,
 ): FetchHandler {
   return async (request: Request, env?: unknown, ctx?: ExecutionContext) => {
-    const url = new URL(request.url);
-    const path = url.pathname;
+    const path = getPathname(request.url);
 
     for (const route of routes) {
       if (typeof route.pattern === "string") {
@@ -528,6 +529,13 @@ export function combineHandlers(
 
     return new Response("Not Found", { status: 404 });
   };
+}
+
+function getPathname(url: string): string {
+  const qIdx = url.indexOf("?");
+  const end = qIdx === -1 ? url.length : qIdx;
+  const startIdx = url.indexOf("/", url.indexOf("//") + 2);
+  return startIdx === -1 ? "/" : url.slice(startIdx, end);
 }
 
 /**

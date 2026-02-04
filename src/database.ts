@@ -450,6 +450,7 @@ export class ConnectionPool<T extends DatabaseClient> {
   private pool: T[] = [];
   private inUse: Set<T> = new Set();
   private waiting: Array<(conn: T) => void> = [];
+  private waitingIndex = 0;
   private factory: () => T | Promise<T>;
   private maxSize: number;
   private minSize: number;
@@ -491,7 +492,7 @@ export class ConnectionPool<T extends DatabaseClient> {
     }
 
     // Create new connection if under max
-    if (this.inUse.size < this.maxSize) {
+    if (this.inUse.size + this.pool.length < this.maxSize) {
       const newConn = await this.factory();
       this.inUse.add(newConn);
       return newConn;
@@ -510,12 +511,22 @@ export class ConnectionPool<T extends DatabaseClient> {
     this.inUse.delete(conn);
 
     // Give to waiting request if any
-    const waiting = this.waiting.shift();
-    if (waiting) {
+    if (this.waitingIndex < this.waiting.length) {
+      const waiting = this.waiting[this.waitingIndex++];
       this.inUse.add(conn);
       waiting(conn);
+
+      // Compact queue occasionally
+      if (this.waitingIndex > 64 && this.waitingIndex * 2 >= this.waiting.length) {
+        this.waiting = this.waiting.slice(this.waitingIndex);
+        this.waitingIndex = 0;
+      }
     } else {
       this.pool.push(conn);
+      if (this.waitingIndex !== 0) {
+        this.waiting = [];
+        this.waitingIndex = 0;
+      }
     }
   }
 
@@ -564,6 +575,7 @@ export class ConnectionPool<T extends DatabaseClient> {
     this.pool = [];
     this.inUse.clear();
     this.waiting = [];
+    this.waitingIndex = 0;
   }
 }
 

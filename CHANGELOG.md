@@ -5,6 +5,22 @@ All notable changes to AsiJS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-02-06
+
+### Optimized
+- i18n: faster locale detection (path/query/cookie/header) using cached Accept-Language parsing
+- i18n: cached Intl formatter keys to reduce repeated JSON stringify
+- Edge adapters: reduced URL parsing in handlers and basePath stripping
+- Edge static handler: avoid extra buffer allocations for cached assets
+- ConnectionPool: faster wait-queue handling and correct max size check
+
+### Benchmarks (post-optimizations)
+- GET / (compiled): ~77–85% of Elysia
+- GET /user/:id (compiled): ~69–73% of Elysia
+- GET /search (compiled): ~66–76% of Elysia
+- POST /users (compiled): ~81–84% of Elysia
+- POST /users + validation (compiled): ~97–100% of Elysia
+
 ## [1.1.0] - 2026-02-05
 
 ### Added
