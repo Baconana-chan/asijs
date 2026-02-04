@@ -1,0 +1,73 @@
+{
+  "name": "asijs",
+  "version": "1.0.0",
+  "description": "Bun-first web framework — fast, type-safe, simple",
+  "module": "src/index.ts",
+  "main": "src/index.ts",
+  "type": "module",
+  "bin": {
+    "asijs": "./src/cli.ts",
+    "create-asijs": "./src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./jsx-runtime": "./src/jsx-runtime.ts",
+    "./jsx-dev-runtime": "./src/jsx-dev-runtime.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "bun run --hot index.ts",
+    "start": "bun run index.ts",
+    "test": "bun test",
+    "bench": "bun run bench/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "bun",
+    "web",
+    "framework",
+    "http",
+    "server",
+    "fast",
+    "typescript",
+    "jsx",
+    "api",
+    "rest",
+    "openapi",
+    "swagger",
+    "websocket",
+    "mcp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Baconana-chan/asijs.git"
+  },
+  "homepage": "https://github.com/Baconana-chan/asijs#readme",
+  "bugs": {
+    "url": "https://github.com/Baconana-chan/asijs/issues"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "elysia": "^1.4.22",
+    "hono": "^4.11.7"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48"
+  }
+}
