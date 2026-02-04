@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
  * AsiJS CLI
- * 
+ *
  * Usage:
  *   bunx asijs create my-app          # Create new project
  *   bunx asijs create my-app -t api   # Create with template
  *   bun create asijs my-app           # Alternative syntax
- * 
+ *
  * Templates:
  *   minimal   - Minimal setup (default)
  *   api       - REST API with validation
@@ -15,7 +15,14 @@
  *   realtime  - WebSocket chat example
  */
 
-import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync, readFileSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  readdirSync,
+  statSync,
+  readFileSync,
+} from "fs";
 import { join, resolve, basename } from "path";
 
 // ===== Colors =====
@@ -60,34 +67,43 @@ app.listen(3000, () => {
   console.log("🚀 Server running at http://localhost:3000");
 });
 `,
-      "package.json": (name: string) => JSON.stringify({
-        name,
-        version: "0.1.0",
-        type: "module",
-        scripts: {
-          dev: "bun run --hot src/index.ts",
-          start: "bun run src/index.ts",
-          build: "bun build src/index.ts --outdir dist --target bun",
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "bun run --hot src/index.ts",
+              start: "bun run src/index.ts",
+              build: "bun build src/index.ts --outdir dist --target bun",
+            },
+            dependencies: {
+              asijs: "latest",
+            },
+            devDependencies: {
+              "@types/bun": "latest",
+              typescript: "^5",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+          },
+          include: ["src"],
         },
-        dependencies: {
-          asijs: "latest",
-        },
-        devDependencies: {
-          "@types/bun": "latest",
-          typescript: "^5",
-        },
-      }, null, 2),
-      "tsconfig.json": JSON.stringify({
-        compilerOptions: {
-          target: "ESNext",
-          module: "ESNext",
-          moduleResolution: "bundler",
-          strict: true,
-          skipLibCheck: true,
-          types: ["bun-types"],
-        },
-        include: ["src"],
-      }, null, 2),
+        null,
+        2,
+      ),
       ".gitignore": `node_modules
 dist
 .env
@@ -168,36 +184,45 @@ app.listen(3000, () => {
   console.log("📚 Docs at http://localhost:3000/docs");
 });
 `,
-      "package.json": (name: string) => JSON.stringify({
-        name,
-        version: "0.1.0",
-        type: "module",
-        scripts: {
-          dev: "bun run --hot src/index.ts",
-          start: "bun run src/index.ts",
-          test: "bun test",
-          build: "bun build src/index.ts --outdir dist --target bun",
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "bun run --hot src/index.ts",
+              start: "bun run src/index.ts",
+              test: "bun test",
+              build: "bun build src/index.ts --outdir dist --target bun",
+            },
+            dependencies: {
+              asijs: "latest",
+              "@sinclair/typebox": "^0.34.0",
+            },
+            devDependencies: {
+              "@types/bun": "latest",
+              typescript: "^5",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+          },
+          include: ["src"],
         },
-        dependencies: {
-          asijs: "latest",
-          "@sinclair/typebox": "^0.34.0",
-        },
-        devDependencies: {
-          "@types/bun": "latest",
-          typescript: "^5",
-        },
-      }, null, 2),
-      "tsconfig.json": JSON.stringify({
-        compilerOptions: {
-          target: "ESNext",
-          module: "ESNext",
-          moduleResolution: "bundler",
-          strict: true,
-          skipLibCheck: true,
-          types: ["bun-types"],
-        },
-        include: ["src"],
-      }, null, 2),
+        null,
+        2,
+      ),
       ".gitignore": `node_modules
 dist
 .env
@@ -304,37 +329,46 @@ app.listen(3000, () => {
   console.log("🚀 App running at http://localhost:3000");
 });
 `,
-      "package.json": (name: string) => JSON.stringify({
-        name,
-        version: "0.1.0",
-        type: "module",
-        scripts: {
-          dev: "bun run --hot src/index.tsx",
-          start: "bun run src/index.tsx",
-          build: "bun build src/index.tsx --outdir dist --target bun",
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "bun run --hot src/index.tsx",
+              start: "bun run src/index.tsx",
+              build: "bun build src/index.tsx --outdir dist --target bun",
+            },
+            dependencies: {
+              asijs: "latest",
+              "@sinclair/typebox": "^0.34.0",
+            },
+            devDependencies: {
+              "@types/bun": "latest",
+              typescript: "^5",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+            jsx: "react-jsx",
+            jsxImportSource: "asijs",
+          },
+          include: ["src"],
         },
-        dependencies: {
-          asijs: "latest",
-          "@sinclair/typebox": "^0.34.0",
-        },
-        devDependencies: {
-          "@types/bun": "latest",
-          typescript: "^5",
-        },
-      }, null, 2),
-      "tsconfig.json": JSON.stringify({
-        compilerOptions: {
-          target: "ESNext",
-          module: "ESNext",
-          moduleResolution: "bundler",
-          strict: true,
-          skipLibCheck: true,
-          types: ["bun-types"],
-          jsx: "react-jsx",
-          jsxImportSource: "asijs",
-        },
-        include: ["src"],
-      }, null, 2),
+        null,
+        2,
+      ),
       ".gitignore": `node_modules
 dist
 .env
@@ -476,35 +510,44 @@ app.listen(3000, () => {
 `,
       ".env.example": `JWT_SECRET=your-super-secret-key-change-this
 `,
-      "package.json": (name: string) => JSON.stringify({
-        name,
-        version: "0.1.0",
-        type: "module",
-        scripts: {
-          dev: "bun run --hot src/index.ts",
-          start: "bun run src/index.ts",
-          build: "bun build src/index.ts --outdir dist --target bun",
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "bun run --hot src/index.ts",
+              start: "bun run src/index.ts",
+              build: "bun build src/index.ts --outdir dist --target bun",
+            },
+            dependencies: {
+              asijs: "latest",
+              "@sinclair/typebox": "^0.34.0",
+            },
+            devDependencies: {
+              "@types/bun": "latest",
+              typescript: "^5",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+          },
+          include: ["src"],
         },
-        dependencies: {
-          asijs: "latest",
-          "@sinclair/typebox": "^0.34.0",
-        },
-        devDependencies: {
-          "@types/bun": "latest",
-          typescript: "^5",
-        },
-      }, null, 2),
-      "tsconfig.json": JSON.stringify({
-        compilerOptions: {
-          target: "ESNext",
-          module: "ESNext",
-          moduleResolution: "bundler",
-          strict: true,
-          skipLibCheck: true,
-          types: ["bun-types"],
-        },
-        include: ["src"],
-      }, null, 2),
+        null,
+        2,
+      ),
       ".gitignore": `node_modules
 dist
 .env
@@ -689,36 +732,45 @@ app.listen(3000, () => {
   console.log("🚀 Chat running at http://localhost:3000");
 });
 `,
-      "package.json": (name: string) => JSON.stringify({
-        name,
-        version: "0.1.0",
-        type: "module",
-        scripts: {
-          dev: "bun run --hot src/index.ts",
-          start: "bun run src/index.ts",
-          build: "bun build src/index.ts --outdir dist --target bun",
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "bun run --hot src/index.ts",
+              start: "bun run src/index.ts",
+              build: "bun build src/index.ts --outdir dist --target bun",
+            },
+            dependencies: {
+              asijs: "latest",
+            },
+            devDependencies: {
+              "@types/bun": "latest",
+              typescript: "^5",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+            jsx: "react-jsx",
+            jsxImportSource: "asijs",
+          },
+          include: ["src"],
         },
-        dependencies: {
-          asijs: "latest",
-        },
-        devDependencies: {
-          "@types/bun": "latest",
-          typescript: "^5",
-        },
-      }, null, 2),
-      "tsconfig.json": JSON.stringify({
-        compilerOptions: {
-          target: "ESNext",
-          module: "ESNext",
-          moduleResolution: "bundler",
-          strict: true,
-          skipLibCheck: true,
-          types: ["bun-types"],
-          jsx: "react-jsx",
-          jsxImportSource: "asijs",
-        },
-        include: ["src"],
-      }, null, 2),
+        null,
+        2,
+      ),
       ".gitignore": `node_modules
 dist
 .env
@@ -753,17 +805,17 @@ type TemplateName = keyof typeof TEMPLATES;
 // ===== Main =====
 async function main() {
   const args = process.argv.slice(2);
-  
+
   // Handle `bun create asijs my-app` (Bun passes project name directly)
   // or `bunx asijs create my-app`
   let command = args[0];
   let projectName: string | undefined;
   let template: TemplateName = "minimal";
-  
+
   // Parse arguments
   if (command === "create" || command === "init" || command === "new") {
     projectName = args[1];
-    
+
     // Parse flags
     for (let i = 2; i < args.length; i++) {
       if (args[i] === "-t" || args[i] === "--template") {
@@ -783,7 +835,7 @@ async function main() {
   } else if (command && !command.startsWith("-")) {
     // Direct project name (bun create asijs my-app)
     projectName = command;
-    
+
     // Parse flags
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "-t" || args[i] === "--template") {
@@ -801,29 +853,35 @@ async function main() {
       console.error(c.red("Error: Project name is required"));
       process.exit(1);
     }
-    
+
     console.log("\nAvailable templates:");
     Object.entries(TEMPLATES).forEach(([key, val]) => {
       console.log(`  ${c.cyan(key.padEnd(12))} ${val.description}`);
     });
-    
-    const templateChoice = await prompt(`\nTemplate (${Object.keys(TEMPLATES).join("/")}): `) || "minimal";
+
+    const templateChoice =
+      (await prompt(`\nTemplate (${Object.keys(TEMPLATES).join("/")}): `)) ||
+      "minimal";
     if (TEMPLATES[templateChoice as TemplateName]) {
       template = templateChoice as TemplateName;
     }
   }
-  
+
   if (!projectName) {
     printHelp();
     process.exit(1);
   }
-  
+
   // Validate project name
   if (!/^[a-z0-9-_]+$/i.test(projectName)) {
-    console.error(c.red("Error: Project name can only contain letters, numbers, hyphens, and underscores"));
+    console.error(
+      c.red(
+        "Error: Project name can only contain letters, numbers, hyphens, and underscores",
+      ),
+    );
     process.exit(1);
   }
-  
+
   // Create project
   await createProject(projectName, template);
 }
@@ -831,7 +889,7 @@ async function main() {
 async function createProject(name: string, templateName: TemplateName) {
   const projectPath = resolve(process.cwd(), name);
   const template = TEMPLATES[templateName];
-  
+
   console.log();
   console.log(c.bold("🚀 Creating AsiJS project..."));
   console.log();
@@ -839,30 +897,30 @@ async function createProject(name: string, templateName: TemplateName) {
   console.log(`  ${c.dim("Template:")} ${c.cyan(template.name)}`);
   console.log(`  ${c.dim("Path:")}     ${c.dim(projectPath)}`);
   console.log();
-  
+
   // Check if directory exists
   if (existsSync(projectPath)) {
     console.error(c.red(`Error: Directory "${name}" already exists`));
     process.exit(1);
   }
-  
+
   // Create directory
   mkdirSync(projectPath, { recursive: true });
-  
+
   // Create files
   for (const [filePath, content] of Object.entries(template.files)) {
     const fullPath = join(projectPath, filePath);
     const dir = join(projectPath, filePath.split("/").slice(0, -1).join("/"));
-    
+
     if (dir && dir !== projectPath) {
       mkdirSync(dir, { recursive: true });
     }
-    
+
     const fileContent = typeof content === "function" ? content(name) : content;
     writeFileSync(fullPath, fileContent);
     console.log(`  ${c.green("✓")} ${filePath}`);
   }
-  
+
   console.log();
   console.log(c.green("✓ Project created successfully!"));
   console.log();
@@ -889,7 +947,9 @@ ${c.bold("Options:")}
   -v, --version          Show version
 
 ${c.bold("Templates:")}
-${Object.entries(TEMPLATES).map(([key, val]) => `  ${c.cyan(key.padEnd(12))} ${val.description}`).join("\n")}
+${Object.entries(TEMPLATES)
+  .map(([key, val]) => `  ${c.cyan(key.padEnd(12))} ${val.description}`)
+  .join("\n")}
 
 ${c.bold("Examples:")}
   bunx asijs create my-app
@@ -900,10 +960,10 @@ ${c.bold("Examples:")}
 
 async function prompt(message: string): Promise<string> {
   process.stdout.write(message);
-  
+
   const buf = new Uint8Array(1024);
   const n = await (Bun.stdin as any).read(buf);
-  
+
   if (n === null) return "";
   return new TextDecoder().decode(buf.subarray(0, n)).trim();
 }

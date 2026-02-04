@@ -1,14 +1,14 @@
 /**
  * JSX/HTML Streaming for AsiJS
- * 
+ *
  * Provides JSX runtime and streaming HTML responses for SSR.
- * 
+ *
  * @example
  * ```tsx
  * // tsconfig.json: "jsx": "react-jsx", "jsxImportSource": "asijs"
- * 
+ *
  * import { Asi, html, stream } from "asijs";
- * 
+ *
  * function App({ name }: { name: string }) {
  *   return (
  *     <html>
@@ -19,9 +19,9 @@
  *     </html>
  *   );
  * }
- * 
+ *
  * const app = new Asi();
- * 
+ *
  * app.get("/", (ctx) => html(<App name="World" />));
  * app.get("/stream", (ctx) => stream(<App name="Stream" />));
  * ```
@@ -29,13 +29,13 @@
 
 // ===== Types =====
 
-export type JSXChild = 
-  | string 
-  | number 
-  | boolean 
-  | null 
-  | undefined 
-  | JSXElement 
+export type JSXChild =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | JSXElement
   | JSXChild[];
 
 export type JSXChildren = JSXChild | JSXChild[];
@@ -45,7 +45,9 @@ export interface JSXProps {
   [key: string]: unknown;
 }
 
-export type JSXComponent<P extends Record<string, unknown> = JSXProps> = (props: P) => JSXElement | Promise<JSXElement>;
+export type JSXComponent<P extends Record<string, unknown> = JSXProps> = (
+  props: P,
+) => JSXElement | Promise<JSXElement>;
 
 export interface JSXElement {
   type: string | JSXComponent<any>;
@@ -53,7 +55,14 @@ export interface JSXElement {
   key?: string | number;
 }
 
-export type JSXNode = JSXElement | string | number | boolean | null | undefined | JSXNode[];
+export type JSXNode =
+  | JSXElement
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | JSXNode[];
 
 // ===== JSX Factory (createElement) =====
 
@@ -64,7 +73,7 @@ export type JSXNode = JSXElement | string | number | boolean | null | undefined 
 export function jsx<P extends Record<string, unknown> = JSXProps>(
   type: string | JSXComponent<P>,
   props: P,
-  key?: string | number
+  key?: string | number,
 ): JSXElement {
   return { type, props: props as JSXProps, key };
 }
@@ -101,18 +110,51 @@ export function escapeHtml(str: string): string {
 // ===== Void Elements (self-closing) =====
 
 const voidElements = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr"
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
 ]);
 
 // ===== Attribute Handling =====
 
 const booleanAttributes = new Set([
-  "async", "autofocus", "autoplay", "checked", "controls", "default",
-  "defer", "disabled", "formnovalidate", "hidden", "ismap", "loop",
-  "multiple", "muted", "novalidate", "open", "readonly", "required",
-  "reversed", "selected", "allowfullscreen", "allowpaymentrequest",
-  "playsinline", "nomodule", "disablepictureinpicture", "disableremoteplayback"
+  "async",
+  "autofocus",
+  "autoplay",
+  "checked",
+  "controls",
+  "default",
+  "defer",
+  "disabled",
+  "formnovalidate",
+  "hidden",
+  "ismap",
+  "loop",
+  "multiple",
+  "muted",
+  "novalidate",
+  "open",
+  "readonly",
+  "required",
+  "reversed",
+  "selected",
+  "allowfullscreen",
+  "allowpaymentrequest",
+  "playsinline",
+  "nomodule",
+  "disablepictureinpicture",
+  "disableremoteplayback",
 ]);
 
 /**
@@ -120,22 +162,31 @@ const booleanAttributes = new Set([
  */
 function propsToAttributes(props: JSXProps): string {
   const attrs: string[] = [];
-  
+
   for (const [key, value] of Object.entries(props)) {
     // Skip internal props
     if (key === "children" || key === "key" || key === "ref") {
       continue;
     }
-    
+
     // Skip undefined, null, false
     if (value === undefined || value === null || value === false) {
       continue;
     }
-    
+
     // Convert camelCase to kebab-case for data-* and aria-*
     let attrName = key;
-    if (key.startsWith("data") && key.length > 4 && key[4] === key[4].toUpperCase()) {
-      attrName = "data-" + key.slice(4).replace(/([A-Z])/g, "-$1").toLowerCase();
+    if (
+      key.startsWith("data") &&
+      key.length > 4 &&
+      key[4] === key[4].toUpperCase()
+    ) {
+      attrName =
+        "data-" +
+        key
+          .slice(4)
+          .replace(/([A-Z])/g, "-$1")
+          .toLowerCase();
     } else if (key.startsWith("aria") && key.length > 4) {
       attrName = "aria-" + key.slice(4).toLowerCase();
     } else if (key === "className") {
@@ -143,7 +194,7 @@ function propsToAttributes(props: JSXProps): string {
     } else if (key === "htmlFor") {
       attrName = "for";
     }
-    
+
     // Boolean attributes
     if (booleanAttributes.has(attrName.toLowerCase())) {
       if (value === true) {
@@ -151,7 +202,7 @@ function propsToAttributes(props: JSXProps): string {
       }
       continue;
     }
-    
+
     // Style object
     if (key === "style" && typeof value === "object") {
       const styleStr = Object.entries(value as Record<string, unknown>)
@@ -163,11 +214,11 @@ function propsToAttributes(props: JSXProps): string {
       attrs.push(`style="${escapeHtml(styleStr)}"`);
       continue;
     }
-    
+
     // Regular attributes
     attrs.push(`${attrName}="${escapeHtml(String(value))}"`);
   }
-  
+
   return attrs.length > 0 ? " " + attrs.join(" ") : "";
 }
 
@@ -180,24 +231,26 @@ async function renderChildren(children: JSXChildren): Promise<string> {
   if (children === null || children === undefined || children === false) {
     return "";
   }
-  
+
   if (typeof children === "string") {
     return escapeHtml(children);
   }
-  
+
   if (typeof children === "number") {
     return String(children);
   }
-  
+
   if (typeof children === "boolean") {
     return "";
   }
-  
+
   if (Array.isArray(children)) {
-    const parts = await Promise.all(children.map(child => renderChildren(child)));
+    const parts = await Promise.all(
+      children.map((child) => renderChildren(child)),
+    );
     return parts.join("");
   }
-  
+
   // JSXElement
   return renderToString(children);
 }
@@ -210,47 +263,49 @@ export async function renderToString(element: JSXNode): Promise<string> {
   if (element === null || element === undefined || element === false) {
     return "";
   }
-  
+
   if (typeof element === "string") {
     return escapeHtml(element);
   }
-  
+
   if (typeof element === "number") {
     return String(element);
   }
-  
+
   if (typeof element === "boolean") {
     return "";
   }
-  
+
   // Handle arrays
   if (Array.isArray(element)) {
-    const parts = await Promise.all(element.map(child => renderToString(child)));
+    const parts = await Promise.all(
+      element.map((child) => renderToString(child)),
+    );
     return parts.join("");
   }
-  
+
   const { type, props } = element;
-  
+
   // Handle Fragment
   if (type === "" || type === Fragment) {
     return renderChildren(props.children);
   }
-  
+
   // Handle component functions
   if (typeof type === "function") {
     const result = await type(props);
     return renderToString(result);
   }
-  
+
   // Handle HTML elements
   const tagName = type;
   const attributes = propsToAttributes(props);
-  
+
   // Void elements (self-closing)
   if (voidElements.has(tagName)) {
     return `<${tagName}${attributes} />`;
   }
-  
+
   // Elements with children
   const children = await renderChildren(props.children);
   return `<${tagName}${attributes}>${children}</${tagName}>`;
@@ -264,7 +319,7 @@ export async function renderToString(element: JSXNode): Promise<string> {
  */
 export function renderToStream(element: JSXNode): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
-  
+
   return new ReadableStream({
     async start(controller) {
       try {
@@ -273,34 +328,34 @@ export function renderToStream(element: JSXNode): ReadableStream<Uint8Array> {
       } catch (error) {
         controller.error(error);
       }
-    }
+    },
   });
 }
 
 async function streamElement(
-  element: JSXNode, 
+  element: JSXNode,
   controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder
+  encoder: TextEncoder,
 ): Promise<void> {
   // Handle primitives
   if (element === null || element === undefined || element === false) {
     return;
   }
-  
+
   if (typeof element === "string") {
     controller.enqueue(encoder.encode(escapeHtml(element)));
     return;
   }
-  
+
   if (typeof element === "number") {
     controller.enqueue(encoder.encode(String(element)));
     return;
   }
-  
+
   if (typeof element === "boolean") {
     return;
   }
-  
+
   // Handle arrays
   if (Array.isArray(element)) {
     for (const child of element) {
@@ -308,38 +363,38 @@ async function streamElement(
     }
     return;
   }
-  
+
   const { type, props } = element;
-  
+
   // Handle Fragment
   if (type === "" || type === Fragment) {
     await streamChildren(props.children, controller, encoder);
     return;
   }
-  
+
   // Handle component functions
   if (typeof type === "function") {
     const result = await type(props);
     await streamElement(result, controller, encoder);
     return;
   }
-  
+
   // Handle HTML elements
   const tagName = type;
   const attributes = propsToAttributes(props);
-  
+
   // Void elements (self-closing)
   if (voidElements.has(tagName)) {
     controller.enqueue(encoder.encode(`<${tagName}${attributes} />`));
     return;
   }
-  
+
   // Stream opening tag
   controller.enqueue(encoder.encode(`<${tagName}${attributes}>`));
-  
+
   // Stream children
   await streamChildren(props.children, controller, encoder);
-  
+
   // Stream closing tag
   controller.enqueue(encoder.encode(`</${tagName}>`));
 }
@@ -347,33 +402,33 @@ async function streamElement(
 async function streamChildren(
   children: JSXChildren,
   controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder
+  encoder: TextEncoder,
 ): Promise<void> {
   if (children === null || children === undefined || children === false) {
     return;
   }
-  
+
   if (typeof children === "string") {
     controller.enqueue(encoder.encode(escapeHtml(children)));
     return;
   }
-  
+
   if (typeof children === "number") {
     controller.enqueue(encoder.encode(String(children)));
     return;
   }
-  
+
   if (typeof children === "boolean") {
     return;
   }
-  
+
   if (Array.isArray(children)) {
     for (const child of children) {
       await streamChildren(child, controller, encoder);
     }
     return;
   }
-  
+
   // JSXElement
   await streamElement(children, controller, encoder);
 }
@@ -382,7 +437,7 @@ async function streamChildren(
 
 /**
  * Create an HTML response from JSX
- * 
+ *
  * @example
  * ```tsx
  * app.get("/", (ctx) => html(<App />));
@@ -400,7 +455,7 @@ export async function html(element: JSXNode, status = 200): Promise<Response> {
 
 /**
  * Create a streaming HTML response from JSX
- * 
+ *
  * @example
  * ```tsx
  * app.get("/", (ctx) => stream(<App />));
@@ -411,12 +466,12 @@ export function stream(element: JSXNode, status = 200): Response {
   const encoder = new TextEncoder();
   const doctype = encoder.encode("<!DOCTYPE html>");
   const contentStream = renderToStream(element);
-  
+
   // Combine DOCTYPE with content
   const combinedStream = new ReadableStream<Uint8Array>({
     async start(controller) {
       controller.enqueue(doctype);
-      
+
       const reader = contentStream.getReader();
       try {
         while (true) {
@@ -428,9 +483,9 @@ export function stream(element: JSXNode, status = 200): Response {
       } catch (error) {
         controller.error(error);
       }
-    }
+    },
   });
-  
+
   return new Response(combinedStream, {
     status,
     headers: {
@@ -463,7 +518,7 @@ export function Suspense(props: SuspenseProps): JSXElement {
  * Create an async component that can be streamed
  */
 export function createAsyncComponent<P extends JSXProps>(
-  loader: (props: P) => Promise<JSXElement>
+  loader: (props: P) => Promise<JSXElement>,
 ): JSXComponent<P> {
   return async (props: P) => {
     return await loader(props);
@@ -491,7 +546,7 @@ export { originalRenderToString };
 
 /**
  * Tagged template literal for HTML
- * 
+ *
  * @example
  * ```ts
  * const name = "World";
@@ -503,7 +558,7 @@ export function htmlTemplate(
   ...values: unknown[]
 ): string {
   let result = "";
-  
+
   for (let i = 0; i < strings.length; i++) {
     result += strings[i];
     if (i < values.length) {
@@ -515,7 +570,7 @@ export function htmlTemplate(
       }
     }
   }
-  
+
   return result;
 }
 
@@ -527,14 +582,14 @@ export function rawHtml(
   ...values: unknown[]
 ): string {
   let result = "";
-  
+
   for (let i = 0; i < strings.length; i++) {
     result += strings[i];
     if (i < values.length) {
       result += String(values[i] ?? "");
     }
   }
-  
+
   return result;
 }
 
@@ -545,7 +600,7 @@ export function rawHtml(
  */
 export function when<T>(
   condition: T | null | undefined | false,
-  render: (value: NonNullable<T>) => JSXNode
+  render: (value: NonNullable<T>) => JSXNode,
 ): JSXNode {
   if (condition) {
     return render(condition as NonNullable<T>);
@@ -559,7 +614,7 @@ export function when<T>(
 export function each<T>(
   items: T[],
   render: (item: T, index: number) => JSXElement,
-  keyFn?: (item: T, index: number) => string | number
+  keyFn?: (item: T, index: number) => string | number,
 ): JSXElement[] {
   return items.map((item, index) => {
     const element = render(item, index);
@@ -576,7 +631,12 @@ interface HeadContext {
   title?: string;
   meta: Array<{ name?: string; property?: string; content: string }>;
   links: Array<{ rel: string; href: string; [key: string]: string }>;
-  scripts: Array<{ src?: string; content?: string; async?: boolean; defer?: boolean }>;
+  scripts: Array<{
+    src?: string;
+    content?: string;
+    async?: boolean;
+    defer?: boolean;
+  }>;
 }
 
 const headContext: HeadContext = {
@@ -595,21 +655,34 @@ export function setTitle(title: string): void {
 /**
  * Add meta tag
  */
-export function addMeta(meta: { name?: string; property?: string; content: string }): void {
+export function addMeta(meta: {
+  name?: string;
+  property?: string;
+  content: string;
+}): void {
   headContext.meta.push(meta);
 }
 
 /**
  * Add link tag
  */
-export function addLink(link: { rel: string; href: string; [key: string]: string }): void {
+export function addLink(link: {
+  rel: string;
+  href: string;
+  [key: string]: string;
+}): void {
   headContext.links.push(link);
 }
 
 /**
  * Add script tag
  */
-export function addScript(script: { src?: string; content?: string; async?: boolean; defer?: boolean }): void {
+export function addScript(script: {
+  src?: string;
+  content?: string;
+  async?: boolean;
+  defer?: boolean;
+}): void {
   headContext.scripts.push(script);
 }
 
@@ -618,33 +691,39 @@ export function addScript(script: { src?: string; content?: string; async?: bool
  */
 export function renderHead(): JSXElement {
   const children: JSXElement[] = [];
-  
+
   if (headContext.title) {
     children.push(jsx("title", { children: headContext.title }));
   }
-  
+
   for (const meta of headContext.meta) {
     children.push(jsx("meta", meta));
   }
-  
+
   for (const link of headContext.links) {
     children.push(jsx("link", link));
   }
-  
+
   for (const script of headContext.scripts) {
     if (script.src) {
-      children.push(jsx("script", { src: script.src, async: script.async, defer: script.defer }));
+      children.push(
+        jsx("script", {
+          src: script.src,
+          async: script.async,
+          defer: script.defer,
+        }),
+      );
     } else if (script.content) {
       children.push(jsx("script", { children: script.content }));
     }
   }
-  
+
   // Clear context after rendering
   headContext.meta = [];
   headContext.links = [];
   headContext.scripts = [];
   headContext.title = undefined;
-  
+
   return jsx(Fragment, { children });
 }
 
@@ -652,11 +731,11 @@ export function renderHead(): JSXElement {
 
 export namespace JSX {
   export interface Element extends JSXElement {}
-  
+
   export interface ElementChildrenAttribute {
     children: {};
   }
-  
+
   export interface IntrinsicElements {
     // HTML elements
     a: JSXProps;

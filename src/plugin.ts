@@ -1,12 +1,12 @@
 /**
  * Plugin System for AsiJS
- * 
+ *
  * Inspired by Elysia's plugin system but with simpler API.
- * 
+ *
  * @example
  * ```ts
  * import { Asi, createPlugin } from "asijs";
- * 
+ *
  * // Simple plugin
  * const myPlugin = createPlugin({
  *   name: "my-plugin",
@@ -14,7 +14,7 @@
  *     app.get("/plugin-route", () => "From plugin!");
  *   }
  * });
- * 
+ *
  * // Plugin with decorators
  * const authPlugin = createPlugin({
  *   name: "auth",
@@ -28,7 +28,7 @@
  *     // Check auth
  *   },
  * });
- * 
+ *
  * const app = new Asi();
  * app.plugin(myPlugin);
  * app.plugin(authPlugin);
@@ -45,45 +45,45 @@ export interface AsiPluginConfig<
 > {
   /** Unique plugin name */
   name: string;
-  
+
   /**
    * Setup function called when plugin is registered
    * Use this to add routes, middleware, etc.
    */
   setup?: (app: PluginHost) => void | Promise<void>;
-  
+
   /**
    * Decorators to add to the Context
    * These become available as ctx.decorator on all requests
    */
   decorate?: TDecorate;
-  
+
   /**
    * Shared state accessible via app.state
    * Persists across requests
    */
   state?: TState;
-  
+
   /**
    * Global beforeHandle hooks to run before every request
    */
   beforeHandle?: BeforeHandler | BeforeHandler[];
-  
+
   /**
    * Global afterHandle hooks to run after every request
    */
   afterHandle?: AfterHandler | AfterHandler[];
-  
+
   /**
    * Middleware to add globally
    */
   middleware?: Middleware | Middleware[];
-  
+
   /**
    * Plugin dependencies (other plugin names)
    */
   dependencies?: string[];
-  
+
   /**
    * Plugin version
    */
@@ -92,24 +92,48 @@ export interface AsiPluginConfig<
 
 /** Interface for the app exposed to plugins */
 export interface PluginHost {
-  get(path: string, handler: (ctx: Context) => unknown, options?: unknown): PluginHost;
-  post(path: string, handler: (ctx: Context) => unknown, options?: unknown): PluginHost;
-  put(path: string, handler: (ctx: Context) => unknown, options?: unknown): PluginHost;
-  delete(path: string, handler: (ctx: Context) => unknown, options?: unknown): PluginHost;
-  patch(path: string, handler: (ctx: Context) => unknown, options?: unknown): PluginHost;
-  all(path: string, handler: (ctx: Context) => unknown, options?: unknown): PluginHost;
+  get(
+    path: string,
+    handler: (ctx: Context) => unknown,
+    options?: unknown,
+  ): PluginHost;
+  post(
+    path: string,
+    handler: (ctx: Context) => unknown,
+    options?: unknown,
+  ): PluginHost;
+  put(
+    path: string,
+    handler: (ctx: Context) => unknown,
+    options?: unknown,
+  ): PluginHost;
+  delete(
+    path: string,
+    handler: (ctx: Context) => unknown,
+    options?: unknown,
+  ): PluginHost;
+  patch(
+    path: string,
+    handler: (ctx: Context) => unknown,
+    options?: unknown,
+  ): PluginHost;
+  all(
+    path: string,
+    handler: (ctx: Context) => unknown,
+    options?: unknown,
+  ): PluginHost;
   use(middleware: Middleware): PluginHost;
   use(path: string, middleware: Middleware): PluginHost;
   onBeforeHandle(handler: BeforeHandler): PluginHost;
   onAfterHandle(handler: AfterHandler): PluginHost;
   group(prefix: string, callback: (group: unknown) => void): PluginHost;
-  
+
   /** Get shared state from the app */
   getState<T = unknown>(key: string): T | undefined;
-  
+
   /** Set shared state on the app */
   setState<T = unknown>(key: string, value: T): void;
-  
+
   /** Get decorator by name */
   getDecorator<T = unknown>(key: string): T | undefined;
 }
@@ -124,12 +148,16 @@ export interface AsiPlugin<
   /** Plugin configuration */
   readonly config: AsiPluginConfig<TDecorate, TState>;
   /** Apply plugin to app */
-  apply(app: PluginHost, state: Map<string, unknown>, decorators: Map<string, unknown>): Promise<void>;
+  apply(
+    app: PluginHost,
+    state: Map<string, unknown>,
+    decorators: Map<string, unknown>,
+  ): Promise<void>;
 }
 
 /**
  * Create a new plugin
- * 
+ *
  * @example
  * ```ts
  * const loggingPlugin = createPlugin({
@@ -147,52 +175,56 @@ export function createPlugin<
   return {
     name: config.name,
     config,
-    
-    async apply(app: PluginHost, state: Map<string, unknown>, decorators: Map<string, unknown>): Promise<void> {
+
+    async apply(
+      app: PluginHost,
+      state: Map<string, unknown>,
+      decorators: Map<string, unknown>,
+    ): Promise<void> {
       // Register state
       if (config.state) {
         for (const [key, value] of Object.entries(config.state)) {
           state.set(key, value);
         }
       }
-      
+
       // Register decorators
       if (config.decorate) {
         for (const [key, value] of Object.entries(config.decorate)) {
           decorators.set(key, value);
         }
       }
-      
+
       // Register middleware
       if (config.middleware) {
-        const middlewares = Array.isArray(config.middleware) 
-          ? config.middleware 
+        const middlewares = Array.isArray(config.middleware)
+          ? config.middleware
           : [config.middleware];
         for (const mw of middlewares) {
           app.use(mw);
         }
       }
-      
+
       // Register beforeHandle hooks
       if (config.beforeHandle) {
-        const hooks = Array.isArray(config.beforeHandle) 
-          ? config.beforeHandle 
+        const hooks = Array.isArray(config.beforeHandle)
+          ? config.beforeHandle
           : [config.beforeHandle];
         for (const hook of hooks) {
           app.onBeforeHandle(hook);
         }
       }
-      
+
       // Register afterHandle hooks
       if (config.afterHandle) {
-        const hooks = Array.isArray(config.afterHandle) 
-          ? config.afterHandle 
+        const hooks = Array.isArray(config.afterHandle)
+          ? config.afterHandle
           : [config.afterHandle];
         for (const hook of hooks) {
           app.onAfterHandle(hook);
         }
       }
-      
+
       // Run setup
       if (config.setup) {
         await config.setup(app);
@@ -203,7 +235,7 @@ export function createPlugin<
 
 /**
  * Create a plugin from a simple function
- * 
+ *
  * @example
  * ```ts
  * const routePlugin = pluginFn("routes", (app) => {
@@ -212,8 +244,8 @@ export function createPlugin<
  * ```
  */
 export function pluginFn(
-  name: string, 
-  setup: (app: PluginHost) => void | Promise<void>
+  name: string,
+  setup: (app: PluginHost) => void | Promise<void>,
 ): AsiPlugin {
   return createPlugin({ name, setup });
 }
@@ -222,7 +254,7 @@ export function pluginFn(
 
 /**
  * Create a decorator plugin (adds methods/properties to context)
- * 
+ *
  * @example
  * ```ts
  * const decoratorPlugin = decorators("helpers", {
@@ -232,15 +264,15 @@ export function pluginFn(
  * ```
  */
 export function decorators<T extends Record<string, unknown>>(
-  name: string, 
-  decorate: T
+  name: string,
+  decorate: T,
 ): AsiPlugin<T, Record<string, unknown>> {
   return createPlugin({ name, decorate });
 }
 
 /**
  * Create a state plugin (adds shared state to the app)
- * 
+ *
  * @example
  * ```ts
  * const statePlugin = sharedState("cache", {
@@ -250,15 +282,15 @@ export function decorators<T extends Record<string, unknown>>(
  * ```
  */
 export function sharedState<T extends Record<string, unknown>>(
-  name: string, 
-  state: T
+  name: string,
+  state: T,
 ): AsiPlugin<Record<string, unknown>, T> {
   return createPlugin({ name, state });
 }
 
 /**
  * Create a guard plugin (adds beforeHandle protection)
- * 
+ *
  * @example
  * ```ts
  * const authGuard = guard("auth", async (ctx) => {
@@ -269,9 +301,6 @@ export function sharedState<T extends Record<string, unknown>>(
  * });
  * ```
  */
-export function guard(
-  name: string, 
-  handler: BeforeHandler
-): AsiPlugin {
+export function guard(name: string, handler: BeforeHandler): AsiPlugin {
   return createPlugin({ name, beforeHandle: handler });
 }

@@ -1,12 +1,12 @@
 /**
  * FormData / Multipart parsing support for AsiJS
- * 
+ *
  * @example
  * ```ts
  * import { Asi, Type, FormDataSchema, FileSchema } from "asijs";
- * 
+ *
  * const app = new Asi();
- * 
+ *
  * // Simple form fields
  * app.post("/register", async (ctx) => {
  *   const data = await ctx.formData();
@@ -19,7 +19,7 @@
  *     })
  *   }
  * });
- * 
+ *
  * // With file upload
  * app.post("/upload", async (ctx) => {
  *   const file = ctx.file("avatar");
@@ -76,13 +76,15 @@ export const FORMDATA_SCHEMA_SYMBOL = Symbol("FormDataSchema");
 
 /**
  * Create a File schema for FormData validation
- * 
+ *
  * @example
  * ```ts
  * FileSchema({ maxSize: 10_000_000, mimeTypes: ["image/*", "application/pdf"] })
  * ```
  */
-export function FileSchema(options: FileSchemaOptions = {}): TSchema & { [FILE_SCHEMA_SYMBOL]: FileSchemaOptions } {
+export function FileSchema(
+  options: FileSchemaOptions = {},
+): TSchema & { [FILE_SCHEMA_SYMBOL]: FileSchemaOptions } {
   // We use a custom schema that won't be directly validated by TypeBox
   // but will be handled by our FormData validator
   const schema = Type.Any({
@@ -90,7 +92,7 @@ export function FileSchema(options: FileSchemaOptions = {}): TSchema & { [FILE_S
     title: "File",
     description: buildFileDescription(options),
   });
-  
+
   return Object.assign(schema, { [FILE_SCHEMA_SYMBOL]: options });
 }
 
@@ -122,7 +124,7 @@ export interface FormDataSchemaType {
 
 /**
  * Create a FormData schema for validating multipart form data
- * 
+ *
  * @example
  * ```ts
  * FormDataSchema({
@@ -133,7 +135,7 @@ export interface FormDataSchemaType {
  * ```
  */
 export function FormDataSchema<T extends Record<string, TSchema>>(
-  fields: T
+  fields: T,
 ): TSchema & FormDataSchemaType {
   // Create a wrapper schema
   const schema = Type.Object(
@@ -144,10 +146,10 @@ export function FormDataSchema<T extends Record<string, TSchema>>(
           return [key, Type.Any()];
         }
         return [key, value];
-      })
-    ) as T
+      }),
+    ) as T,
   );
-  
+
   return Object.assign(schema, {
     [FORMDATA_SCHEMA_SYMBOL]: true as const,
     fields,
@@ -155,13 +157,25 @@ export function FormDataSchema<T extends Record<string, TSchema>>(
 }
 
 /** Check if schema is a File schema */
-export function isFileSchema(schema: unknown): schema is TSchema & { [FILE_SCHEMA_SYMBOL]: FileSchemaOptions } {
-  return schema !== null && typeof schema === "object" && FILE_SCHEMA_SYMBOL in schema;
+export function isFileSchema(
+  schema: unknown,
+): schema is TSchema & { [FILE_SCHEMA_SYMBOL]: FileSchemaOptions } {
+  return (
+    schema !== null &&
+    typeof schema === "object" &&
+    FILE_SCHEMA_SYMBOL in schema
+  );
 }
 
 /** Check if schema is a FormData schema */
-export function isFormDataSchema(schema: unknown): schema is TSchema & FormDataSchemaType {
-  return schema !== null && typeof schema === "object" && FORMDATA_SCHEMA_SYMBOL in schema;
+export function isFormDataSchema(
+  schema: unknown,
+): schema is TSchema & FormDataSchemaType {
+  return (
+    schema !== null &&
+    typeof schema === "object" &&
+    FORMDATA_SCHEMA_SYMBOL in schema
+  );
 }
 
 // ===== FormData Validator =====
@@ -183,14 +197,14 @@ export interface FormDataValidationResult<T = Record<string, unknown>> {
  */
 export async function validateFormData<T extends Record<string, TSchema>>(
   formData: FormData,
-  schema: TSchema & FormDataSchemaType
+  schema: TSchema & FormDataSchemaType,
 ): Promise<FormDataValidationResult<{ [K in keyof T]: Static<T[K]> }>> {
   const errors: FormDataValidationError[] = [];
   const data: Record<string, unknown> = {};
   const files = new Map<string, ParsedFile>();
-  
+
   const fields = schema.fields;
-  
+
   // Compile schemas if not already compiled
   if (!schema.compiledFields) {
     schema.compiledFields = new Map();
@@ -200,18 +214,25 @@ export async function validateFormData<T extends Record<string, TSchema>>(
       }
     }
   }
-  
+
   for (const [key, fieldSchema] of Object.entries(fields)) {
     const rawValue = formData.get(key);
-    
+
     // Check if field is optional
-    const isOptional = fieldSchema.type === "union" && 
-      (fieldSchema as any).anyOf?.some((s: TSchema) => s.type === "null" || s.type === "undefined");
-    
+    const isOptional =
+      fieldSchema.type === "union" &&
+      (fieldSchema as any).anyOf?.some(
+        (s: TSchema) => s.type === "null" || s.type === "undefined",
+      );
+
     // Handle file fields
     if (isFileSchema(fieldSchema)) {
       if (rawValue instanceof File) {
-        const fileError = validateFile(rawValue, fieldSchema[FILE_SCHEMA_SYMBOL], key);
+        const fileError = validateFile(
+          rawValue,
+          fieldSchema[FILE_SCHEMA_SYMBOL],
+          key,
+        );
         if (fileError) {
           errors.push(fileError);
         } else {
@@ -224,7 +245,7 @@ export async function validateFormData<T extends Record<string, TSchema>>(
       }
       continue;
     }
-    
+
     // Handle regular fields
     if (rawValue === null) {
       if (!isOptional && !("default" in fieldSchema)) {
@@ -234,22 +255,22 @@ export async function validateFormData<T extends Record<string, TSchema>>(
       }
       continue;
     }
-    
+
     // Coerce value based on expected type
     let value: unknown = rawValue;
     if (typeof rawValue === "string") {
       value = coerceFormValue(rawValue, fieldSchema);
     }
-    
+
     // Validate with compiled schema
     const compiled = schema.compiledFields!.get(key);
     if (compiled) {
       if (!compiled.Check(value)) {
         const typeErrors = [...compiled.Errors(value)];
         for (const error of typeErrors) {
-          errors.push({ 
-            field: key, 
-            message: error.message || `Invalid value for ${key}` 
+          errors.push({
+            field: key,
+            message: error.message || `Invalid value for ${key}`,
           });
         }
       } else {
@@ -259,42 +280,42 @@ export async function validateFormData<T extends Record<string, TSchema>>(
       data[key] = value;
     }
   }
-  
+
   if (errors.length > 0) {
     return { success: false, errors };
   }
-  
-  return { 
-    success: true, 
+
+  return {
+    success: true,
     data: data as { [K in keyof T]: Static<T[K]> },
     files,
   };
 }
 
 function validateFile(
-  file: File, 
-  options: FileSchemaOptions, 
-  fieldName: string
+  file: File,
+  options: FileSchemaOptions,
+  fieldName: string,
 ): FormDataValidationError | null {
   // Check min size
   if (options.minSize !== undefined && file.size < options.minSize) {
-    return { 
-      field: fieldName, 
-      message: `File too small. Minimum: ${formatBytes(options.minSize)}` 
+    return {
+      field: fieldName,
+      message: `File too small. Minimum: ${formatBytes(options.minSize)}`,
     };
   }
-  
+
   // Check max size
   if (options.maxSize !== undefined && file.size > options.maxSize) {
-    return { 
-      field: fieldName, 
-      message: `File too large. Maximum: ${formatBytes(options.maxSize)}` 
+    return {
+      field: fieldName,
+      message: `File too large. Maximum: ${formatBytes(options.maxSize)}`,
     };
   }
-  
+
   // Check MIME type
   if (options.mimeTypes && options.mimeTypes.length > 0) {
-    const isAllowed = options.mimeTypes.some(pattern => {
+    const isAllowed = options.mimeTypes.some((pattern) => {
       if (pattern.endsWith("/*")) {
         // Wildcard pattern: image/*
         const prefix = pattern.slice(0, -2);
@@ -302,29 +323,30 @@ function validateFile(
       }
       return file.type === pattern;
     });
-    
+
     if (!isAllowed) {
-      return { 
-        field: fieldName, 
-        message: `Invalid file type: ${file.type}. Allowed: ${options.mimeTypes.join(", ")}` 
+      return {
+        field: fieldName,
+        message: `Invalid file type: ${file.type}. Allowed: ${options.mimeTypes.join(", ")}`,
       };
     }
   }
-  
+
   // Check name pattern
   if (options.namePattern) {
-    const regex = typeof options.namePattern === "string" 
-      ? new RegExp(options.namePattern) 
-      : options.namePattern;
-    
+    const regex =
+      typeof options.namePattern === "string"
+        ? new RegExp(options.namePattern)
+        : options.namePattern;
+
     if (!regex.test(file.name)) {
-      return { 
-        field: fieldName, 
-        message: `Invalid file name: ${file.name}` 
+      return {
+        field: fieldName,
+        message: `Invalid file name: ${file.name}`,
       };
     }
   }
-  
+
   return null;
 }
 
@@ -341,18 +363,18 @@ function createParsedFile(file: File): ParsedFile {
 
 function coerceFormValue(value: string, schema: TSchema): unknown {
   const type = schema.type;
-  
+
   switch (type) {
     case "number":
     case "integer":
       const num = Number(value);
       return isNaN(num) ? value : num;
-    
+
     case "boolean":
       if (value === "true" || value === "1" || value === "on") return true;
       if (value === "false" || value === "0" || value === "") return false;
       return value;
-    
+
     case "array":
       // For arrays, we expect multiple form fields or JSON
       try {
@@ -360,14 +382,14 @@ function coerceFormValue(value: string, schema: TSchema): unknown {
       } catch {
         return [value];
       }
-    
+
     case "object":
       try {
         return JSON.parse(value);
       } catch {
         return value;
       }
-    
+
     default:
       return value;
   }
@@ -378,7 +400,10 @@ function coerceFormValue(value: string, schema: TSchema): unknown {
 /**
  * Get all files with the same field name from FormData
  */
-export function getMultipleFiles(formData: FormData, fieldName: string): File[] {
+export function getMultipleFiles(
+  formData: FormData,
+  fieldName: string,
+): File[] {
   const files: File[] = [];
   for (const value of formData.getAll(fieldName)) {
     if (value instanceof File) {
@@ -391,7 +416,9 @@ export function getMultipleFiles(formData: FormData, fieldName: string): File[] 
 /**
  * Create a schema for multiple files
  */
-export function MultipleFilesSchema(options: FileSchemaOptions & { maxCount?: number; minCount?: number } = {}): TSchema {
+export function MultipleFilesSchema(
+  options: FileSchemaOptions & { maxCount?: number; minCount?: number } = {},
+): TSchema {
   return Type.Array(FileSchema(options), {
     minItems: options.minCount,
     maxItems: options.maxCount,

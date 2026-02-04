@@ -1,9 +1,9 @@
 /**
  * Server Functions / Server Actions
- * 
+ *
  * Next.js / Remix-style server actions for AsiJS.
  * Write functions on the server, call them from the client with full type safety.
- * 
+ *
  * @example
  * ```ts
  * // Define actions
@@ -23,10 +23,10 @@
  *     }
  *   ),
  * };
- * 
+ *
  * // Register with app
  * const client = registerActions(app, actions, { prefix: "/actions" });
- * 
+ *
  * // Call from client (type-safe!)
  * const user = await client.createUser({ name: "John", email: "john@example.com" });
  * ```
@@ -57,7 +57,7 @@ export interface ServerAction<TInput extends TSchema, TOutput> {
 export type ActionMiddleware = (
   ctx: Context,
   input: unknown,
-  next: () => Promise<unknown>
+  next: () => Promise<unknown>,
 ) => Promise<unknown>;
 
 /**
@@ -95,14 +95,18 @@ export interface RegisterActionsOptions {
   /** Add CSRF protection */
   csrf?: boolean;
   /** Custom error handler */
-  onError?: (error: Error, actionName: string, ctx: Context) => Response | Promise<Response>;
+  onError?: (
+    error: Error,
+    actionName: string,
+    ctx: Context,
+  ) => Response | Promise<Response>;
 }
 
 // ===== Action Creator =====
 
 /**
  * Create a server action with input validation
- * 
+ *
  * @example
  * ```ts
  * const createUser = action(
@@ -116,7 +120,7 @@ export interface RegisterActionsOptions {
 export function action<TInput extends TSchema, TOutput>(
   inputSchema: TInput,
   handler: (input: Static<TInput>, ctx: Context) => Promise<TOutput>,
-  options?: ActionOptions
+  options?: ActionOptions,
 ): ServerAction<TInput, TOutput> {
   return {
     __isAction: true,
@@ -132,7 +136,7 @@ export function action<TInput extends TSchema, TOutput>(
  */
 export function simpleAction<TOutput>(
   handler: (ctx: Context) => Promise<TOutput>,
-  options?: Omit<ActionOptions, "name"> & { name?: string }
+  options?: Omit<ActionOptions, "name"> & { name?: string },
 ): ServerAction<TSchema, TOutput> {
   return {
     __isAction: true,
@@ -149,7 +153,7 @@ export function simpleAction<TOutput>(
 export function actionWithMiddleware<TInput extends TSchema, TOutput>(
   middleware: ActionMiddleware[],
   inputSchema: TInput,
-  handler: (input: Static<TInput>, ctx: Context) => Promise<TOutput>
+  handler: (input: Static<TInput>, ctx: Context) => Promise<TOutput>,
 ): ServerAction<TInput, TOutput> {
   return action(inputSchema, handler, { middleware });
 }
@@ -160,7 +164,7 @@ export function actionWithMiddleware<TInput extends TSchema, TOutput>(
  * Require authentication middleware
  */
 export function requireAuth(
-  getUser: (ctx: Context) => unknown | Promise<unknown>
+  getUser: (ctx: Context) => unknown | Promise<unknown>,
 ): ActionMiddleware {
   return async (ctx, input, next) => {
     const user = await getUser(ctx);
@@ -177,25 +181,26 @@ export function requireAuth(
  */
 export function actionRateLimit(
   limit: number,
-  windowMs: number = 60000
+  windowMs: number = 60000,
 ): ActionMiddleware {
   const requests = new Map<string, { count: number; resetAt: number }>();
 
   return async (ctx, input, next) => {
-    const key = ctx.header("x-forwarded-for") || ctx.header("x-real-ip") || "unknown";
+    const key =
+      ctx.header("x-forwarded-for") || ctx.header("x-real-ip") || "unknown";
     const now = Date.now();
-    
+
     let record = requests.get(key);
     if (!record || now > record.resetAt) {
       record = { count: 0, resetAt: now + windowMs };
       requests.set(key, record);
     }
-    
+
     record.count++;
     if (record.count > limit) {
       throw new ActionError("Too many requests", "RATE_LIMIT", 429);
     }
-    
+
     return next();
   };
 }
@@ -204,13 +209,18 @@ export function actionRateLimit(
  * Logging middleware for actions
  */
 export function actionLogger(
-  log: (info: { action: string; duration: number; success: boolean; error?: Error }) => void = console.log as any
+  log: (info: {
+    action: string;
+    duration: number;
+    success: boolean;
+    error?: Error;
+  }) => void = console.log as any,
 ): ActionMiddleware {
   return async (ctx, input, next) => {
     const start = performance.now();
     let success = true;
     let error: Error | undefined;
-    
+
     try {
       return await next();
     } catch (e) {
@@ -219,7 +229,12 @@ export function actionLogger(
       throw e;
     } finally {
       const duration = performance.now() - start;
-      log({ action: (ctx as any).__actionName || "unknown", duration, success, error });
+      log({
+        action: (ctx as any).__actionName || "unknown",
+        duration,
+        success,
+        error,
+      });
     }
   };
 }
@@ -234,7 +249,12 @@ export class ActionError extends Error {
   status: number;
   details?: unknown;
 
-  constructor(message: string, code: string = "ACTION_ERROR", status: number = 400, details?: unknown) {
+  constructor(
+    message: string,
+    code: string = "ACTION_ERROR",
+    status: number = 400,
+    details?: unknown,
+  ) {
     super(message);
     this.name = "ActionError";
     this.code = code;
@@ -255,16 +275,16 @@ export class ActionError extends Error {
 
 /**
  * Register actions with an Asi app and get a typed client
- * 
+ *
  * @example
  * ```ts
  * const actions = {
  *   createUser: action(UserSchema, async (input) => { ... }),
  *   deleteUser: action(DeleteSchema, async (input) => { ... }),
  * };
- * 
+ *
  * const client = registerActions(app, actions);
- * 
+ *
  * // Use client
  * const user = await client.createUser({ name: "John" });
  * ```
@@ -272,23 +292,24 @@ export class ActionError extends Error {
 export function registerActions<T extends ActionsRegistry>(
   app: Asi,
   actions: T,
-  options: RegisterActionsOptions = {}
+  options: RegisterActionsOptions = {},
 ): ActionsClient<T> {
-  const { 
-    prefix = "/actions",
-    baseUrl,
-    onError,
-  } = options;
+  const { prefix = "/actions", baseUrl, onError } = options;
 
   // Compile validators
-  const compiledActions = new Map<string, {
-    action: ServerAction<any, any>;
-    validator: TypeCheck<any>;
-  }>();
+  const compiledActions = new Map<
+    string,
+    {
+      action: ServerAction<any, any>;
+      validator: TypeCheck<any>;
+    }
+  >();
 
   for (const [name, actionDef] of Object.entries(actions)) {
     if (!actionDef.__isAction) {
-      throw new Error(`Invalid action: ${name}. Use action() to create actions.`);
+      throw new Error(
+        `Invalid action: ${name}. Use action() to create actions.`,
+      );
     }
 
     // Set action name
@@ -300,7 +321,7 @@ export function registerActions<T extends ActionsRegistry>(
 
     // Register POST endpoint
     const path = `${prefix}/${name}`;
-    
+
     app.post(path, async (ctx) => {
       try {
         // Parse input
@@ -313,11 +334,16 @@ export function registerActions<T extends ActionsRegistry>(
 
         // Validate input
         if (!validator.Check(input)) {
-          const errors = [...validator.Errors(input)].map(e => ({
+          const errors = [...validator.Errors(input)].map((e) => ({
             path: e.path,
             message: e.message,
           }));
-          throw new ActionError("Validation failed", "VALIDATION_ERROR", 400, errors);
+          throw new ActionError(
+            "Validation failed",
+            "VALIDATION_ERROR",
+            400,
+            errors,
+          );
         }
 
         // Set action name for middleware
@@ -326,14 +352,16 @@ export function registerActions<T extends ActionsRegistry>(
         // Run middleware chain
         const runMiddleware = async (
           middlewares: ActionMiddleware[],
-          index: number
+          index: number,
         ): Promise<unknown> => {
           if (index >= middlewares.length) {
             // Execute handler
             return actionDef.handler(input, ctx as Context);
           }
-          
-          return middlewares[index](ctx as Context, input, () => runMiddleware(middlewares, index + 1));
+
+          return middlewares[index](ctx as Context, input, () =>
+            runMiddleware(middlewares, index + 1),
+          );
         };
 
         const middlewares = actionDef.middleware || [];
@@ -365,7 +393,7 @@ export function registerActions<T extends ActionsRegistry>(
   const client = createActionsClient<T>(
     baseUrl || "",
     prefix,
-    Object.keys(actions)
+    Object.keys(actions),
   );
 
   return client;
@@ -377,14 +405,14 @@ export function registerActions<T extends ActionsRegistry>(
 export function createActionsClient<T extends ActionsRegistry>(
   baseUrl: string,
   prefix: string,
-  actionNames: string[]
+  actionNames: string[],
 ): ActionsClient<T> {
   const client: any = {};
 
   for (const name of actionNames) {
     client[name] = async (input: unknown) => {
       const url = `${baseUrl}${prefix}/${name}`;
-      
+
       const response = await fetch(url, {
         method: "POST",
         headers: {
@@ -400,7 +428,7 @@ export function createActionsClient<T extends ActionsRegistry>(
           result.error || "Action failed",
           result.code || "ACTION_FAILED",
           response.status,
-          result.details
+          result.details,
         );
         throw error;
       }
@@ -425,12 +453,16 @@ export interface ActionsPluginOptions<T extends ActionsRegistry> {
   /** Global middleware for all actions */
   middleware?: ActionMiddleware[];
   /** Error handler */
-  onError?: (error: Error, actionName: string, ctx: Context) => Response | Promise<Response>;
+  onError?: (
+    error: Error,
+    actionName: string,
+    ctx: Context,
+  ) => Response | Promise<Response>;
 }
 
 /**
  * Create actions plugin
- * 
+ *
  * @example
  * ```ts
  * const { plugin, client } = actionsPlugin({
@@ -438,15 +470,15 @@ export interface ActionsPluginOptions<T extends ActionsRegistry> {
  *     createUser: action(UserSchema, async (input) => { ... }),
  *   },
  * });
- * 
+ *
  * app.plugin(plugin);
- * 
+ *
  * // Use client
  * const user = await client.createUser({ name: "John" });
  * ```
  */
 export function actionsPlugin<T extends ActionsRegistry>(
-  options: ActionsPluginOptions<T>
+  options: ActionsPluginOptions<T>,
 ): { plugin: (app: Asi) => void; client: ActionsClient<T> } {
   let client: ActionsClient<T>;
 
@@ -471,7 +503,7 @@ export function actionsPlugin<T extends ActionsRegistry>(
   const placeholderClient = createActionsClient<T>(
     "",
     options.prefix || "/actions",
-    Object.keys(options.actions)
+    Object.keys(options.actions),
   );
 
   return { plugin, client: placeholderClient };
@@ -501,7 +533,7 @@ export interface BatchActionResult {
 export function registerBatchActions(
   app: Asi,
   actions: ActionsRegistry,
-  options: { prefix?: string } = {}
+  options: { prefix?: string } = {},
 ): void {
   const prefix = options.prefix || "/actions";
 
@@ -532,7 +564,9 @@ export function registerBatchActions(
       try {
         // Validate
         if (!actionDef.compiledValidator) {
-          actionDef.compiledValidator = TypeCompiler.Compile(actionDef.inputSchema);
+          actionDef.compiledValidator = TypeCompiler.Compile(
+            actionDef.inputSchema,
+          );
         }
 
         if (!actionDef.compiledValidator.Check(call.input)) {
@@ -574,11 +608,13 @@ export function registerBatchActions(
 export function formAction<TInput extends TSchema, TOutput>(
   inputSchema: TInput,
   handler: (input: Static<TInput>, ctx: Context) => Promise<TOutput>,
-  options?: ActionOptions & { 
+  options?: ActionOptions & {
     redirectOnSuccess?: string;
     redirectOnError?: string;
-  }
-): ServerAction<TInput, TOutput> & { formHandler: (ctx: Context) => Promise<Response> } {
+  },
+): ServerAction<TInput, TOutput> & {
+  formHandler: (ctx: Context) => Promise<Response>;
+} {
   const act = action(inputSchema, handler, options);
 
   const formHandler = async (ctx: Context): Promise<Response> => {
@@ -616,7 +652,9 @@ export function formAction<TInput extends TSchema, TOutput>(
       return ctx.redirect(ctx.header("referer") || "/");
     } catch (error) {
       if (options?.redirectOnError) {
-        return ctx.redirect(`${options.redirectOnError}?error=${encodeURIComponent((error as Error).message)}`);
+        return ctx.redirect(
+          `${options.redirectOnError}?error=${encodeURIComponent((error as Error).message)}`,
+        );
       }
       throw error;
     }
@@ -630,16 +668,14 @@ export function formAction<TInput extends TSchema, TOutput>(
 /**
  * Infer input type from action
  */
-export type InferActionInput<T> = T extends ServerAction<infer TInput, any>
-  ? Static<TInput>
-  : never;
+export type InferActionInput<T> =
+  T extends ServerAction<infer TInput, any> ? Static<TInput> : never;
 
 /**
  * Infer output type from action
  */
-export type InferActionOutput<T> = T extends ServerAction<any, infer TOutput>
-  ? TOutput
-  : never;
+export type InferActionOutput<T> =
+  T extends ServerAction<any, infer TOutput> ? TOutput : never;
 
 /**
  * Infer all action types from registry

@@ -1,17 +1,17 @@
 /**
  * Tracing & Observability Plugin for AsiJS
- * 
+ *
  * Request ID, timing, route pattern tracking with OpenTelemetry compatibility.
- * 
+ *
  * @example
  * ```ts
  * import { Asi, trace } from "asijs";
- * 
+ *
  * const app = new Asi();
- * 
+ *
  * // Basic tracing
  * app.plugin(trace());
- * 
+ *
  * // With custom options
  * app.plugin(trace({
  *   requestIdHeader: "X-Request-ID",
@@ -57,7 +57,11 @@ export interface TraceInfo {
   /** Custom attributes */
   attributes: Map<string, unknown>;
   /** Span events */
-  events: Array<{ name: string; timestamp: number; attributes?: Record<string, unknown> }>;
+  events: Array<{
+    name: string;
+    timestamp: number;
+    attributes?: Record<string, unknown>;
+  }>;
 }
 
 export interface TraceOptions {
@@ -66,61 +70,61 @@ export interface TraceOptions {
    * @default "X-Request-ID"
    */
   requestIdHeader?: string;
-  
+
   /**
    * Generate request ID if not provided
    * @default true
    */
   generateRequestId?: boolean;
-  
+
   /**
    * Custom request ID generator
    */
   requestIdGenerator?: () => string;
-  
+
   /**
    * Add timing headers to response
    * @default true
    */
   timingHeaders?: boolean;
-  
+
   /**
    * Log requests to console
    * @default false
    */
   logRequests?: boolean;
-  
+
   /**
    * Custom log formatter
    */
   logFormatter?: (info: TraceInfo) => string;
-  
+
   /**
    * Callback on request start
    */
   onRequest?: (info: TraceInfo) => void | Promise<void>;
-  
+
   /**
    * Callback on request end
    */
   onResponse?: (info: TraceInfo) => void | Promise<void>;
-  
+
   /**
    * Skip tracing for certain paths
    */
   skip?: (ctx: Context) => boolean;
-  
+
   /**
    * Paths to always skip (e.g., health checks)
    */
   skipPaths?: string[];
-  
+
   /**
    * Enable Server-Timing header
    * @default true
    */
   serverTiming?: boolean;
-  
+
   /**
    * Propagate trace context from incoming headers (W3C Trace Context)
    * @default true
@@ -144,15 +148,15 @@ export interface TraceContext {
 export function parseTraceparent(header: string): TraceContext | null {
   const parts = header.split("-");
   if (parts.length !== 4) return null;
-  
+
   const [version, traceId, spanId, flags] = parts;
-  
+
   // Version 00 is the only supported version
   if (version !== "00") return null;
-  
+
   // Validate format
   if (traceId.length !== 32 || spanId.length !== 16) return null;
-  
+
   return {
     traceId,
     spanId,
@@ -177,7 +181,9 @@ export function generateTraceContext(): TraceContext {
 export function generateTraceId(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
@@ -186,7 +192,9 @@ export function generateTraceId(): string {
 export function generateSpanId(): string {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
@@ -214,9 +222,9 @@ export function getCurrentTrace(requestId: string): TraceInfo | undefined {
  * Add event to current trace
  */
 export function addTraceEvent(
-  requestId: string, 
-  name: string, 
-  attributes?: Record<string, unknown>
+  requestId: string,
+  name: string,
+  attributes?: Record<string, unknown>,
 ): void {
   const trace = traceStore.get(requestId);
   if (trace) {
@@ -231,7 +239,11 @@ export function addTraceEvent(
 /**
  * Set trace attribute
  */
-export function setTraceAttribute(requestId: string, key: string, value: unknown): void {
+export function setTraceAttribute(
+  requestId: string,
+  key: string,
+  value: unknown,
+): void {
   const trace = traceStore.get(requestId);
   if (trace) {
     trace.attributes.set(key, value);
@@ -248,13 +260,13 @@ const statusColors: Record<number, string> = {
 };
 
 const methodColors: Record<string, string> = {
-  GET: "\x1b[34m",    // Blue
-  POST: "\x1b[32m",   // Green
-  PUT: "\x1b[33m",    // Yellow
-  PATCH: "\x1b[35m",  // Magenta
+  GET: "\x1b[34m", // Blue
+  POST: "\x1b[32m", // Green
+  PUT: "\x1b[33m", // Yellow
+  PATCH: "\x1b[35m", // Magenta
   DELETE: "\x1b[31m", // Red
   OPTIONS: "\x1b[36m", // Cyan
-  HEAD: "\x1b[37m",   // White
+  HEAD: "\x1b[37m", // White
 };
 
 const reset = "\x1b[0m";
@@ -264,7 +276,7 @@ function defaultLogFormatter(info: TraceInfo): string {
   const statusColor = statusColors[Math.floor((info.status ?? 0) / 100)] ?? "";
   const methodColor = methodColors[info.method] ?? "";
   const duration = info.duration?.toFixed(2) ?? "?";
-  
+
   return `${dim}[${info.requestId}]${reset} ${methodColor}${info.method.padEnd(7)}${reset} ${info.path} ${statusColor}${info.status ?? "?"}${reset} ${dim}${duration}ms${reset}`;
 }
 
@@ -280,11 +292,11 @@ export interface TimingMark {
 export class Timing {
   private marks: Map<string, TimingMark> = new Map();
   private startTime: number;
-  
+
   constructor() {
     this.startTime = performance.now();
   }
-  
+
   start(name: string, description?: string): void {
     this.marks.set(name, {
       name,
@@ -292,7 +304,7 @@ export class Timing {
       description,
     });
   }
-  
+
   end(name: string): number {
     const mark = this.marks.get(name);
     if (mark) {
@@ -301,14 +313,18 @@ export class Timing {
     }
     return 0;
   }
-  
+
   measure(name: string, fn: () => void, description?: string): void {
     this.start(name, description);
     fn();
     this.end(name);
   }
-  
-  async measureAsync<T>(name: string, fn: () => Promise<T>, description?: string): Promise<T> {
+
+  async measureAsync<T>(
+    name: string,
+    fn: () => Promise<T>,
+    description?: string,
+  ): Promise<T> {
     this.start(name, description);
     try {
       return await fn();
@@ -316,10 +332,10 @@ export class Timing {
       this.end(name);
     }
   }
-  
+
   toServerTimingHeader(): string {
     const parts: string[] = [];
-    
+
     for (const mark of this.marks.values()) {
       if (mark.end !== undefined) {
         const duration = (mark.end - mark.start).toFixed(2);
@@ -327,10 +343,10 @@ export class Timing {
         parts.push(`${mark.name};dur=${duration}${desc}`);
       }
     }
-    
+
     return parts.join(", ");
   }
-  
+
   totalDuration(): number {
     return performance.now() - this.startTime;
   }
@@ -356,27 +372,27 @@ export function traceMiddleware(options: TraceOptions = {}): Middleware {
     serverTiming = true,
     propagateContext = true,
   } = options;
-  
+
   return async (ctx, next) => {
     // Skip if configured
     if (skip?.(ctx)) {
       return next();
     }
-    
+
     // Skip health check paths
     if (skipPaths.includes(ctx.path)) {
       return next();
     }
-    
+
     const startTime = performance.now();
-    
+
     // Get or generate request ID
     let requestId = ctx.header(requestIdHeader);
     if (!requestId && shouldGenerate) {
       requestId = requestIdGenerator();
     }
     requestId = requestId ?? "unknown";
-    
+
     // Parse trace context if propagating
     let traceContext: TraceContext | null = null;
     if (propagateContext) {
@@ -385,7 +401,7 @@ export function traceMiddleware(options: TraceOptions = {}): Middleware {
         traceContext = parseTraceparent(traceparent);
       }
     }
-    
+
     // Create trace info
     const traceInfo: TraceInfo = {
       requestId,
@@ -397,49 +413,49 @@ export function traceMiddleware(options: TraceOptions = {}): Middleware {
       attributes: new Map(),
       events: [],
     };
-    
+
     // Add trace context attributes
     if (traceContext) {
       traceInfo.attributes.set("trace.id", traceContext.traceId);
       traceInfo.attributes.set("trace.parent_span_id", traceContext.spanId);
     }
-    
+
     // Store trace info
     traceStore.set(requestId, traceInfo);
-    
+
     // Store timing for Server-Timing header
     const timing = new Timing();
-    
+
     // Call onRequest hook
     if (onRequest) {
       await onRequest(traceInfo);
     }
-    
+
     let response: Response | unknown;
     let status = 500;
-    
+
     try {
       response = await next();
-      
+
       if (response instanceof Response) {
         status = response.status;
-        
+
         // Add headers to response
         const newHeaders = new Headers(response.headers);
         newHeaders.set(requestIdHeader, requestId);
-        
+
         if (timingHeaders) {
           const duration = performance.now() - startTime;
           newHeaders.set("X-Response-Time", `${duration.toFixed(2)}ms`);
         }
-        
+
         if (serverTiming) {
           const serverTimingValue = timing.toServerTimingHeader();
           if (serverTimingValue) {
             newHeaders.set("Server-Timing", serverTimingValue);
           }
         }
-        
+
         response = new Response(response.body, {
           status: response.status,
           statusText: response.statusText,
@@ -451,33 +467,35 @@ export function traceMiddleware(options: TraceOptions = {}): Middleware {
       throw error;
     } finally {
       const duration = performance.now() - startTime;
-      
+
       // Update trace info
       traceInfo.duration = duration;
       traceInfo.status = status;
-      
+
       // Get response size if available
       if (response instanceof Response) {
-        const contentLength = (response as Response).headers.get("Content-Length");
+        const contentLength = (response as Response).headers.get(
+          "Content-Length",
+        );
         if (contentLength) {
           traceInfo.responseSize = parseInt(contentLength, 10);
         }
       }
-      
+
       // Call onResponse hook
       if (onResponse) {
         await onResponse(traceInfo);
       }
-      
+
       // Log if enabled
       if (logRequests) {
         console.log(logFormatter(traceInfo));
       }
-      
+
       // Cleanup
       traceStore.delete(requestId);
     }
-    
+
     return response as Response;
   };
 }
@@ -491,11 +509,18 @@ export function trace(options: TraceOptions = {}): AsiPlugin {
   return createPlugin({
     name: "trace",
     middleware: [traceMiddleware(options)],
-    
+
     decorate: {
-      getRequestId: (ctx: Context) => (ctx.store as Record<string, unknown>)["requestId"] as string | undefined,
-      getTraceInfo: (ctx: Context) => (ctx.store as Record<string, unknown>)["traceInfo"] as TraceInfo | undefined,
-      getTiming: (ctx: Context) => (ctx.store as Record<string, unknown>)["timing"] as Timing | undefined,
+      getRequestId: (ctx: Context) =>
+        (ctx.store as Record<string, unknown>)["requestId"] as
+          | string
+          | undefined,
+      getTraceInfo: (ctx: Context) =>
+        (ctx.store as Record<string, unknown>)["traceInfo"] as
+          | TraceInfo
+          | undefined,
+      getTiming: (ctx: Context) =>
+        (ctx.store as Record<string, unknown>)["timing"] as Timing | undefined,
     },
   });
 }
@@ -521,59 +546,66 @@ export class MetricsCollector {
     methods: new Map(),
     paths: new Map(),
   };
-  
+
   record(info: TraceInfo): void {
     this.metrics.totalRequests++;
     this.metrics.totalDuration += info.duration ?? 0;
-    
+
     // Status codes
     if (info.status) {
       const count = this.metrics.statusCodes.get(info.status) ?? 0;
       this.metrics.statusCodes.set(info.status, count + 1);
     }
-    
+
     // Methods
     const methodCount = this.metrics.methods.get(info.method) ?? 0;
     this.metrics.methods.set(info.method, methodCount + 1);
-    
+
     // Paths (use route pattern if available)
     const pathKey = info.routePattern ?? info.path;
-    const pathStats = this.metrics.paths.get(pathKey) ?? { count: 0, totalDuration: 0 };
+    const pathStats = this.metrics.paths.get(pathKey) ?? {
+      count: 0,
+      totalDuration: 0,
+    };
     pathStats.count++;
     pathStats.totalDuration += info.duration ?? 0;
     this.metrics.paths.set(pathKey, pathStats);
   }
-  
+
   getMetrics(): RequestMetrics {
     return this.metrics;
   }
-  
+
   getAverageResponseTime(): number {
     return this.metrics.totalRequests > 0
       ? this.metrics.totalDuration / this.metrics.totalRequests
       : 0;
   }
-  
+
   getRequestsPerSecond(windowMs: number): number {
     // This is a simplified calculation
     return this.metrics.totalRequests / (windowMs / 1000);
   }
-  
+
   toPrometheusFormat(): string {
     const lines: string[] = [];
-    
+
     lines.push("# HELP http_requests_total Total HTTP requests");
     lines.push("# TYPE http_requests_total counter");
     lines.push(`http_requests_total ${this.metrics.totalRequests}`);
-    
+
     lines.push("# HELP http_request_duration_seconds HTTP request duration");
     lines.push("# TYPE http_request_duration_seconds gauge");
-    lines.push(`http_request_duration_seconds_sum ${this.metrics.totalDuration / 1000}`);
-    lines.push(`http_request_duration_seconds_count ${this.metrics.totalRequests}`);
-    
+    lines.push(
+      `http_request_duration_seconds_sum ${this.metrics.totalDuration / 1000}`,
+    );
+    lines.push(
+      `http_request_duration_seconds_count ${this.metrics.totalRequests}`,
+    );
+
     return lines.join("\n");
   }
-  
+
   reset(): void {
     this.metrics = {
       totalRequests: 0,

@@ -20,7 +20,7 @@ describe("Server Actions", () => {
     it("should create an action with validation", () => {
       const testAction = action(
         Type.Object({ name: Type.String() }),
-        async (input) => ({ hello: input.name })
+        async (input) => ({ hello: input.name }),
       );
 
       expect(testAction.__isAction).toBe(true);
@@ -43,18 +43,20 @@ describe("Server Actions", () => {
         getStatus: simpleAction(async () => ({ status: "ok" })),
         echo: action(
           Type.Object({ message: Type.String() }),
-          async (input) => ({ echo: input.message })
+          async (input) => ({ echo: input.message }),
         ),
       };
 
       registerActions(app, actions, { prefix: "/api" });
 
       // Test getStatus
-      const res1 = await app.handle(new Request("http://localhost/api/getStatus", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }));
+      const res1 = await app.handle(
+        new Request("http://localhost/api/getStatus", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+      );
 
       expect(res1.status).toBe(200);
       const data1 = await res1.json();
@@ -62,11 +64,13 @@ describe("Server Actions", () => {
       expect(data1.data.status).toBe("ok");
 
       // Test echo
-      const res2 = await app.handle(new Request("http://localhost/api/echo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "Hello!" }),
-      }));
+      const res2 = await app.handle(
+        new Request("http://localhost/api/echo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: "Hello!" }),
+        }),
+      );
 
       expect(res2.status).toBe(200);
       const data2 = await res2.json();
@@ -83,18 +87,20 @@ describe("Server Actions", () => {
             name: Type.String({ minLength: 1 }),
             email: Type.String({ format: "email" }),
           }),
-          async (input) => ({ user: input })
+          async (input) => ({ user: input }),
         ),
       };
 
       registerActions(app, actions);
 
       // Invalid email
-      const res = await app.handle(new Request("http://localhost/actions/createUser", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "John", email: "invalid" }),
-      }));
+      const res = await app.handle(
+        new Request("http://localhost/actions/createUser", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "John", email: "invalid" }),
+        }),
+      );
 
       expect(res.status).toBe(400);
       const data = await res.json();
@@ -112,11 +118,13 @@ describe("Server Actions", () => {
 
       registerActions(app, actions);
 
-      const res = await app.handle(new Request("http://localhost/actions/fail", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }));
+      const res = await app.handle(
+        new Request("http://localhost/actions/fail", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+      );
 
       expect(res.status).toBe(422);
       const data = await res.json();
@@ -139,30 +147,34 @@ describe("Server Actions", () => {
         protected: action(
           Type.Object({}),
           async (_input, ctx) => ({ user: (ctx as any).user }),
-          { middleware: [requireAuth(getUser)] }
+          { middleware: [requireAuth(getUser)] },
         ),
       };
 
       registerActions(app, actions);
 
       // Without auth
-      const res1 = await app.handle(new Request("http://localhost/actions/protected", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }));
+      const res1 = await app.handle(
+        new Request("http://localhost/actions/protected", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+      );
 
       expect(res1.status).toBe(401);
 
       // With auth
-      const res2 = await app.handle(new Request("http://localhost/actions/protected", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer valid",
-        },
-        body: JSON.stringify({}),
-      }));
+      const res2 = await app.handle(
+        new Request("http://localhost/actions/protected", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer valid",
+          },
+          body: JSON.stringify({}),
+        }),
+      );
 
       expect(res2.status).toBe(200);
       const data = await res2.json();
@@ -173,36 +185,40 @@ describe("Server Actions", () => {
       const app = new Asi();
 
       const actions = {
-        limited: action(
-          Type.Object({}),
-          async () => ({ ok: true }),
-          { middleware: [actionRateLimit(2, 60000)] }
-        ),
+        limited: action(Type.Object({}), async () => ({ ok: true }), {
+          middleware: [actionRateLimit(2, 60000)],
+        }),
       };
 
       registerActions(app, actions);
 
       // First two should succeed
-      const res1 = await app.handle(new Request("http://localhost/actions/limited", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }));
+      const res1 = await app.handle(
+        new Request("http://localhost/actions/limited", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+      );
       expect(res1.status).toBe(200);
 
-      const res2 = await app.handle(new Request("http://localhost/actions/limited", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }));
+      const res2 = await app.handle(
+        new Request("http://localhost/actions/limited", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+      );
       expect(res2.status).toBe(200);
 
       // Third should fail
-      const res3 = await app.handle(new Request("http://localhost/actions/limited", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }));
+      const res3 = await app.handle(
+        new Request("http://localhost/actions/limited", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+      );
       expect(res3.status).toBe(429);
     });
   });
@@ -214,25 +230,27 @@ describe("Server Actions", () => {
       const actions = {
         add: action(
           Type.Object({ a: Type.Number(), b: Type.Number() }),
-          async ({ a, b }) => ({ result: a + b })
+          async ({ a, b }) => ({ result: a + b }),
         ),
         multiply: action(
           Type.Object({ a: Type.Number(), b: Type.Number() }),
-          async ({ a, b }) => ({ result: a * b })
+          async ({ a, b }) => ({ result: a * b }),
         ),
       };
 
       registerActions(app, actions);
       registerBatchActions(app, actions);
 
-      const res = await app.handle(new Request("http://localhost/actions/__batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify([
-          { action: "add", input: { a: 2, b: 3 } },
-          { action: "multiply", input: { a: 4, b: 5 } },
-        ]),
-      }));
+      const res = await app.handle(
+        new Request("http://localhost/actions/__batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify([
+            { action: "add", input: { a: 2, b: 3 } },
+            { action: "multiply", input: { a: 4, b: 5 } },
+          ]),
+        }),
+      );
 
       expect(res.status).toBe(200);
       const data = await res.json();
@@ -253,14 +271,16 @@ describe("Server Actions", () => {
       registerActions(app, actions);
       registerBatchActions(app, actions);
 
-      const res = await app.handle(new Request("http://localhost/actions/__batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify([
-          { action: "existing", input: {} },
-          { action: "nonexistent", input: {} },
-        ]),
-      }));
+      const res = await app.handle(
+        new Request("http://localhost/actions/__batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify([
+            { action: "existing", input: {} },
+            { action: "nonexistent", input: {} },
+          ]),
+        }),
+      );
 
       expect(res.status).toBe(200);
       const data = await res.json();
@@ -272,7 +292,9 @@ describe("Server Actions", () => {
 
   describe("ActionError", () => {
     it("should create error with all properties", () => {
-      const error = new ActionError("Test error", "TEST_CODE", 400, { field: "value" });
+      const error = new ActionError("Test error", "TEST_CODE", 400, {
+        field: "value",
+      });
 
       expect(error.message).toBe("Test error");
       expect(error.code).toBe("TEST_CODE");
@@ -281,7 +303,9 @@ describe("Server Actions", () => {
     });
 
     it("should serialize to JSON", () => {
-      const error = new ActionError("Test error", "TEST_CODE", 400, { field: "value" });
+      const error = new ActionError("Test error", "TEST_CODE", 400, {
+        field: "value",
+      });
       const json = error.toJSON();
 
       expect(json.error).toBe("Test error");

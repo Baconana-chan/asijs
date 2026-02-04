@@ -1,15 +1,15 @@
 /**
  * Dev Mode Plugin for AsiJS
- * 
+ *
  * Development utilities including hot-reload, dev dashboard,
  * request inspector, and debug helpers.
- * 
+ *
  * @example
  * ```ts
  * import { Asi, devMode } from "asijs";
- * 
+ *
  * const app = new Asi();
- * 
+ *
  * if (process.env.NODE_ENV !== "production") {
  *   app.plugin(devMode({
  *     dashboard: true,      // Enable /__dev dashboard
@@ -33,49 +33,49 @@ export interface DevModeOptions {
    * @default true
    */
   dashboard?: boolean;
-  
+
   /**
    * Dashboard path
    * @default "/__dev"
    */
   dashboardPath?: string;
-  
+
   /**
    * Enable request inspector (stores recent requests)
    * @default true
    */
   inspector?: boolean;
-  
+
   /**
    * Max requests to keep in inspector
    * @default 100
    */
   maxInspectorRequests?: number;
-  
+
   /**
    * Enable route list at /__dev/routes
    * @default true
    */
   routeList?: boolean;
-  
+
   /**
    * Enable state viewer at /__dev/state
    * @default true
    */
   stateViewer?: boolean;
-  
+
   /**
    * Enable live reload via WebSocket
    * @default false
    */
   liveReload?: boolean;
-  
+
   /**
    * Live reload WebSocket port
    * @default 35729
    */
   liveReloadPort?: number;
-  
+
   /**
    * Show banner on startup
    * @default true
@@ -102,30 +102,30 @@ export interface InspectedRequest {
 class RequestInspector {
   private requests: InspectedRequest[] = [];
   private maxRequests: number;
-  
+
   constructor(maxRequests = 100) {
     this.maxRequests = maxRequests;
   }
-  
+
   add(request: InspectedRequest): void {
     this.requests.unshift(request);
     if (this.requests.length > this.maxRequests) {
       this.requests.pop();
     }
   }
-  
+
   getAll(): InspectedRequest[] {
     return [...this.requests];
   }
-  
+
   get(id: string): InspectedRequest | undefined {
-    return this.requests.find(r => r.id === id);
+    return this.requests.find((r) => r.id === id);
   }
-  
+
   clear(): void {
     this.requests = [];
   }
-  
+
   get count(): number {
     return this.requests.length;
   }
@@ -137,7 +137,7 @@ function generateDashboardHTML(
   routes: Array<{ method: string; path: string }>,
   state: Record<string, unknown>,
   requests: InspectedRequest[],
-  options: { port?: number }
+  options: { port?: number },
 ): JSXElement {
   return jsx("html", {
     children: [
@@ -145,7 +145,10 @@ function generateDashboardHTML(
         children: [
           jsx("title", { children: "AsiJS Dev Dashboard" }),
           jsx("meta", { charset: "utf-8" }),
-          jsx("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
+          jsx("meta", {
+            name: "viewport",
+            content: "width=device-width, initial-scale=1",
+          }),
           jsx("style", {
             children: `
               * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -245,9 +248,9 @@ function generateDashboardHTML(
               .stat-value { font-size: 2rem; font-weight: bold; color: #58a6ff; }
               .stat-label { color: #8b949e; font-size: 0.875rem; }
               .empty { color: #8b949e; text-align: center; padding: 40px; }
-            `
+            `,
           }),
-        ]
+        ],
       }),
       jsx("body", {
         children: [
@@ -255,9 +258,9 @@ function generateDashboardHTML(
             className: "container",
             children: [
               jsx("header", {
-                children: jsx("h1", { children: "🚀 AsiJS Dev Dashboard" })
+                children: jsx("h1", { children: "🚀 AsiJS Dev Dashboard" }),
               }),
-              
+
               // Stats
               jsx("div", {
                 className: "stats",
@@ -265,27 +268,45 @@ function generateDashboardHTML(
                   jsx("div", {
                     className: "stat",
                     children: [
-                      jsx("div", { className: "stat-value", children: String(routes.length) }),
-                      jsx("div", { className: "stat-label", children: "Routes" }),
-                    ]
+                      jsx("div", {
+                        className: "stat-value",
+                        children: String(routes.length),
+                      }),
+                      jsx("div", {
+                        className: "stat-label",
+                        children: "Routes",
+                      }),
+                    ],
                   }),
                   jsx("div", {
                     className: "stat",
                     children: [
-                      jsx("div", { className: "stat-value", children: String(requests.length) }),
-                      jsx("div", { className: "stat-label", children: "Recent Requests" }),
-                    ]
+                      jsx("div", {
+                        className: "stat-value",
+                        children: String(requests.length),
+                      }),
+                      jsx("div", {
+                        className: "stat-label",
+                        children: "Recent Requests",
+                      }),
+                    ],
                   }),
                   jsx("div", {
                     className: "stat",
                     children: [
-                      jsx("div", { className: "stat-value", children: String(Object.keys(state).length) }),
-                      jsx("div", { className: "stat-label", children: "State Keys" }),
-                    ]
+                      jsx("div", {
+                        className: "stat-value",
+                        children: String(Object.keys(state).length),
+                      }),
+                      jsx("div", {
+                        className: "stat-label",
+                        children: "State Keys",
+                      }),
+                    ],
                   }),
-                ]
+                ],
               }),
-              
+
               // Routes
               jsx("div", {
                 className: "card",
@@ -299,8 +320,8 @@ function generateDashboardHTML(
                               children: [
                                 jsx("th", { children: "Method" }),
                                 jsx("th", { children: "Path" }),
-                              ]
-                            })
+                              ],
+                            }),
                           }),
                           jsx("tbody", {
                             children: routes.map((route, i) =>
@@ -310,20 +331,27 @@ function generateDashboardHTML(
                                   jsx("td", {
                                     children: jsx("span", {
                                       className: `method ${route.method}`,
-                                      children: route.method
-                                    })
+                                      children: route.method,
+                                    }),
                                   }),
-                                  jsx("td", { children: jsx("code", { children: route.path }) }),
-                                ]
-                              })
-                            )
-                          })
-                        ]
+                                  jsx("td", {
+                                    children: jsx("code", {
+                                      children: route.path,
+                                    }),
+                                  }),
+                                ],
+                              }),
+                            ),
+                          }),
+                        ],
                       })
-                    : jsx("p", { className: "empty", children: "No routes registered" })
-                ]
+                    : jsx("p", {
+                        className: "empty",
+                        children: "No routes registered",
+                      }),
+                ],
               }),
-              
+
               // Recent Requests
               jsx("div", {
                 className: "card",
@@ -340,8 +368,8 @@ function generateDashboardHTML(
                                 jsx("th", { children: "Path" }),
                                 jsx("th", { children: "Status" }),
                                 jsx("th", { children: "Duration" }),
-                              ]
-                            })
+                              ],
+                            }),
                           }),
                           jsx("tbody", {
                             children: requests.slice(0, 20).map((req, i) => {
@@ -349,38 +377,46 @@ function generateDashboardHTML(
                               return jsx("tr", {
                                 key: String(i),
                                 children: [
-                                  jsx("td", { 
-                                    children: jsx("code", { 
-                                      children: req.timestamp.toLocaleTimeString() 
-                                    }) 
+                                  jsx("td", {
+                                    children: jsx("code", {
+                                      children:
+                                        req.timestamp.toLocaleTimeString(),
+                                    }),
                                   }),
                                   jsx("td", {
                                     children: jsx("span", {
                                       className: `method ${req.method}`,
-                                      children: req.method
-                                    })
+                                      children: req.method,
+                                    }),
                                   }),
-                                  jsx("td", { children: jsx("code", { children: req.path }) }),
+                                  jsx("td", {
+                                    children: jsx("code", {
+                                      children: req.path,
+                                    }),
+                                  }),
                                   jsx("td", {
                                     children: jsx("span", {
                                       className: `status ${statusClass}`,
-                                      children: String(req.status)
-                                    })
+                                      children: String(req.status),
+                                    }),
                                   }),
                                   jsx("td", {
                                     className: "duration",
-                                    children: `${req.duration.toFixed(2)}ms`
+                                    children: `${req.duration.toFixed(2)}ms`,
                                   }),
-                                ]
+                                ],
                               });
-                            })
-                          })
-                        ]
+                            }),
+                          }),
+                        ],
                       })
-                    : jsx("p", { className: "empty", children: "No requests yet" })
-                ]
+                    : jsx("p", {
+                        className: "empty",
+                        children: "No requests yet",
+                      }),
+                ],
               }),
-              
+
               // State
               jsx("div", {
                 className: "card",
@@ -388,16 +424,16 @@ function generateDashboardHTML(
                   jsx("h2", { children: "🗄️ App State" }),
                   Object.keys(state).length > 0
                     ? jsx("pre", {
-                        children: JSON.stringify(state, replacer, 2)
+                        children: JSON.stringify(state, replacer, 2),
                       })
-                    : jsx("p", { className: "empty", children: "No state" })
-                ]
+                    : jsx("p", { className: "empty", children: "No state" }),
+                ],
               }),
-            ]
-          })
-        ]
-      })
-    ]
+            ],
+          }),
+        ],
+      }),
+    ],
   });
 }
 
@@ -419,12 +455,12 @@ function replacer(_key: string, value: unknown): unknown {
 
 function devMiddleware(
   inspector: RequestInspector,
-  options: DevModeOptions
+  options: DevModeOptions,
 ): Middleware {
   return async (ctx, next) => {
     const startTime = performance.now();
     const requestId = Math.random().toString(36).substring(2, 10);
-    
+
     // Capture request info
     const requestInfo: Partial<InspectedRequest> = {
       id: requestId,
@@ -434,21 +470,21 @@ function devMiddleware(
       query: ctx.query as Record<string, string>,
       headers: {},
     };
-    
+
     // Capture headers
     ctx.request.headers.forEach((value, key) => {
       requestInfo.headers![key] = value;
     });
-    
+
     let response: Response | unknown;
     let status = 500;
-    
+
     try {
       response = await next();
-      
+
       if (response instanceof Response) {
         status = response.status;
-        
+
         // Capture response headers
         const responseHeaders: Record<string, string> = {};
         response.headers.forEach((value, key) => {
@@ -457,11 +493,12 @@ function devMiddleware(
         requestInfo.responseHeaders = responseHeaders;
       }
     } catch (error) {
-      requestInfo.error = error instanceof Error ? error.message : String(error);
+      requestInfo.error =
+        error instanceof Error ? error.message : String(error);
       throw error;
     } finally {
       const duration = performance.now() - startTime;
-      
+
       // Store in inspector
       inspector.add({
         ...requestInfo,
@@ -470,7 +507,7 @@ function devMiddleware(
         responseHeaders: requestInfo.responseHeaders ?? {},
       } as InspectedRequest);
     }
-    
+
     return response as Response;
   };
 }
@@ -490,33 +527,35 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
     stateViewer = true,
     banner = true,
   } = options;
-  
+
   const inspector = new RequestInspector(maxInspectorRequests);
-  
+
   return createPlugin({
     name: "dev-mode",
-    
+
     setup(app) {
       if (banner) {
         console.log("\n🔧 \x1b[33mDev Mode Enabled\x1b[0m");
-        console.log(`   Dashboard: http://localhost:${(app as any).config?.port ?? 3000}${dashboardPath}`);
+        console.log(
+          `   Dashboard: http://localhost:${(app as any).config?.port ?? 3000}${dashboardPath}`,
+        );
         console.log("");
       }
-      
+
       // Dashboard route
       if (dashboard) {
         app.get(dashboardPath, async (ctx) => {
           // Collect route info
           const routes: Array<{ method: string; path: string }> = [];
           const routeMetadata = (app as any).routeMetadata ?? [];
-          
+
           for (const route of routeMetadata) {
             routes.push({
               method: route.method.toUpperCase(),
               path: route.path,
             });
           }
-          
+
           // Collect state
           const state: Record<string, unknown> = {};
           const stateMap = (app as any)._state as Map<string, unknown>;
@@ -525,37 +564,37 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
               state[key] = value;
             }
           }
-          
+
           // Generate HTML
           const html = await renderToString(
             generateDashboardHTML(routes, state, inspector.getAll(), {
               port: (app as any).config?.port,
-            })
+            }),
           );
-          
+
           return new Response("<!DOCTYPE html>" + html, {
             headers: { "Content-Type": "text/html; charset=utf-8" },
           });
         });
       }
-      
+
       // Routes API
       if (routeList) {
         app.get(`${dashboardPath}/routes`, () => {
           const routes: Array<{ method: string; path: string }> = [];
           const routeMetadata = (app as any).routeMetadata ?? [];
-          
+
           for (const route of routeMetadata) {
             routes.push({
               method: route.method.toUpperCase(),
               path: route.path,
             });
           }
-          
+
           return routes;
         });
       }
-      
+
       // State API
       if (stateViewer) {
         app.get(`${dashboardPath}/state`, () => {
@@ -571,13 +610,13 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
           return state;
         });
       }
-      
+
       // Request inspector API
       if (enableInspector) {
         app.get(`${dashboardPath}/requests`, () => {
           return inspector.getAll();
         });
-        
+
         app.get(`${dashboardPath}/requests/:id`, (ctx) => {
           const request = inspector.get(ctx.params.id);
           if (!request) {
@@ -585,16 +624,16 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
           }
           return request;
         });
-        
+
         app.delete(`${dashboardPath}/requests`, () => {
           inspector.clear();
           return { cleared: true };
         });
       }
     },
-    
+
     middleware: enableInspector ? [devMiddleware(inspector, options)] : [],
-    
+
     decorate: {
       devInspector: inspector,
     },
@@ -610,17 +649,17 @@ export function debugLog(prefix = "DEBUG"): Middleware {
   return async (ctx, next) => {
     const start = performance.now();
     console.log(`[${prefix}] → ${ctx.method} ${ctx.path}`);
-    
+
     try {
       const response = await next();
       const duration = (performance.now() - start).toFixed(2);
-      
+
       if (response instanceof Response) {
         console.log(`[${prefix}] ← ${response.status} (${duration}ms)`);
       } else {
         console.log(`[${prefix}] ← OK (${duration}ms)`);
       }
-      
+
       return response;
     } catch (error) {
       console.log(`[${prefix}] ← ERROR: ${error}`);
@@ -651,7 +690,7 @@ export function logBody(): Middleware {
  */
 export function delay(ms: number): Middleware {
   return async (_, next) => {
-    await new Promise(resolve => setTimeout(resolve, ms));
+    await new Promise((resolve) => setTimeout(resolve, ms));
     return next();
   };
 }
@@ -662,7 +701,9 @@ export function delay(ms: number): Middleware {
 export function chaos(failureRate = 0.1, statusCode = 500): Middleware {
   return async (ctx, next) => {
     if (Math.random() < failureRate) {
-      return ctx.status(statusCode).jsonResponse({ error: "Chaos monkey strikes!" });
+      return ctx
+        .status(statusCode)
+        .jsonResponse({ error: "Chaos monkey strikes!" });
     }
     return next();
   };

@@ -1,16 +1,16 @@
 /**
  * Static Files Plugin для AsiJS
- * 
+ *
  * @example
  * ```ts
  * import { Asi } from "asijs";
  * import { staticFiles } from "asijs/plugins/static";
- * 
+ *
  * const app = new Asi();
- * 
+ *
  * // Простой вариант - папка public
  * app.use(staticFiles("./public"));
- * 
+ *
  * // С опциями
  * app.use(staticFiles("./public", {
  *   prefix: "/static",
@@ -30,31 +30,31 @@ export interface StaticOptions {
    * @default ""
    */
   prefix?: string;
-  
+
   /**
    * Файл index для папок
    * @default "index.html"
    */
   index?: string;
-  
+
   /**
    * Cache-Control max-age в секундах
    * @default 0 (no-cache)
    */
   maxAge?: number;
-  
+
   /**
    * Добавлять ETag заголовок
    * @default true
    */
   etag?: boolean;
-  
+
   /**
    * Показывать listing директории
    * @default false
    */
   listing?: boolean;
-  
+
   /**
    * Разрешённые расширения файлов (без точки)
    * @default undefined (все разрешены)
@@ -75,7 +75,7 @@ const MIME_TYPES: Record<string, string> = {
   xml: "application/xml; charset=utf-8",
   csv: "text/csv; charset=utf-8",
   md: "text/markdown; charset=utf-8",
-  
+
   // Images
   png: "image/png",
   jpg: "image/jpeg",
@@ -85,27 +85,27 @@ const MIME_TYPES: Record<string, string> = {
   ico: "image/x-icon",
   webp: "image/webp",
   avif: "image/avif",
-  
+
   // Fonts
   woff: "font/woff",
   woff2: "font/woff2",
   ttf: "font/ttf",
   otf: "font/otf",
   eot: "application/vnd.ms-fontobject",
-  
+
   // Media
   mp3: "audio/mpeg",
   mp4: "video/mp4",
   webm: "video/webm",
   ogg: "audio/ogg",
   wav: "audio/wav",
-  
+
   // Documents
   pdf: "application/pdf",
   zip: "application/zip",
   gz: "application/gzip",
   tar: "application/x-tar",
-  
+
   // Other
   wasm: "application/wasm",
   map: "application/json",
@@ -118,7 +118,10 @@ function getMimeType(ext: string): string {
 /**
  * Создать middleware для статических файлов
  */
-export function staticFiles(root: string, options: StaticOptions = {}): Middleware {
+export function staticFiles(
+  root: string,
+  options: StaticOptions = {},
+): Middleware {
   const {
     prefix = "",
     index = "index.html",
@@ -130,15 +133,16 @@ export function staticFiles(root: string, options: StaticOptions = {}): Middlewa
 
   // Normalize prefix
   const normalizedPrefix = prefix.startsWith("/") ? prefix : `/${prefix}`;
-  const prefixWithSlash = normalizedPrefix.endsWith("/") 
-    ? normalizedPrefix 
+  const prefixWithSlash = normalizedPrefix.endsWith("/")
+    ? normalizedPrefix
     : `${normalizedPrefix}/`;
 
-  const cacheControl = maxAge > 0 
-    ? `public, max-age=${maxAge}` 
-    : "no-cache";
+  const cacheControl = maxAge > 0 ? `public, max-age=${maxAge}` : "no-cache";
 
-  return async (ctx: Context, next: () => Promise<Response>): Promise<Response> => {
+  return async (
+    ctx: Context,
+    next: () => Promise<Response>,
+  ): Promise<Response> => {
     // Only handle GET and HEAD
     if (ctx.method !== "GET" && ctx.method !== "HEAD") {
       return next();
@@ -166,7 +170,7 @@ export function staticFiles(root: string, options: StaticOptions = {}): Middlewa
 
     try {
       const file = Bun.file(filePath);
-      let stat = await file.exists() ? file : null;
+      let stat = (await file.exists()) ? file : null;
 
       // Check if directory → try index file
       if (!stat) {
@@ -215,7 +219,6 @@ export function staticFiles(root: string, options: StaticOptions = {}): Middlewa
 
       // Return file (Bun handles streaming automatically)
       return new Response(stat, { headers });
-
     } catch (error) {
       // File not found or other error
       return next();

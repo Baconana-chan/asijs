@@ -1,6 +1,6 @@
 /**
  * Static Code Analysis & Route Compilation
- * 
+ *
  * Оптимизация: предкомпиляция роутов в быстрые функции
  * без лишних проверок в runtime
  */
@@ -42,11 +42,11 @@ export function compileSchema<T extends TSchema>(schema: T): TypeCheck<T> {
   // Проверяем кэш
   const cached = validatorCache.get(schema);
   if (cached) return cached as TypeCheck<T>;
-  
+
   // Компилируем
   const compiled = TypeCompiler.Compile(schema);
   validatorCache.set(schema, compiled);
-  
+
   return compiled;
 }
 
@@ -60,17 +60,20 @@ export function compileHandler(
     body?: TSchema;
     query?: TSchema;
     params?: TSchema;
-  }
+  },
 ): (ctx: Context) => Promise<Response> {
   // Предкомпилируем валидаторы
-  const validators = schemas ? {
-    body: schemas.body ? compileSchema(schemas.body) : undefined,
-    query: schemas.query ? compileSchema(schemas.query) : undefined,
-    params: schemas.params ? compileSchema(schemas.params) : undefined,
-  } : undefined;
+  const validators = schemas
+    ? {
+        body: schemas.body ? compileSchema(schemas.body) : undefined,
+        query: schemas.query ? compileSchema(schemas.query) : undefined,
+        params: schemas.params ? compileSchema(schemas.params) : undefined,
+      }
+    : undefined;
 
   const middlewareCount = middlewares.length;
-  const flatMiddlewares = middlewareCount > 0 && middlewares.every(mw => mw.length < 2);
+  const flatMiddlewares =
+    middlewareCount > 0 && middlewares.every((mw) => mw.length < 2);
 
   // Без middleware и валидации — самый быстрый путь
   if (middlewareCount === 0 && !validators) {
@@ -86,10 +89,13 @@ export function compileHandler(
       // Валидация
       if (validators.params) {
         if (!validators.params.Check(ctx.params)) {
-          return validationError("params", validators.params.Errors(ctx.params));
+          return validationError(
+            "params",
+            validators.params.Errors(ctx.params),
+          );
         }
       }
-      
+
       if (validators.query) {
         const query = ctx.query;
         if (!validators.query.Check(query)) {
@@ -97,7 +103,7 @@ export function compileHandler(
         }
         (ctx as any)._query = query;
       }
-      
+
       if (validators.body) {
         const body = await ctx.json();
         if (!validators.body.Check(body)) {
@@ -105,7 +111,7 @@ export function compileHandler(
         }
         (ctx as any).body = body;
       }
-      
+
       const result = await handler(ctx);
       return toResponseFast(result, ctx);
     };
@@ -117,16 +123,19 @@ export function compileHandler(
       // Валидация сначала
       if (validators) {
         if (validators.params && !validators.params.Check(ctx.params)) {
-          return validationError("params", validators.params.Errors(ctx.params));
+          return validationError(
+            "params",
+            validators.params.Errors(ctx.params),
+          );
         }
-        
+
         if (validators.query) {
           const query = ctx.query;
           if (!validators.query.Check(query)) {
             return validationError("query", validators.query.Errors(query));
           }
         }
-        
+
         if (validators.body) {
           const body = await ctx.json();
           if (!validators.body.Check(body)) {
@@ -137,7 +146,11 @@ export function compileHandler(
       }
 
       for (let i = 0; i < middlewareCount; i++) {
-        const result = await (middlewares[i] as (ctx: Context) => Response | Promise<Response> | void)(ctx);
+        const result = await (
+          middlewares[i] as (
+            ctx: Context,
+          ) => Response | Promise<Response> | void
+        )(ctx);
         if (result instanceof Response) return result;
         if (result !== undefined) return toResponseFast(result, ctx);
       }
@@ -154,7 +167,7 @@ export function compileHandler(
       if (validators.params && !validators.params.Check(ctx.params)) {
         return validationError("params", validators.params.Errors(ctx.params));
       }
-      
+
       if (validators.query) {
         const query = ctx.query;
         if (!validators.query.Check(query)) {
@@ -173,7 +186,7 @@ export function compileHandler(
 
     // Выполняем middleware chain
     let index = 0;
-    
+
     const next = async (): Promise<Response> => {
       if (index < middlewareCount) {
         const mw = middlewares[index++];
@@ -181,11 +194,11 @@ export function compileHandler(
         if (result instanceof Response) return result;
         return result as unknown as Response;
       }
-      
+
       const result = await handler(ctx);
       return toResponseFast(result, ctx);
     };
-    
+
     return next();
   };
 }
@@ -195,10 +208,10 @@ export function compileHandler(
  */
 function toResponseFast(result: unknown, ctx: Context): Response {
   if (result instanceof Response) return result;
-  
+
   const type = typeof result;
   const status = (ctx as any)._status || 200;
-  
+
   if (type === "object") {
     if (result === null) return new Response(null, { status: 204 });
     if (result instanceof Blob) return new Response(result);
@@ -206,18 +219,18 @@ function toResponseFast(result: unknown, ctx: Context): Response {
       ? Response.json(result as any)
       : Response.json(result as any, { status });
   }
-  
+
   if (type === "string") {
     return new Response(result as string, {
       status,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
-  
+
   if (result === undefined) {
     return new Response(null, { status: 204 });
   }
-  
+
   return new Response(String(result), {
     status,
     headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -228,19 +241,22 @@ function toResponseFast(result: unknown, ctx: Context): Response {
  * Создать ошибку валидации
  */
 function validationError(field: string, errors: Iterable<any>): Response {
-  const details = Array.from(errors).map(e => ({
+  const details = Array.from(errors).map((e) => ({
     path: e.path,
     message: e.message,
   }));
-  
-  return new Response(JSON.stringify({
-    error: "Validation Error",
-    field,
-    details,
-  }), {
-    status: 400,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-  });
+
+  return new Response(
+    JSON.stringify({
+      error: "Validation Error",
+      field,
+      details,
+    }),
+    {
+      status: 400,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    },
+  );
 }
 
 /**
@@ -267,12 +283,12 @@ export interface RouteAnalysis {
 export function analyzeRoute(
   path: string,
   middlewares: Middleware[],
-  schemas?: { body?: TSchema; query?: TSchema; params?: TSchema }
+  schemas?: { body?: TSchema; query?: TSchema; params?: TSchema },
 ): RouteAnalysis {
   const segments = path.split("/").filter(Boolean);
   const paramNames: string[] = [];
   let hasWildcard = false;
-  
+
   for (const seg of segments) {
     if (seg.startsWith(":")) {
       paramNames.push(seg.slice(1));
@@ -280,7 +296,7 @@ export function analyzeRoute(
       hasWildcard = true;
     }
   }
-  
+
   return {
     isStatic: paramNames.length === 0 && !hasWildcard,
     segmentCount: segments.length,
@@ -295,8 +311,9 @@ export function analyzeRoute(
  * Оптимизированный статический роутер для compile-time known routes
  */
 export class StaticRouter {
-  private staticRoutes: Map<string, Map<RouteMethod, CompiledRoute>> = new Map();
-  
+  private staticRoutes: Map<string, Map<RouteMethod, CompiledRoute>> =
+    new Map();
+
   /** Добавить статический роут (без параметров) */
   add(route: CompiledRoute): void {
     if (!this.staticRoutes.has(route.path)) {
@@ -304,20 +321,20 @@ export class StaticRouter {
     }
     this.staticRoutes.get(route.path)!.set(route.method, route);
   }
-  
+
   /** Найти статический роут */
   find(method: RouteMethod, path: string): CompiledRoute | null {
     const routes = this.staticRoutes.get(path);
     if (!routes) return null;
-    
+
     return routes.get(method) || routes.get("ALL" as RouteMethod) || null;
   }
-  
+
   /** Проверить есть ли статические роуты */
   get hasRoutes(): boolean {
     return this.staticRoutes.size > 0;
   }
-  
+
   /** Количество статических роутов */
   get size(): number {
     let count = 0;
@@ -326,7 +343,7 @@ export class StaticRouter {
     }
     return count;
   }
-  
+
   /** Получить все статические пути */
   get paths(): string[] {
     return Array.from(this.staticRoutes.keys());
@@ -337,57 +354,61 @@ export class StaticRouter {
  * Генератор кода для роутов (advanced)
  * Создаёт оптимизированные функции match
  */
-export function generateRouteMatcherCode(routes: Array<{ method: RouteMethod; path: string }>): string {
+export function generateRouteMatcherCode(
+  routes: Array<{ method: RouteMethod; path: string }>,
+): string {
   const lines: string[] = [
     "// Auto-generated route matcher",
     "export function matchRoute(method, path) {",
   ];
-  
+
   // Группируем по первому сегменту для быстрого отсечения
   const byFirstSegment = new Map<string, typeof routes>();
-  
+
   for (const route of routes) {
     const segments = route.path.split("/").filter(Boolean);
     const first = segments[0] || "";
-    
+
     if (!byFirstSegment.has(first)) {
       byFirstSegment.set(first, []);
     }
     byFirstSegment.get(first)!.push(route);
   }
-  
+
   lines.push("  const segments = path.split('/').filter(Boolean);");
   lines.push("  const first = segments[0] || '';");
   lines.push("  ");
   lines.push("  switch (first) {");
-  
+
   for (const [first, groupRoutes] of byFirstSegment) {
     if (first.startsWith(":")) {
       // Параметр — default case
       continue;
     }
-    
+
     lines.push(`    case "${first}":`);
-    
+
     for (const route of groupRoutes) {
       const segments = route.path.split("/").filter(Boolean);
       lines.push(`      // ${route.method} ${route.path}`);
-      lines.push(`      if (method === "${route.method}" && segments.length === ${segments.length}) {`);
+      lines.push(
+        `      if (method === "${route.method}" && segments.length === ${segments.length}) {`,
+      );
       lines.push(`        // TODO: full match logic`);
       lines.push(`        return { matched: true, route: "${route.path}" };`);
       lines.push(`      }`);
     }
-    
+
     lines.push("      break;");
   }
-  
+
   lines.push("    default:");
   lines.push("      break;");
   lines.push("  }");
   lines.push("  ");
   lines.push("  return null;");
   lines.push("}");
-  
+
   return lines.join("\n");
 }
 

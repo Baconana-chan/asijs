@@ -1,7 +1,15 @@
 import type { TSchema, Static } from "@sinclair/typebox";
 import type { Context, TypedContext } from "./context";
 
-export type RouteMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | "ALL";
+export type RouteMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "DELETE"
+  | "PATCH"
+  | "HEAD"
+  | "OPTIONS"
+  | "ALL";
 
 export type Handler<T = unknown> = (ctx: Context) => T | Promise<T>;
 
@@ -10,19 +18,32 @@ export type TypedHandler<
   TBody = unknown,
   TQuery = Record<string, string>,
   TParams = Record<string, string>,
-  TResponse = unknown
-> = (ctx: TypedContext<TBody, TQuery, TParams>) => TResponse | Promise<TResponse>;
+  TResponse = unknown,
+> = (
+  ctx: TypedContext<TBody, TQuery, TParams>,
+) => TResponse | Promise<TResponse>;
 
-export type Middleware = (ctx: Context, next: () => Promise<Response>) => Response | Promise<Response> | void | Promise<void>;
+export type Middleware = (
+  ctx: Context,
+  next: () => Promise<Response>,
+) => Response | Promise<Response> | void | Promise<void>;
 
 /** Хук перед выполнением handler */
-export type BeforeHandler = (ctx: Context) => void | Response | Promise<void | Response>;
+export type BeforeHandler = (
+  ctx: Context,
+) => void | Response | Promise<void | Response>;
 
 /** Хук после выполнения handler */
-export type AfterHandler = (ctx: Context, response: Response) => Response | Promise<Response>;
+export type AfterHandler = (
+  ctx: Context,
+  response: Response,
+) => Response | Promise<Response>;
 
 /** Кастомный обработчик ошибок */
-export type ErrorHandler = (ctx: Context, error: unknown) => Response | Promise<Response>;
+export type ErrorHandler = (
+  ctx: Context,
+  error: unknown,
+) => Response | Promise<Response>;
 
 /** Кастомный обработчик 404 */
 export type NotFoundHandler = (ctx: Context) => Response | Promise<Response>;
@@ -78,5 +99,7 @@ export interface RouteOptions<
 }
 
 /** Вывод типа из TSchema или fallback */
-export type InferSchema<T extends TSchema | undefined, Fallback = unknown> = 
-  T extends TSchema ? Static<T> : Fallback;
+export type InferSchema<
+  T extends TSchema | undefined,
+  Fallback = unknown,
+> = T extends TSchema ? Static<T> : Fallback;

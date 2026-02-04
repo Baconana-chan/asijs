@@ -8,12 +8,12 @@ export class Context<
 > {
   readonly request: Request;
   private _decodeQuery: boolean;
-  
+
   // Lazy URL parsing — только когда нужно
   private _url: URL | null = null;
   private _path: string | null = null;
   private _queryString: string | null = null;
-  
+
   params: TParams = {} as TParams;
   private _query: TQuery | null = null;
   private _body: TBody | undefined = undefined;
@@ -21,7 +21,7 @@ export class Context<
   private _cookies: Record<string, string> | null = null;
   private _setCookies: string[] = [];
   private _files: Map<string, import("./formdata").ParsedFile> | null = null;
-  
+
   private _status: number = 200;
   private _headers: Headers = new Headers();
 
@@ -31,10 +31,10 @@ export class Context<
   // Валидированные данные (устанавливаются после валидации)
   /** Валидированное тело запроса */
   body!: TBody;
-  
+
   /** Валидированные query параметры */
   validatedQuery!: TQuery;
-  
+
   /** Валидированные path параметры */
   validatedParams!: TParams;
 
@@ -42,16 +42,16 @@ export class Context<
     this.request = request;
     this._decodeQuery = options?.decodeQuery ?? false;
   }
-  
+
   // ===== Fast path extraction =====
-  
+
   /** @internal Извлечь path и queryString из URL без создания URL объекта */
   private _parseUrl(): void {
     if (this._path !== null) return;
-    
+
     const url = this.request.url;
     const qIdx = url.indexOf("?");
-    
+
     if (qIdx === -1) {
       // Нет query string — просто извлекаем path
       // URL: http://host:port/path
@@ -73,7 +73,7 @@ export class Context<
       this._queryString = queryString;
     }
   }
-  
+
   /** Полный URL объект (lazy) */
   get url(): URL {
     if (this._url === null) {
@@ -105,28 +105,32 @@ export class Context<
     }
     return this._query;
   }
-  
+
   /** Fast query string parser без URL объекта */
   private _parseQueryString(qs: string): Record<string, string> {
     if (!qs) return {};
-    
+
     const result: Record<string, string> = {};
     let start = 0;
-    
+
     while (start < qs.length) {
       // Найти конец пары key=value
       let end = qs.indexOf("&", start);
       if (end === -1) end = qs.length;
-      
+
       // Найти разделитель =
       const eqIdx = qs.indexOf("=", start);
-      
+
       if (eqIdx !== -1 && eqIdx < end) {
         const keyRaw = qs.slice(start, eqIdx);
         const valueRaw = qs.slice(eqIdx + 1, end);
         if (this._decodeQuery) {
-          const key = keyRaw.indexOf("%") === -1 ? keyRaw : decodeURIComponent(keyRaw);
-          const value = valueRaw.indexOf("%") === -1 ? valueRaw : decodeURIComponent(valueRaw);
+          const key =
+            keyRaw.indexOf("%") === -1 ? keyRaw : decodeURIComponent(keyRaw);
+          const value =
+            valueRaw.indexOf("%") === -1
+              ? valueRaw
+              : decodeURIComponent(valueRaw);
           result[key] = value;
         } else {
           result[keyRaw] = valueRaw;
@@ -135,14 +139,16 @@ export class Context<
         // Ключ без значения
         const keyRaw = qs.slice(start, end);
         const key = this._decodeQuery
-          ? (keyRaw.indexOf("%") === -1 ? keyRaw : decodeURIComponent(keyRaw))
+          ? keyRaw.indexOf("%") === -1
+            ? keyRaw
+            : decodeURIComponent(keyRaw)
           : keyRaw;
         if (key) result[key] = "";
       }
-      
+
       start = end + 1;
     }
-    
+
     return result;
   }
 
@@ -183,13 +189,9 @@ export class Context<
   }
 
   /** Установить cookie */
-  setCookie(
-    name: string, 
-    value: string, 
-    options: CookieOptions = {}
-  ): this {
+  setCookie(name: string, value: string, options: CookieOptions = {}): this {
     const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
-    
+
     if (options.maxAge !== undefined) {
       parts.push(`Max-Age=${options.maxAge}`);
     }
@@ -217,7 +219,10 @@ export class Context<
   }
 
   /** Удалить cookie */
-  deleteCookie(name: string, options: Pick<CookieOptions, "path" | "domain"> = {}): this {
+  deleteCookie(
+    name: string,
+    options: Pick<CookieOptions, "path" | "domain"> = {},
+  ): this {
     return this.setCookie(name, "", {
       ...options,
       maxAge: 0,
@@ -238,7 +243,7 @@ export class Context<
   /** Получить body как текст */
   async text(): Promise<string> {
     if (!this._bodyParsed) {
-      this._body = await this.request.text() as TBody;
+      this._body = (await this.request.text()) as TBody;
       this._bodyParsed = true;
     }
     return this._body as string;
@@ -247,7 +252,7 @@ export class Context<
   /** Получить body как FormData */
   async formData(): Promise<FormData> {
     if (!this._bodyParsed) {
-      this._body = await this.request.formData() as TBody;
+      this._body = (await this.request.formData()) as TBody;
       this._bodyParsed = true;
     }
     return this._body as FormData;
@@ -256,7 +261,7 @@ export class Context<
   /** Получить body как ArrayBuffer */
   async arrayBuffer(): Promise<ArrayBuffer> {
     if (!this._bodyParsed) {
-      this._body = await this.request.arrayBuffer() as TBody;
+      this._body = (await this.request.arrayBuffer()) as TBody;
       this._bodyParsed = true;
     }
     return this._body as ArrayBuffer;
@@ -264,8 +269,8 @@ export class Context<
 
   // ===== File helpers =====
 
-  /** 
-   * Get a file from validated FormData 
+  /**
+   * Get a file from validated FormData
    * @param name Field name
    * @returns ParsedFile or undefined
    */

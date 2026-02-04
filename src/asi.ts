@@ -2,14 +2,28 @@ import type { Server, ServerWebSocket } from "bun";
 import type { TSchema, Static } from "@sinclair/typebox";
 import { Context, type TypedContext } from "./context";
 import { Router } from "./router";
-import { validateAndCoerce, ValidationException, type ValidationError } from "./validation";
-import { compileHandler, compileSchema, analyzeRoute, StaticRouter, type CompiledRoute } from "./compiler";
-import { isFormDataSchema, validateFormData, type FormDataSchemaType } from "./formdata";
-import type { 
-  Handler, 
-  Middleware, 
-  RouteMethod, 
-  BeforeHandler, 
+import {
+  validateAndCoerce,
+  ValidationException,
+  type ValidationError,
+} from "./validation";
+import {
+  compileHandler,
+  compileSchema,
+  analyzeRoute,
+  StaticRouter,
+  type CompiledRoute,
+} from "./compiler";
+import {
+  isFormDataSchema,
+  validateFormData,
+  type FormDataSchemaType,
+} from "./formdata";
+import type {
+  Handler,
+  Middleware,
+  RouteMethod,
+  BeforeHandler,
   AfterHandler,
   ErrorHandler,
   NotFoundHandler,
@@ -22,9 +36,16 @@ export interface WebSocketHandlers<T = unknown> {
   /** Вызывается при открытии соединения */
   open?: (ws: ServerWebSocket<T>) => void | Promise<void>;
   /** Вызывается при получении сообщения */
-  message?: (ws: ServerWebSocket<T>, message: string | Buffer) => void | Promise<void>;
+  message?: (
+    ws: ServerWebSocket<T>,
+    message: string | Buffer,
+  ) => void | Promise<void>;
   /** Вызывается при закрытии соединения */
-  close?: (ws: ServerWebSocket<T>, code: number, reason: string) => void | Promise<void>;
+  close?: (
+    ws: ServerWebSocket<T>,
+    code: number,
+    reason: string,
+  ) => void | Promise<void>;
   /** Вызывается при ошибке */
   error?: (ws: ServerWebSocket<T>, error: Error) => void | Promise<void>;
   /** Вызывается при drain (буфер опустел) */
@@ -46,27 +67,27 @@ export interface AsiConfig {
   hostname?: string;
   /** Включить подробные ошибки в dev режиме */
   development?: boolean;
-  
+
   // === Bun.serve() options ===
-  
-  /** 
+
+  /**
    * Использовать SO_REUSEPORT для нескольких процессов на одном порту
    * Полезно для кластеризации
    */
   reusePort?: boolean;
-  
+
   /**
    * Режим низкого потребления памяти
    * Отключает некоторые оптимизации для экономии RAM
    */
   lowMemoryMode?: boolean;
-  
+
   /**
    * Максимальный размер тела запроса в байтах
    * По умолчанию: 128MB
    */
   maxRequestBodySize?: number;
-  
+
   /**
    * TLS конфигурация для HTTPS
    */
@@ -76,37 +97,37 @@ export interface AsiConfig {
     ca?: string | Buffer | Array<string | Buffer>;
     passphrase?: string;
   };
-  
+
   /**
    * Таймаут ожидания idle соединения в секундах
    * По умолчанию: 10
    */
   idleTimeout?: number;
-  
+
   /**
    * Автоматически искать свободный порт если указанный занят
    * По умолчанию: true в development режиме
    */
   autoPort?: boolean;
-  
+
   /**
    * Максимальное количество попыток найти свободный порт
    * По умолчанию: 10 (т.е. проверит порты 3000-3009)
    */
   autoPortRange?: number;
-  
+
   /**
    * Показывать подробную информацию при старте
    * По умолчанию: true
    */
   startupBanner?: boolean;
-  
+
   /**
    * Таймаут graceful shutdown в миллисекундах
    * По умолчанию: 30000 (30 секунд)
    */
   gracefulShutdownTimeout?: number;
-  
+
   /**
    * Отключить все логи (для тестов)
    */
@@ -126,100 +147,112 @@ export interface GroupBuilder {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): GroupBuilder;
-  
+
   post<
     TBody extends TSchema | undefined = undefined,
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): GroupBuilder;
-  
+
   put<
     TBody extends TSchema | undefined = undefined,
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): GroupBuilder;
-  
+
   delete<
     TBody extends TSchema | undefined = undefined,
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): GroupBuilder;
-  
+
   patch<
     TBody extends TSchema | undefined = undefined,
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): GroupBuilder;
-  
+
   all<
     TBody extends TSchema | undefined = undefined,
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): GroupBuilder;
-  
+
   use(middleware: Middleware): GroupBuilder;
   group(prefix: string, callback: (group: GroupBuilder) => void): GroupBuilder;
 }
 
 /**
  * Asi — главный класс фреймворка
- * 
+ *
  * @example
  * ```ts
  * const app = new Asi();
- * 
+ *
  * app.get("/", () => "Hello, World!");
  * app.get("/json", () => ({ message: "Hello" }));
  * app.get("/user/:id", (ctx) => `User ${ctx.params.id}`);
- * 
+ *
  * // Группировка
  * app.group("/api", (api) => {
  *   api.get("/users", () => [...]);
@@ -227,14 +260,14 @@ export interface GroupBuilder {
  *     v2.get("/users", () => [...]);
  *   });
  * });
- * 
+ *
  * // WebSocket
  * app.ws("/chat", {
  *   open(ws) { console.log("Connected"); },
  *   message(ws, msg) { ws.send(`Echo: ${msg}`); },
  *   close(ws) { console.log("Disconnected"); },
  * });
- * 
+ *
  * app.listen(3000);
  * ```
  */
@@ -246,18 +279,19 @@ export class Asi {
   private pathMiddlewares: Map<string, Middleware[]> = new Map();
   private server: Server<any> | null = null;
   private config: AsiConfig;
-  
+
   private customErrorHandler: ErrorHandler | null = null;
   private customNotFoundHandler: NotFoundHandler | null = null;
-  
+
   // WebSocket routes
   private wsRoutes: Map<string, WebSocketRoute<any>> = new Map();
-  
+
   // Compilation
   private isCompiled = false;
   private staticRouter = new StaticRouter();
-  private compiledRoutes: Map<RouteMethod, Map<string, CompiledRoute>> = new Map();
-  
+  private compiledRoutes: Map<RouteMethod, Map<string, CompiledRoute>> =
+    new Map();
+
   // Route metadata for compilation
   private routeMetadata: Array<{
     method: RouteMethod;
@@ -266,7 +300,7 @@ export class Asi {
     middlewares: Middleware[];
     schemas?: { body?: TSchema; query?: TSchema; params?: TSchema };
   }> = [];
-  
+
   // Plugin system
   private _state: Map<string, unknown> = new Map();
   private _decorators: Map<string, unknown> = new Map();
@@ -277,10 +311,12 @@ export class Asi {
     const env = process.env.BUN_ENV || process.env.NODE_ENV || "development";
     const isProduction = env === "production";
     const isBun = typeof Bun !== "undefined";
-    
+
     // PORT from environment (PORT=8080 bun dev)
-    const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : undefined;
-    
+    const envPort = process.env.PORT
+      ? parseInt(process.env.PORT, 10)
+      : undefined;
+
     this.config = {
       port: envPort ?? 3000,
       hostname: "0.0.0.0",
@@ -290,10 +326,12 @@ export class Asi {
       silent: false,
       ...config,
     };
-    
+
     // Warning if not running on Bun
     if (!isBun && !this.config.silent) {
-      console.warn("⚠️  AsiJS is optimized for Bun. Running on Node.js may have reduced performance.");
+      console.warn(
+        "⚠️  AsiJS is optimized for Bun. Running on Node.js may have reduced performance.",
+      );
     }
   }
 
@@ -301,12 +339,12 @@ export class Asi {
 
   /**
    * GET роут с опциональной валидацией
-   * 
+   *
    * @example
    * ```ts
    * // Без валидации
    * app.get("/", () => "Hello");
-   * 
+   *
    * // С валидацией query
    * app.get("/search", (ctx) => {
    *   return { q: ctx.body }; // ctx.body типизирован!
@@ -322,13 +360,15 @@ export class Asi {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): this {
     return this.route("GET", path, handler as Handler, options);
   }
@@ -338,13 +378,15 @@ export class Asi {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): this {
     return this.route("POST", path, handler as Handler, options);
   }
@@ -354,13 +396,15 @@ export class Asi {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): this {
     return this.route("PUT", path, handler as Handler, options);
   }
@@ -370,13 +414,15 @@ export class Asi {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): this {
     return this.route("DELETE", path, handler as Handler, options);
   }
@@ -386,13 +432,15 @@ export class Asi {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): this {
     return this.route("PATCH", path, handler as Handler, options);
   }
@@ -402,13 +450,15 @@ export class Asi {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): this {
     return this.route("HEAD", path, handler as Handler, options);
   }
@@ -418,13 +468,15 @@ export class Asi {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): this {
     return this.route("OPTIONS", path, handler as Handler, options);
   }
@@ -434,23 +486,30 @@ export class Asi {
     TQuery extends TSchema | undefined = undefined,
     TParams extends TSchema | undefined = undefined,
   >(
-    path: string, 
-    handler: (ctx: TypedContext<
-      InferSchema<TBody>,
-      InferSchema<TQuery, Record<string, string>>,
-      InferSchema<TParams, Record<string, string>>
-    >) => unknown | Promise<unknown>,
-    options?: RouteOptions<TBody, TQuery, TParams>
+    path: string,
+    handler: (
+      ctx: TypedContext<
+        InferSchema<TBody>,
+        InferSchema<TQuery, Record<string, string>>,
+        InferSchema<TParams, Record<string, string>>
+      >,
+    ) => unknown | Promise<unknown>,
+    options?: RouteOptions<TBody, TQuery, TParams>,
   ): this {
     return this.route("ALL", path, handler as Handler, options);
   }
 
   /** Добавить роут с любым методом */
-  route(method: RouteMethod, path: string, handler: Handler, options?: RouteOptions<any, any, any, any, any>): this {
+  route(
+    method: RouteMethod,
+    path: string,
+    handler: Handler,
+    options?: RouteOptions<any, any, any, any, any>,
+  ): this {
     const wrappedHandler = this.wrapHandler(handler, options);
     const middlewares = [...this.globalMiddlewares];
     this.router.add(method, path, wrappedHandler, middlewares);
-    
+
     // Сохраняем metadata для компиляции
     this.routeMetadata.push({
       method,
@@ -459,12 +518,15 @@ export class Asi {
       middlewares,
       schemas: options?.schema,
     });
-    
+
     return this;
   }
 
   /** Обернуть handler с валидацией и хуками */
-  private wrapHandler(handler: Handler, options?: RouteOptions<any, any, any, any, any>): Handler {
+  private wrapHandler(
+    handler: Handler,
+    options?: RouteOptions<any, any, any, any, any>,
+  ): Handler {
     const schema = options?.schema;
     const hasValidation = schema?.body || schema?.query || schema?.params;
     const hasHooks = options?.beforeHandle || options?.afterHandle;
@@ -473,11 +535,15 @@ export class Asi {
       return handler;
     }
 
-    const beforeHandlers = options?.beforeHandle 
-      ? (Array.isArray(options.beforeHandle) ? options.beforeHandle : [options.beforeHandle])
+    const beforeHandlers = options?.beforeHandle
+      ? Array.isArray(options.beforeHandle)
+        ? options.beforeHandle
+        : [options.beforeHandle]
       : [];
     const afterHandlers = options?.afterHandle
-      ? (Array.isArray(options.afterHandle) ? options.afterHandle : [options.afterHandle])
+      ? Array.isArray(options.afterHandle)
+        ? options.afterHandle
+        : [options.afterHandle]
       : [];
 
     return async (ctx: Context) => {
@@ -491,12 +557,17 @@ export class Asi {
           if (isFormDataSchema(schema.body)) {
             try {
               const formData = await ctx.formData();
-              const result = await validateFormData(formData, schema.body as TSchema & FormDataSchemaType);
+              const result = await validateFormData(
+                formData,
+                schema.body as TSchema & FormDataSchemaType,
+              );
               if (!result.success) {
-                validationErrors.push(...(result.errors?.map(e => ({ 
-                  path: `body.${e.field}`, 
-                  message: e.message 
-                })) ?? []));
+                validationErrors.push(
+                  ...(result.errors?.map((e) => ({
+                    path: `body.${e.field}`,
+                    message: e.message,
+                  })) ?? []),
+                );
               } else {
                 ctx._setBody(result.data as any);
                 if (result.files) {
@@ -504,9 +575,9 @@ export class Asi {
                 }
               }
             } catch (err) {
-              validationErrors.push({ 
-                path: "body", 
-                message: "Invalid FormData" 
+              validationErrors.push({
+                path: "body",
+                message: "Invalid FormData",
               });
             }
           } else {
@@ -515,17 +586,19 @@ export class Asi {
               const rawBody = await ctx.json();
               const result = validateAndCoerce(schema.body, rawBody);
               if (!result.success) {
-                validationErrors.push(...(result.errors?.map(e => ({ 
-                  ...e, 
-                  path: `body${e.path}` 
-                })) ?? []));
+                validationErrors.push(
+                  ...(result.errors?.map((e) => ({
+                    ...e,
+                    path: `body${e.path}`,
+                  })) ?? []),
+                );
               } else {
                 ctx._setBody(result.data);
               }
             } catch (err) {
-              validationErrors.push({ 
-                path: "body", 
-                message: "Invalid JSON body" 
+              validationErrors.push({
+                path: "body",
+                message: "Invalid JSON body",
               });
             }
           }
@@ -535,10 +608,12 @@ export class Asi {
         if (schema?.query) {
           const result = validateAndCoerce(schema.query, ctx.query);
           if (!result.success) {
-            validationErrors.push(...(result.errors?.map(e => ({ 
-              ...e, 
-              path: `query${e.path}` 
-            })) ?? []));
+            validationErrors.push(
+              ...(result.errors?.map((e) => ({
+                ...e,
+                path: `query${e.path}`,
+              })) ?? []),
+            );
           } else {
             ctx._setQuery(result.data);
           }
@@ -548,10 +623,12 @@ export class Asi {
         if (schema?.params) {
           const result = validateAndCoerce(schema.params, ctx.params);
           if (!result.success) {
-            validationErrors.push(...(result.errors?.map(e => ({ 
-              ...e, 
-              path: `params${e.path}` 
-            })) ?? []));
+            validationErrors.push(
+              ...(result.errors?.map((e) => ({
+                ...e,
+                path: `params${e.path}`,
+              })) ?? []),
+            );
           } else {
             ctx._setParams(result.data);
           }
@@ -578,7 +655,7 @@ export class Asi {
       if (afterHandlers.length > 0 && !(result instanceof Response)) {
         result = this.toResponse(result, ctx);
       }
-      
+
       for (const after of afterHandlers) {
         if (result instanceof Response) {
           result = await after(ctx, result);
@@ -636,7 +713,7 @@ export class Asi {
 
   /**
    * Зарегистрировать WebSocket endpoint
-   * 
+   *
    * @example
    * ```ts
    * app.ws("/chat", {
@@ -650,7 +727,7 @@ export class Asi {
    *     console.log("Client disconnected");
    *   },
    * });
-   * 
+   *
    * // С данными пользователя
    * app.ws<{ userId: string }>("/user", {
    *   open(ws) {
@@ -663,9 +740,11 @@ export class Asi {
    * ```
    */
   ws<T = unknown>(
-    path: string, 
+    path: string,
     handlers: WebSocketHandlers<T>,
-    options?: { beforeUpgrade?: (request: Request) => boolean | Promise<boolean> }
+    options?: {
+      beforeUpgrade?: (request: Request) => boolean | Promise<boolean>;
+    },
   ): this {
     this.wsRoutes.set(path, {
       path,
@@ -679,18 +758,18 @@ export class Asi {
 
   /**
    * Register a plugin
-   * 
+   *
    * @example
    * ```ts
    * import { createPlugin } from "asijs";
-   * 
+   *
    * const myPlugin = createPlugin({
    *   name: "my-plugin",
    *   setup(app) {
    *     app.get("/from-plugin", () => "Hello from plugin!");
    *   }
    * });
-   * 
+   *
    * app.plugin(myPlugin);
    * ```
    */
@@ -699,48 +778,80 @@ export class Asi {
     if (this._plugins.has(plugin.name)) {
       return this;
     }
-    
+
     // Check dependencies
     if (plugin.config.dependencies) {
       for (const dep of plugin.config.dependencies) {
         if (!this._plugins.has(dep)) {
-          throw new Error(`Plugin "${plugin.name}" requires plugin "${dep}" to be registered first`);
+          throw new Error(
+            `Plugin "${plugin.name}" requires plugin "${dep}" to be registered first`,
+          );
         }
       }
     }
-    
+
     // Mark as registered
     this._plugins.add(plugin.name);
-    
+
     // Create PluginHost adapter
     const host: import("./plugin").PluginHost = {
-      get: (path, handler, options) => { this.get(path, handler as any, options as any); return host; },
-      post: (path, handler, options) => { this.post(path, handler as any, options as any); return host; },
-      put: (path, handler, options) => { this.put(path, handler as any, options as any); return host; },
-      delete: (path, handler, options) => { this.delete(path, handler as any, options as any); return host; },
-      patch: (path, handler, options) => { this.patch(path, handler as any, options as any); return host; },
-      all: (path, handler, options) => { this.all(path, handler as any, options as any); return host; },
-      use: (pathOrMw: string | Middleware, mw?: Middleware) => { 
-        this.use(pathOrMw as any, mw as any); 
-        return host; 
+      get: (path, handler, options) => {
+        this.get(path, handler as any, options as any);
+        return host;
       },
-      onBeforeHandle: (handler) => { this.onBeforeHandle(handler); return host; },
-      onAfterHandle: (handler) => { this.onAfterHandle(handler); return host; },
-      group: (prefix, callback) => { this.group(prefix, callback as any); return host; },
+      post: (path, handler, options) => {
+        this.post(path, handler as any, options as any);
+        return host;
+      },
+      put: (path, handler, options) => {
+        this.put(path, handler as any, options as any);
+        return host;
+      },
+      delete: (path, handler, options) => {
+        this.delete(path, handler as any, options as any);
+        return host;
+      },
+      patch: (path, handler, options) => {
+        this.patch(path, handler as any, options as any);
+        return host;
+      },
+      all: (path, handler, options) => {
+        this.all(path, handler as any, options as any);
+        return host;
+      },
+      use: (pathOrMw: string | Middleware, mw?: Middleware) => {
+        this.use(pathOrMw as any, mw as any);
+        return host;
+      },
+      onBeforeHandle: (handler) => {
+        this.onBeforeHandle(handler);
+        return host;
+      },
+      onAfterHandle: (handler) => {
+        this.onAfterHandle(handler);
+        return host;
+      },
+      group: (prefix, callback) => {
+        this.group(prefix, callback as any);
+        return host;
+      },
       getState: <T>(key: string) => this._state.get(key) as T | undefined,
-      setState: <T>(key: string, value: T) => { this._state.set(key, value); },
-      getDecorator: <T>(key: string) => this._decorators.get(key) as T | undefined,
+      setState: <T>(key: string, value: T) => {
+        this._state.set(key, value);
+      },
+      getDecorator: <T>(key: string) =>
+        this._decorators.get(key) as T | undefined,
     };
-    
+
     // Apply plugin
     await plugin.apply(host, this._state, this._decorators);
-    
+
     return this;
   }
 
   /**
    * Get shared state by key
-   * 
+   *
    * @example
    * ```ts
    * const cache = app.state<Map<string, unknown>>("cache");
@@ -752,7 +863,7 @@ export class Asi {
 
   /**
    * Set shared state
-   * 
+   *
    * @example
    * ```ts
    * app.setState("counter", 0);
@@ -765,7 +876,7 @@ export class Asi {
 
   /**
    * Get decorator by key
-   * 
+   *
    * @example
    * ```ts
    * const myHelper = app.decorator<() => string>("myHelper");
@@ -777,7 +888,7 @@ export class Asi {
 
   /**
    * Add a decorator
-   * 
+   *
    * @example
    * ```ts
    * app.decorate("now", () => new Date());
@@ -799,11 +910,20 @@ export class Asi {
   // ===== Route grouping =====
 
   /** Группировка роутов с общим префиксом */
-  group(prefix: string, callback: (group: GroupBuilder) => void, parentMiddlewares: Middleware[] = []): this {
+  group(
+    prefix: string,
+    callback: (group: GroupBuilder) => void,
+    parentMiddlewares: Middleware[] = [],
+  ): this {
     const groupMiddlewares: Middleware[] = [...parentMiddlewares];
 
     // Внутренний метод для добавления роута с group middleware
-    const addGroupRoute = (method: RouteMethod, path: string, handler: Handler, options?: RouteOptions<any, any, any, any, any>) => {
+    const addGroupRoute = (
+      method: RouteMethod,
+      path: string,
+      handler: Handler,
+      options?: RouteOptions<any, any, any, any, any>,
+    ) => {
       const wrappedHandler = this.wrapHandler(handler, options);
       // Добавляем global + group middleware
       const allMiddlewares = [...this.globalMiddlewares, ...groupMiddlewares];
@@ -854,14 +974,14 @@ export class Asi {
 
   /**
    * Скомпилировать все роуты для максимальной производительности
-   * 
+   *
    * Вызывается автоматически при listen() или вручную перед тестами.
-   * 
+   *
    * Что делает:
    * - Предкомпилирует TypeBox валидаторы
    * - Создаёт оптимизированные handler-ы без лишних проверок
    * - Строит статический роутер для путей без параметров
-   * 
+   *
    * @example
    * ```ts
    * const app = new Asi();
@@ -871,19 +991,19 @@ export class Asi {
    */
   compile(): this {
     if (this.isCompiled) return this;
-    
+
     const startTime = performance.now();
     let staticCount = 0;
     let dynamicCount = 0;
-    
+
     for (const meta of this.routeMetadata) {
       const analysis = analyzeRoute(meta.path, meta.middlewares, meta.schemas);
-      
+
       // Компилируем handler
       let compiledExecute = compileHandler(
         meta.handler,
         meta.middlewares,
-        meta.schemas
+        meta.schemas,
       );
 
       // Static response precompute (safe subset)
@@ -905,13 +1025,13 @@ export class Asi {
           // Если precompute не удался — используем обычный compiled handler
         }
       }
-      
+
       const compiledRoute: CompiledRoute = {
         method: meta.method,
         path: meta.path,
         execute: compiledExecute,
       };
-      
+
       // Статические роуты — в быстрый роутер
       if (analysis.isStatic) {
         this.staticRouter.add(compiledRoute);
@@ -919,7 +1039,7 @@ export class Asi {
       } else {
         dynamicCount++;
       }
-      
+
       // Сохраняем для lookup
       let methodMap = this.compiledRoutes.get(meta.method);
       if (!methodMap) {
@@ -928,20 +1048,24 @@ export class Asi {
       }
       methodMap.set(meta.path, compiledRoute);
     }
-    
+
     this.isCompiled = true;
-    
+
     const duration = (performance.now() - startTime).toFixed(2);
     if (this.config.development) {
-      console.log(`⚡ Compiled ${this.routeMetadata.length} routes in ${duration}ms`);
+      console.log(
+        `⚡ Compiled ${this.routeMetadata.length} routes in ${duration}ms`,
+      );
       console.log(`   Static: ${staticCount}, Dynamic: ${dynamicCount}`);
     }
-    
+
     return this;
   }
 
   /** Создать factory для статического Response (без ctx) */
-  private _createStaticResponseFactory(result: unknown): (() => Response) | null {
+  private _createStaticResponseFactory(
+    result: unknown,
+  ): (() => Response) | null {
     if (result instanceof Response) return null;
 
     const type = typeof result;
@@ -976,7 +1100,7 @@ export class Asi {
     const qIdx = url.indexOf("?");
     let path: string;
     let queryString = "";
-    
+
     if (qIdx === -1) {
       const startIdx = url.indexOf("/", url.indexOf("//") + 2);
       path = startIdx === -1 ? "/" : url.slice(startIdx);
@@ -985,14 +1109,16 @@ export class Asi {
       path = startIdx === -1 ? "/" : url.slice(startIdx, qIdx);
       queryString = url.slice(qIdx + 1);
     }
-    
+
     const method = request.method as RouteMethod;
-    
+
     // Lazy context creation — только когда нужен
     let ctx: Context | null = null;
     const getContext = () => {
       if (!ctx) {
-        ctx = new Context(request, { decodeQuery: this.config.decodeQuery ?? false });
+        ctx = new Context(request, {
+          decodeQuery: this.config.decodeQuery ?? false,
+        });
         ctx._setUrlParts(path, queryString);
       }
       return ctx;
@@ -1017,13 +1143,13 @@ export class Asi {
         if (compiled) {
           ctx = getContext();
           let response = await compiled.execute(ctx);
-          
+
           // afterHandle
           const afterHandlers = this.globalAfterHandlers;
           for (let i = 0; i < afterHandlers.length; i++) {
             response = await afterHandlers[i](ctx, response);
           }
-          
+
           return response;
         }
       }
@@ -1034,7 +1160,7 @@ export class Asi {
       // Если есть глобальные middleware — они могут обработать запрос даже без роута
       // (например CORS для OPTIONS)
       const globalMw = this.globalMiddlewares;
-      
+
       if (!match) {
         ctx = getContext();
         // Если есть глобальные middleware — дать им шанс обработать
@@ -1046,7 +1172,7 @@ export class Asi {
       }
 
       ctx = getContext();
-      
+
       // Установка параметров
       ctx.params = match.params;
 
@@ -1059,9 +1185,14 @@ export class Asi {
             response = await compiled.execute(ctx);
           } else {
             const pathMw = this.collectPathMiddlewares(path);
-            response = pathMw.length === 0
-              ? await compiled.execute(ctx)
-              : await this.executeHandler(ctx, pathMw, compiled.execute as unknown as Handler);
+            response =
+              pathMw.length === 0
+                ? await compiled.execute(ctx)
+                : await this.executeHandler(
+                    ctx,
+                    pathMw,
+                    compiled.execute as unknown as Handler,
+                  );
           }
 
           // Выполнить глобальные afterHandle (fast path если пусто)
@@ -1077,12 +1208,12 @@ export class Asi {
       // Выполнение middleware chain + handler
       // Избегаем создания нового массива если нет path middleware
       const hasPathMw = this.pathMiddlewares.size > 0;
-      const middlewares = hasPathMw 
+      const middlewares = hasPathMw
         ? this.mergeMiddlewares(match.middlewares, path)
         : match.middlewares;
 
       let response = await this.executeHandler(ctx, middlewares, match.handler);
-      
+
       // Выполнить глобальные afterHandle (fast path если пусто)
       const afterHandlers = this.globalAfterHandlers;
       for (let i = 0; i < afterHandlers.length; i++) {
@@ -1097,7 +1228,10 @@ export class Asi {
   }
 
   /** Объединить route middleware с path middleware (только если есть path middleware) */
-  private mergeMiddlewares(routeMiddlewares: Middleware[], requestPath: string): Middleware[] {
+  private mergeMiddlewares(
+    routeMiddlewares: Middleware[],
+    requestPath: string,
+  ): Middleware[] {
     const pathMw = this.collectPathMiddlewares(requestPath);
     if (pathMw.length === 0) return routeMiddlewares;
     if (routeMiddlewares.length === 0) return pathMw;
@@ -1107,34 +1241,31 @@ export class Asi {
   /** Собрать middleware для пути */
   private collectPathMiddlewares(requestPath: string): Middleware[] {
     const result: Middleware[] = [];
-    
+
     for (const [pattern, middlewares] of this.pathMiddlewares) {
       // Точное совпадение или path начинается с pattern + "/"
       // /api матчит /api и /api/users, но НЕ /apix
-      if (
-        requestPath === pattern || 
-        requestPath.startsWith(pattern + "/")
-      ) {
+      if (requestPath === pattern || requestPath.startsWith(pattern + "/")) {
         result.push(...middlewares);
       }
     }
-    
+
     return result;
   }
 
   private async executeHandler(
-    ctx: Context, 
-    middlewares: Middleware[], 
-    handler: Handler
+    ctx: Context,
+    middlewares: Middleware[],
+    handler: Handler,
   ): Promise<Response> {
     const len = middlewares.length;
-    
+
     // Fast path: no middleware
     if (len === 0) {
       const result = await handler(ctx);
       return this.toResponse(result, ctx);
     }
-    
+
     let index = 0;
     let handlerCalled = false;
 
@@ -1147,12 +1278,12 @@ export class Asi {
       if (index < len) {
         const middleware = middlewares[index++];
         const result = await middleware(ctx, next);
-        
+
         // Если middleware вернул Response — используем его
         if (result instanceof Response) {
           return result;
         }
-        
+
         // Если middleware ничего не вернул и не вызвал next() внутри,
         // значит он уже вызвал next() и результат уже получен через рекурсию.
         // Не вызываем next() повторно!
@@ -1196,7 +1327,9 @@ export class Asi {
           ? Response.json(result as any)
           : Response.json(result as any, { status });
       }
-      const headers = new Headers({ "Content-Type": "application/json; charset=utf-8" });
+      const headers = new Headers({
+        "Content-Type": "application/json; charset=utf-8",
+      });
       for (const cookie of setCookies) {
         headers.append("Set-Cookie", cookie);
       }
@@ -1205,20 +1338,24 @@ export class Asi {
 
     // String → text/plain
     if (type === "string") {
-      const headers = new Headers({ "Content-Type": "text/plain; charset=utf-8" });
+      const headers = new Headers({
+        "Content-Type": "text/plain; charset=utf-8",
+      });
       for (const cookie of setCookies) {
         headers.append("Set-Cookie", cookie);
       }
       return new Response(result as string, { status, headers });
     }
 
-    // undefined → 204 No Content  
+    // undefined → 204 No Content
     if (result === undefined) {
       return new Response(null, { status: 204 });
     }
 
     // Number, boolean, etc → string
-    const headers = new Headers({ "Content-Type": "text/plain; charset=utf-8" });
+    const headers = new Headers({
+      "Content-Type": "text/plain; charset=utf-8",
+    });
     for (const cookie of setCookies) {
       headers.append("Set-Cookie", cookie);
     }
@@ -1229,46 +1366,46 @@ export class Asi {
     if (this.customNotFoundHandler) {
       return this.customNotFoundHandler(ctx);
     }
-    
+
     // In development mode, suggest similar routes
     let suggestions: string[] = [];
     if (this.config.development) {
       suggestions = this._findSimilarRoutes(ctx.path, ctx.method);
     }
-    
+
     const response: Record<string, unknown> = {
       error: "Not Found",
       path: ctx.path,
       method: ctx.method,
     };
-    
+
     if (suggestions.length > 0) {
       response.suggestions = suggestions;
       response.hint = "Did you mean one of these routes?";
     }
-    
+
     return ctx.status(404).jsonResponse(response);
   }
-  
+
   /** Find similar routes for 404 suggestions */
   private _findSimilarRoutes(path: string, method: string): string[] {
     const suggestions: string[] = [];
     const pathParts = path.toLowerCase().split("/").filter(Boolean);
-    
+
     for (const meta of this.routeMetadata) {
       // Check same method or ANY
       if (meta.method !== method && meta.method !== "ALL") continue;
-      
+
       const routeParts = meta.path.toLowerCase().split("/").filter(Boolean);
-      
+
       // Simple similarity: count matching parts
       let matches = 0;
       const maxLen = Math.max(pathParts.length, routeParts.length);
-      
+
       for (let i = 0; i < Math.min(pathParts.length, routeParts.length); i++) {
         const rp = routeParts[i];
         const pp = pathParts[i];
-        
+
         // :param matches anything
         if (rp.startsWith(":") || rp === pp) {
           matches++;
@@ -1276,13 +1413,13 @@ export class Asi {
           matches += 0.5;
         }
       }
-      
+
       // At least 50% similarity
       if (matches / maxLen >= 0.5) {
         suggestions.push(`${meta.method} ${meta.path}`);
       }
     }
-    
+
     // Limit to 5 suggestions
     return suggestions.slice(0, 5);
   }
@@ -1306,13 +1443,15 @@ export class Asi {
 
     console.error("[Asi Error]", error);
 
-    const message = this.config.development && error instanceof Error 
-      ? error.message 
-      : "Internal Server Error";
+    const message =
+      this.config.development && error instanceof Error
+        ? error.message
+        : "Internal Server Error";
 
-    const stack = this.config.development && error instanceof Error
-      ? error.stack
-      : undefined;
+    const stack =
+      this.config.development && error instanceof Error
+        ? error.stack
+        : undefined;
 
     return ctx.status(500).jsonResponse({
       error: message,
@@ -1327,14 +1466,14 @@ export class Asi {
     // Сначала точное совпадение
     const exact = this.wsRoutes.get(path);
     if (exact) return exact;
-    
+
     // Потом проверяем паттерны с параметрами
     for (const [pattern, route] of this.wsRoutes) {
       if (this.matchWsPath(pattern, path)) {
         return route;
       }
     }
-    
+
     return null;
   }
 
@@ -1342,22 +1481,24 @@ export class Asi {
   private matchWsPath(pattern: string, path: string): boolean {
     const patternParts = pattern.split("/").filter(Boolean);
     const pathParts = path.split("/").filter(Boolean);
-    
+
     if (patternParts.length !== pathParts.length) return false;
-    
+
     for (let i = 0; i < patternParts.length; i++) {
       const pp = patternParts[i];
       if (pp.startsWith(":")) continue; // параметр — любое значение
       if (pp !== pathParts[i]) return false;
     }
-    
+
     return true;
   }
 
   /** Запустить сервер */
   listen(port?: number, callback?: () => void): Server<any> {
     // PORT from env takes priority, then argument, then config
-    const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : undefined;
+    const envPort = process.env.PORT
+      ? parseInt(process.env.PORT, 10)
+      : undefined;
     const basePort = port ?? envPort ?? this.config.port ?? 3000;
     const autoPort = this.config.autoPort ?? this.config.development ?? true;
     const maxAttempts = this.config.autoPortRange ?? 10;
@@ -1370,7 +1511,7 @@ export class Asi {
 
     // Если есть WebSocket роуты — используем websocket опцию
     const hasWebSocket = this.wsRoutes.size > 0;
-    
+
     // Port 0 = random available port
     if (basePort === 0) {
       this.server = this._createServer(0, hasWebSocket);
@@ -1379,85 +1520,95 @@ export class Asi {
       callback?.();
       return this.server;
     }
-    
+
     // Попытка запуска с автоматическим поиском порта
     let finalPort = basePort;
     let lastError: Error | null = null;
-    
+
     for (let attempt = 0; attempt < (autoPort ? maxAttempts : 1); attempt++) {
       finalPort = basePort + attempt;
-      
+
       try {
         this.server = this._createServer(finalPort, hasWebSocket);
-        
+
         // Успешно запустились
         if (attempt > 0 && !silent) {
-          console.log(`⚠️  Port ${basePort} was in use, using port ${finalPort} instead`);
+          console.log(
+            `⚠️  Port ${basePort} was in use, using port ${finalPort} instead`,
+          );
         }
-        
+
         this._printStartupBanner(finalPort, hasWebSocket, silent);
         callback?.();
         return this.server;
       } catch (error: any) {
         lastError = error;
-        
+
         // Если это не ошибка занятого порта — пробрасываем сразу
         if (error?.code !== "EADDRINUSE") {
           throw error;
         }
-        
+
         // Если autoPort выключен — пробрасываем ошибку
         if (!autoPort) {
           throw error;
         }
-        
+
         // Иначе пробуем следующий порт
       }
     }
-    
+
     // Все попытки исчерпаны
     throw new Error(
       `Failed to start server. Ports ${basePort}-${basePort + maxAttempts - 1} are all in use.\n` +
-      `Original error: ${lastError?.message}`
+        `Original error: ${lastError?.message}`,
     );
   }
-  
+
   /** Печать startup banner */
-  private _printStartupBanner(port: number, hasWebSocket: boolean, silent: boolean): void {
+  private _printStartupBanner(
+    port: number,
+    hasWebSocket: boolean,
+    silent: boolean,
+  ): void {
     if (silent || this.config.startupBanner === false) return;
-    
+
     const protocol = this.config.tls ? "https" : "http";
     const env = process.env.BUN_ENV || process.env.NODE_ENV || "development";
-    const hostname = this.config.hostname === "0.0.0.0" ? "localhost" : this.config.hostname;
-    
+    const hostname =
+      this.config.hostname === "0.0.0.0" ? "localhost" : this.config.hostname;
+
     // Count routes
     const staticCount = this.staticRouter.size;
     const dynamicCount = this.routeMetadata.length - staticCount;
     const wsCount = this.wsRoutes.size;
-    
+
     // Plugins
     const plugins = Array.from(this._plugins).join(", ") || "none";
-    
+
     // Memory (Bun-specific)
-    const heapUsed = typeof Bun !== "undefined" 
-      ? `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB heap`
-      : "N/A";
-    
+    const heapUsed =
+      typeof Bun !== "undefined"
+        ? `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB heap`
+        : "N/A";
+
     console.log();
     console.log(`✅ Server started on ${protocol}://${hostname}:${port}`);
     console.log(`   Environment: ${env}`);
-    console.log(`   Routes: ${this.routeMetadata.length} (${staticCount} static, ${dynamicCount} dynamic${wsCount > 0 ? `, ${wsCount} WebSocket` : ""})`);
+    console.log(
+      `   Routes: ${this.routeMetadata.length} (${staticCount} static, ${dynamicCount} dynamic${wsCount > 0 ? `, ${wsCount} WebSocket` : ""})`,
+    );
     console.log(`   Plugins: ${plugins}`);
     console.log(`   Memory: ${heapUsed}`);
     console.log();
   }
-  
+
   /** Создать Bun.serve() сервер (внутренний метод) */
   private _createServer(port: number, hasWebSocket: boolean): Server<any> {
     return Bun.serve({
       port,
       hostname: this.config.hostname,
-      
+
       fetch: (request, server) => {
         // Проверяем WebSocket upgrade
         if (hasWebSocket) {
@@ -1472,21 +1623,27 @@ export class Asi {
               if (allowed instanceof Promise) {
                 return allowed.then((ok) => {
                   if (!ok) return new Response("Forbidden", { status: 403 });
-                  const success = server.upgrade(request, { data: { path: url.pathname } });
-                  return success ? undefined : new Response("Upgrade failed", { status: 500 });
+                  const success = server.upgrade(request, {
+                    data: { path: url.pathname },
+                  });
+                  return success
+                    ? undefined
+                    : new Response("Upgrade failed", { status: 500 });
                 });
               }
               if (!allowed) return new Response("Forbidden", { status: 403 });
             }
-            
-            const success = server.upgrade(request, { data: { path: url.pathname } });
+
+            const success = server.upgrade(request, {
+              data: { path: url.pathname },
+            });
             if (success) return undefined;
           }
         }
-        
+
         return this.handle(request);
       },
-      
+
       // WebSocket handlers
       ...(hasWebSocket && {
         websocket: {
@@ -1494,11 +1651,18 @@ export class Asi {
             const route = this.findWsRoute(ws.data.path);
             route?.handlers.open?.(ws);
           },
-          message: (ws: ServerWebSocket<{ path: string }>, message: string | Buffer) => {
+          message: (
+            ws: ServerWebSocket<{ path: string }>,
+            message: string | Buffer,
+          ) => {
             const route = this.findWsRoute(ws.data.path);
             route?.handlers.message?.(ws, message);
           },
-          close: (ws: ServerWebSocket<{ path: string }>, code: number, reason: string) => {
+          close: (
+            ws: ServerWebSocket<{ path: string }>,
+            code: number,
+            reason: string,
+          ) => {
             const route = this.findWsRoute(ws.data.path);
             route?.handlers.close?.(ws, code, reason);
           },
@@ -1512,12 +1676,12 @@ export class Asi {
           },
         },
       }),
-      
+
       // Bun.serve() performance options
       reusePort: this.config.reusePort,
       maxRequestBodySize: this.config.maxRequestBodySize,
       idleTimeout: this.config.idleTimeout,
-      
+
       // TLS
       ...(this.config.tls && {
         tls: this.config.tls,

@@ -1,6 +1,6 @@
 /**
  * Validation module using TypeBox
- * 
+ *
  * Provides fast runtime validation with full TypeScript type inference
  */
 
@@ -45,7 +45,7 @@ export interface RouteSchema<
  */
 export function validate<T extends TSchema>(
   schema: T,
-  data: unknown
+  data: unknown,
 ): ValidationResult<Static<T>> {
   try {
     // Проверяем валидность
@@ -79,15 +79,15 @@ export function validate<T extends TSchema>(
  */
 export function validateAndCoerce<T extends TSchema>(
   schema: T,
-  data: unknown
+  data: unknown,
 ): ValidationResult<Static<T>> {
   try {
     // Преобразуем данные согласно схеме (string "123" -> number 123)
     const converted = Value.Convert(schema, data);
-    
+
     // Устанавливаем default значения
     const withDefaults = Value.Default(schema, converted);
-    
+
     // Проверяем валидность
     if (Value.Check(schema, withDefaults)) {
       return { success: true, data: withDefaults as Static<T> };
@@ -137,7 +137,9 @@ export function createValidator<T extends TSchema>(schema: T) {
  */
 export class ValidationException extends Error {
   constructor(public readonly errors: ValidationError[]) {
-    super(`Validation failed: ${errors.map(e => `${e.path}: ${e.message}`).join(", ")}`);
+    super(
+      `Validation failed: ${errors.map((e) => `${e.path}: ${e.message}`).join(", ")}`,
+    );
     this.name = "ValidationException";
   }
 }

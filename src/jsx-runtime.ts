@@ -1,9 +1,9 @@
 /**
  * JSX Runtime for AsiJS
- * 
+ *
  * This file provides the JSX runtime exports required by
  * the modern JSX transform ("jsx": "react-jsx" or "jsx": "react-jsxdev").
- * 
+ *
  * Configure your tsconfig.json:
  * {
  *   "compilerOptions": {

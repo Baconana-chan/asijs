@@ -47,7 +47,9 @@ describe("Asi Framework", () => {
         postId: ctx.params.postId,
       }));
 
-      const res = await app.handle(new Request("http://localhost/user/1/post/42"));
+      const res = await app.handle(
+        new Request("http://localhost/user/1/post/42"),
+      );
       expect(await res.json()).toEqual({ userId: "1", postId: "42" });
     });
   });
@@ -57,7 +59,9 @@ describe("Asi Framework", () => {
       const app = new Asi();
       app.get("/search", (ctx) => ({ q: ctx.query.q }));
 
-      const res = await app.handle(new Request("http://localhost/search?q=hello"));
+      const res = await app.handle(
+        new Request("http://localhost/search?q=hello"),
+      );
       expect(await res.json()).toEqual({ q: "hello" });
     });
   });
@@ -75,7 +79,7 @@ describe("Asi Framework", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ test: true }),
-        })
+        }),
       );
       expect(await res.json()).toEqual({ received: { test: true } });
     });
@@ -85,7 +89,7 @@ describe("Asi Framework", () => {
       app.put("/item/:id", (ctx) => ({ updated: ctx.params.id }));
 
       const res = await app.handle(
-        new Request("http://localhost/item/5", { method: "PUT" })
+        new Request("http://localhost/item/5", { method: "PUT" }),
       );
       expect(await res.json()).toEqual({ updated: "5" });
     });
@@ -95,7 +99,7 @@ describe("Asi Framework", () => {
       app.delete("/item/:id", (ctx) => ({ deleted: ctx.params.id }));
 
       const res = await app.handle(
-        new Request("http://localhost/item/5", { method: "DELETE" })
+        new Request("http://localhost/item/5", { method: "DELETE" }),
       );
       expect(await res.json()).toEqual({ deleted: "5" });
     });
@@ -108,7 +112,7 @@ describe("Asi Framework", () => {
       expect(await getRes.json()).toEqual({ method: "GET" });
 
       const postRes = await app.handle(
-        new Request("http://localhost/any", { method: "POST" })
+        new Request("http://localhost/any", { method: "POST" }),
       );
       expect(await postRes.json()).toEqual({ method: "POST" });
     });
@@ -138,7 +142,9 @@ describe("Asi Framework", () => {
       const app = new Asi();
       app.get("/files/*", (ctx) => ({ path: ctx.path }));
 
-      const res = await app.handle(new Request("http://localhost/files/foo/bar/baz"));
+      const res = await app.handle(
+        new Request("http://localhost/files/foo/bar/baz"),
+      );
       expect(await res.json()).toEqual({ path: "/files/foo/bar/baz" });
     });
   });
@@ -146,22 +152,26 @@ describe("Asi Framework", () => {
   describe("Route grouping", () => {
     it("should group routes with prefix", async () => {
       const app = new Asi();
-      
+
       app.group("/api", (api) => {
         api.get("/users", () => ({ users: [] }));
         api.get("/posts", () => ({ posts: [] }));
       });
 
-      const usersRes = await app.handle(new Request("http://localhost/api/users"));
+      const usersRes = await app.handle(
+        new Request("http://localhost/api/users"),
+      );
       expect(await usersRes.json()).toEqual({ users: [] });
 
-      const postsRes = await app.handle(new Request("http://localhost/api/posts"));
+      const postsRes = await app.handle(
+        new Request("http://localhost/api/posts"),
+      );
       expect(await postsRes.json()).toEqual({ posts: [] });
     });
 
     it("should support nested groups", async () => {
       const app = new Asi();
-      
+
       app.group("/api", (api) => {
         api.group("/v1", (v1) => {
           v1.get("/users", () => ({ version: 1 }));
@@ -171,10 +181,14 @@ describe("Asi Framework", () => {
         });
       });
 
-      const v1Res = await app.handle(new Request("http://localhost/api/v1/users"));
+      const v1Res = await app.handle(
+        new Request("http://localhost/api/v1/users"),
+      );
       expect(await v1Res.json()).toEqual({ version: 1 });
 
-      const v2Res = await app.handle(new Request("http://localhost/api/v2/users"));
+      const v2Res = await app.handle(
+        new Request("http://localhost/api/v2/users"),
+      );
       expect(await v2Res.json()).toEqual({ version: 2 });
     });
   });
@@ -208,10 +222,14 @@ describe("Asi Framework", () => {
 
       app.get("/protected", () => ({ data: "secret" }));
 
-      const noAuth = await app.handle(new Request("http://localhost/protected"));
+      const noAuth = await app.handle(
+        new Request("http://localhost/protected"),
+      );
       expect(noAuth.status).toBe(401);
 
-      const withAuth = await app.handle(new Request("http://localhost/protected?auth=secret"));
+      const withAuth = await app.handle(
+        new Request("http://localhost/protected?auth=secret"),
+      );
       expect(withAuth.status).toBe(200);
       expect(await withAuth.json()).toEqual({ data: "secret" });
     });
@@ -246,14 +264,18 @@ describe("Asi Framework", () => {
         return "ok";
       });
 
-      app.get("/special", () => {
-        calls.push("special");
-        return "ok";
-      }, {
-        beforeHandle: () => {
-          calls.push("before-special");
-        }
-      });
+      app.get(
+        "/special",
+        () => {
+          calls.push("special");
+          return "ok";
+        },
+        {
+          beforeHandle: () => {
+            calls.push("before-special");
+          },
+        },
+      );
 
       await app.handle(new Request("http://localhost/normal"));
       await app.handle(new Request("http://localhost/special"));
@@ -272,7 +294,7 @@ describe("Asi Framework", () => {
             status: response.status,
             headers: newHeaders,
           });
-        }
+        },
       });
 
       const res = await app.handle(new Request("http://localhost/test"));
@@ -481,13 +503,20 @@ describe("Asi Framework", () => {
 
       // Сценарий: /user/:id/profile и /user/admin/settings
       // Запрос /user/admin/settings должен матчить статический путь
-      app.get("/user/:id/profile", (ctx) => ({ id: ctx.params.id, type: "profile" }));
+      app.get("/user/:id/profile", (ctx) => ({
+        id: ctx.params.id,
+        type: "profile",
+      }));
       app.get("/user/admin/settings", () => ({ type: "admin-settings" }));
 
-      const profileRes = await app.handle(new Request("http://localhost/user/123/profile"));
+      const profileRes = await app.handle(
+        new Request("http://localhost/user/123/profile"),
+      );
       expect(await profileRes.json()).toEqual({ id: "123", type: "profile" });
 
-      const adminRes = await app.handle(new Request("http://localhost/user/admin/settings"));
+      const adminRes = await app.handle(
+        new Request("http://localhost/user/admin/settings"),
+      );
       expect(await adminRes.json()).toEqual({ type: "admin-settings" });
     });
   });

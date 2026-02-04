@@ -1,28 +1,28 @@
 /**
  * OpenAPI / Swagger generation for AsiJS
- * 
+ *
  * Generates OpenAPI 3.0 specification from route definitions and TypeBox schemas.
- * 
+ *
  * @example
  * ```ts
  * import { Asi, Type, openapi } from "asijs";
- * 
+ *
  * const app = new Asi();
- * 
+ *
  * app.get("/users/:id", (ctx) => ({ id: ctx.params.id }), {
  *   schema: {
  *     params: Type.Object({ id: Type.String() }),
  *     response: Type.Object({ id: Type.String() }),
  *   }
  * });
- * 
+ *
  * // Generate OpenAPI spec
  * app.plugin(openapi({
  *   title: "My API",
  *   version: "1.0.0",
  *   description: "My awesome API",
  * }));
- * 
+ *
  * // Swagger UI at /docs
  * // OpenAPI JSON at /openapi.json
  * ```
@@ -177,10 +177,10 @@ function typeboxToJsonSchema(schema: TSchema): unknown {
   // TypeBox schemas are already JSON Schema compatible
   // We just need to clean up internal symbols
   const clone = JSON.parse(JSON.stringify(schema));
-  
+
   // Remove TypeBox-specific symbols
   delete clone[Symbol.for("TypeBox.Kind")];
-  
+
   return clone;
 }
 
@@ -204,16 +204,16 @@ function convertPathToOpenAPI(path: string): string {
 export class OpenAPIGenerator {
   private routes: DocumentedRoute[] = [];
   private options: OpenAPIOptions;
-  
+
   constructor(options: OpenAPIOptions) {
     this.options = options;
   }
-  
+
   /** Add a route to the documentation */
   addRoute(route: DocumentedRoute): void {
     this.routes.push(route);
   }
-  
+
   /** Generate OpenAPI document */
   generate(): OpenAPIDocument {
     const doc: OpenAPIDocument = {
@@ -226,43 +226,43 @@ export class OpenAPIGenerator {
       },
       paths: {},
     };
-    
+
     if (this.options.servers) {
       doc.servers = this.options.servers;
     }
-    
+
     if (this.options.tags) {
       doc.tags = this.options.tags;
     }
-    
+
     if (this.options.securitySchemes) {
       doc.components = {
         securitySchemes: this.options.securitySchemes,
       };
     }
-    
+
     if (this.options.security) {
       doc.security = this.options.security;
     }
-    
+
     // Group routes by path
     for (const route of this.routes) {
       if (route.method === "ALL") continue; // Skip ALL routes
-      
+
       const openApiPath = convertPathToOpenAPI(route.path);
       const method = route.method.toLowerCase();
-      
+
       if (!doc.paths[openApiPath]) {
         doc.paths[openApiPath] = {};
       }
-      
+
       const operation = this.buildOperation(route);
       doc.paths[openApiPath][method] = operation;
     }
-    
+
     return doc;
   }
-  
+
   private buildOperation(route: DocumentedRoute): OpenAPIOperation {
     const operation: OpenAPIOperation = {
       responses: {
@@ -271,26 +271,30 @@ export class OpenAPIGenerator {
         },
       },
     };
-    
+
     // Add documentation
     if (route.docs) {
       if (route.docs.summary) operation.summary = route.docs.summary;
-      if (route.docs.description) operation.description = route.docs.description;
+      if (route.docs.description)
+        operation.description = route.docs.description;
       if (route.docs.tags) operation.tags = route.docs.tags;
-      if (route.docs.operationId) operation.operationId = route.docs.operationId;
+      if (route.docs.operationId)
+        operation.operationId = route.docs.operationId;
       if (route.docs.deprecated) operation.deprecated = route.docs.deprecated;
       if (route.docs.security) operation.security = route.docs.security;
     }
-    
+
     // Build parameters
     const parameters: OpenAPIParameter[] = [];
-    
+
     // Path parameters
     const pathParams = extractPathParams(route.path);
     if (route.schemas?.params) {
       const paramsSchema = typeboxToJsonSchema(route.schemas.params) as any;
       for (const paramName of pathParams) {
-        const paramSchema = paramsSchema.properties?.[paramName] || { type: "string" };
+        const paramSchema = paramsSchema.properties?.[paramName] || {
+          type: "string",
+        };
         parameters.push({
           name: paramName,
           in: "path",
@@ -310,13 +314,15 @@ export class OpenAPIGenerator {
         });
       }
     }
-    
+
     // Query parameters
     if (route.schemas?.query) {
       const querySchema = typeboxToJsonSchema(route.schemas.query) as any;
       const required = querySchema.required || [];
-      
-      for (const [name, propSchema] of Object.entries(querySchema.properties || {})) {
+
+      for (const [name, propSchema] of Object.entries(
+        querySchema.properties || {},
+      )) {
         const schema = propSchema as any;
         parameters.push({
           name,
@@ -327,13 +333,15 @@ export class OpenAPIGenerator {
         });
       }
     }
-    
+
     // Header parameters
     if (route.schemas?.headers) {
       const headersSchema = typeboxToJsonSchema(route.schemas.headers) as any;
       const required = headersSchema.required || [];
-      
-      for (const [name, propSchema] of Object.entries(headersSchema.properties || {})) {
+
+      for (const [name, propSchema] of Object.entries(
+        headersSchema.properties || {},
+      )) {
         const schema = propSchema as any;
         parameters.push({
           name,
@@ -344,13 +352,16 @@ export class OpenAPIGenerator {
         });
       }
     }
-    
+
     if (parameters.length > 0) {
       operation.parameters = parameters;
     }
-    
+
     // Request body
-    if (route.schemas?.body && ["POST", "PUT", "PATCH"].includes(route.method)) {
+    if (
+      route.schemas?.body &&
+      ["POST", "PUT", "PATCH"].includes(route.method)
+    ) {
       const bodySchema = typeboxToJsonSchema(route.schemas.body);
       operation.requestBody = {
         required: true,
@@ -361,7 +372,7 @@ export class OpenAPIGenerator {
         },
       };
     }
-    
+
     // Response schema
     if (route.schemas?.response) {
       const responseSchema = typeboxToJsonSchema(route.schemas.response);
@@ -374,11 +385,11 @@ export class OpenAPIGenerator {
         },
       };
     }
-    
+
     // Add common error responses
     operation.responses["400"] = { description: "Bad Request" };
     operation.responses["500"] = { description: "Internal Server Error" };
-    
+
     return operation;
   }
 }
@@ -425,7 +436,7 @@ function generateSwaggerUI(specUrl: string, title: string): string {
 
 /**
  * Create OpenAPI documentation plugin
- * 
+ *
  * @example
  * ```ts
  * app.plugin(openapi({
@@ -447,32 +458,32 @@ function generateSwaggerUI(specUrl: string, title: string): string {
 export function openapi(options: OpenAPIOptions): AsiPlugin {
   const specPath = options.specPath ?? "/openapi.json";
   const docsPath = options.docsPath ?? "/docs";
-  
+
   return createPlugin({
     name: "openapi",
-    
+
     setup(app) {
       // We need to access route metadata from the app
       // Store generator in state for later use
       const generator = new OpenAPIGenerator(options);
       app.setState("openapi:generator", generator);
-      
+
       // Serve OpenAPI JSON
       app.get(specPath, () => {
         const gen = app.getState<OpenAPIGenerator>("openapi:generator");
         if (!gen) {
           return { error: "OpenAPI generator not found" };
         }
-        
+
         // Get routes from app state
         const routes = app.getState<DocumentedRoute[]>("openapi:routes") ?? [];
         for (const route of routes) {
           gen.addRoute(route);
         }
-        
+
         return gen.generate();
       });
-      
+
       // Serve Swagger UI
       app.get(docsPath, (ctx) => {
         const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
@@ -486,7 +497,7 @@ export function openapi(options: OpenAPIOptions): AsiPlugin {
 /**
  * Collect route metadata for OpenAPI documentation.
  * Call this after all routes are registered but before app.listen().
- * 
+ *
  * @example
  * ```ts
  * const app = new Asi();
@@ -495,7 +506,7 @@ export function openapi(options: OpenAPIOptions): AsiPlugin {
  * app.listen(3000);
  * ```
  */
-export function collectRoutes(app: { 
+export function collectRoutes(app: {
   setState: (key: string, value: unknown) => void;
   // Access internal route metadata - this will need to be exposed by Asi
 }): void {
