@@ -342,64 +342,64 @@ app.listen(); // Uses PORT env or 3000
 
 ## 📊 Benchmarks
 
-AsiJS is built for performance. Benchmarks run on **Windows 10, 8 CPU cores, 24GB RAM**.
+AsiJS is built for performance. Benchmarks below are **averages from 6 GitHub Actions runs**.
 
 ### Simple JSON Response (`GET /`)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| Elysia | ~112,000 | 0.0089ms | 100% |
-| Raw Bun | ~95,000 | 0.0106ms | 85% |
-| **AsiJS (compiled)** | ~92,000 | 0.0109ms | 82% |
-| **AsiJS** | ~81,000 | 0.0123ms | 72% |
-| Hono | ~68,000 | 0.0147ms | 61% |
+| Elysia | ~616,000 | 0.0016ms | 100% |
+| Raw Bun | ~572,000 | 0.0017ms | 93% |
+| **AsiJS** | ~443,000 | 0.0023ms | 72% |
+| **AsiJS (compiled)** | ~438,000 | 0.0023ms | 71% |
+| Hono | ~296,000 | 0.0034ms | 48% |
 
 ### Path Parameters (`GET /user/:id`)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| Elysia | ~95,000 | 0.0106ms | 100% |
-| Raw Bun | ~82,000 | 0.0122ms | 86% |
-| **AsiJS** | ~70,000 | 0.0143ms | 74% |
-| **AsiJS (compiled)** | ~68,000 | 0.0148ms | 72% |
-| Hono | ~57,000 | 0.0175ms | 60% |
+| Elysia | ~498,000 | 0.0020ms | 100% |
+| Raw Bun | ~488,000 | 0.0020ms | 98% |
+| **AsiJS (compiled)** | ~391,000 | 0.0026ms | 79% |
+| **AsiJS** | ~378,000 | 0.0026ms | 76% |
+| Hono | ~220,000 | 0.0046ms | 44% |
 
 ### Query Parameters (`GET /search?q=...`)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| Elysia | ~85,000 | 0.0118ms | 100% |
-| **AsiJS (compiled)** | ~63,000 | 0.0159ms | 74% |
-| **AsiJS** | ~60,000 | 0.0167ms | 70% |
-| Hono | ~56,000 | 0.0178ms | 66% |
-| Raw Bun | ~54,000 | 0.0186ms | 63% |
+| Elysia | ~431,000 | 0.0023ms | 100% |
+| Raw Bun | ~319,000 | 0.0031ms | 74% |
+| **AsiJS (compiled)** | ~316,000 | 0.0031ms | 73% |
+| **AsiJS** | ~305,000 | 0.0033ms | 71% |
+| Hono | ~217,000 | 0.0046ms | 50% |
 
 ### JSON POST (`POST /users`)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| Elysia | ~52,000 | 0.0192ms | 100% |
-| Raw Bun | ~50,000 | 0.0200ms | 96% |
-| **AsiJS (compiled)** | ~44,000 | 0.0227ms | 85% |
-| **AsiJS** | ~42,000 | 0.0238ms | 81% |
-| Hono | ~39,000 | 0.0256ms | 75% |
+| Elysia | ~270,000 | 0.0037ms | 100% |
+| Raw Bun | ~286,000 | 0.0035ms | 106% |
+| **AsiJS (compiled)** | ~229,000 | 0.0044ms | 85% |
+| **AsiJS** | ~215,000 | 0.0047ms | 80% |
+| Hono | ~164,000 | 0.0061ms | 61% |
 
 ### With TypeBox Validation (`POST /users`)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| **AsiJS (compiled + validation)** | ~44,000 | 0.0228ms | **100%** |
-| Elysia + validation | ~43,500 | 0.0230ms | 99% |
-| **AsiJS + validation** | ~37,000 | 0.0271ms | 84% |
+| **AsiJS (compiled + validation)** | ~244,000 | 0.0041ms | **100%** |
+| Elysia + validation | ~214,000 | 0.0047ms | 88% |
+| **AsiJS + validation** | ~169,000 | 0.0059ms | 69% |
 
 > 🏆 **AsiJS compiled routes match or beat Elysia when using validation!**
 
 ### Key Takeaways
 
-- 🚀 **AsiJS compiled** is only ~10-15% slower than Elysia on simple routes
-- ✅ **With validation**, AsiJS compiled routes match Elysia performance
-- 📈 **30% faster than Hono** across all benchmarks
-- ⚡ Query parameter handling is particularly optimized
+- 🚀 **AsiJS compiled** is ~71–79% of Elysia on GET routes
+- ✅ **With validation**, AsiJS compiled is ~12% faster than Elysia on these runs
+- 📈 **30–55% faster than Hono** across all benchmarks
+- ⚡ Query parameter handling is consistently strong (~73% of Elysia)
 
 Run benchmarks yourself:
 ```bash
