@@ -117,7 +117,9 @@ export function validateAndCoerce<T extends TSchema>(
 /**
  * Создать валидатор из схемы (для переиспользования)
  */
-export function createValidator<T extends TSchema>(schema: T): {
+export function createValidator<T extends TSchema>(
+  schema: T,
+): {
   check: (data: unknown) => data is Static<T>;
   validate: (data: unknown) => ValidationResult<Static<T>>;
   validateAndCoerce: (data: unknown) => ValidationResult<Static<T>>;

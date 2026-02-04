@@ -154,7 +154,35 @@ export function createClient(config: ClientConfig): {
   request: <T = unknown>(
     method: HTTPMethod,
     path: string,
-    options?: RequestOptions
+    options?: RequestOptions,
+  ) => Promise<ClientResponse<T>>;
+  get: <T = unknown>(
+    path: string,
+    options?: RequestOptions,
+  ) => Promise<ClientResponse<T>>;
+  post: <T = unknown>(
+    path: string,
+    options?: RequestOptions,
+  ) => Promise<ClientResponse<T>>;
+  put: <T = unknown>(
+    path: string,
+    options?: RequestOptions,
+  ) => Promise<ClientResponse<T>>;
+  patch: <T = unknown>(
+    path: string,
+    options?: RequestOptions,
+  ) => Promise<ClientResponse<T>>;
+  delete: <T = unknown>(
+    path: string,
+    options?: RequestOptions,
+  ) => Promise<ClientResponse<T>>;
+  head: <T = unknown>(
+    path: string,
+    options?: RequestOptions,
+  ) => Promise<ClientResponse<T>>;
+  options: <T = unknown>(
+    path: string,
+    options?: RequestOptions,
   ) => Promise<ClientResponse<T>>;
 } {
   const fetchFn = config.fetch ?? globalThis.fetch;
