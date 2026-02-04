@@ -1,0 +1,22 @@
+# Source files (only dist is published)
+src/
+test/
+examples/
+bench/
+
+# Build config
+tsconfig.json
+tsconfig.build.json
+.github/
+
+# Development
+.git/
+.gitignore
+.editorconfig
+.vscode/
+*.test.ts
+
+# Documentation
+TODO.md
+DOCUMENTATION.md
+MIGRATION.md

@@ -2,21 +2,37 @@
   "name": "asijs",
   "version": "1.0.0",
   "description": "Bun-first web framework — fast, type-safe, simple",
-  "module": "src/index.ts",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "type": "module",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "asijs": "./src/cli.ts",
-    "create-asijs": "./src/cli.ts"
+    "asijs": "./dist/cli.js",
+    "create-asijs": "./dist/cli.js"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./jsx-runtime": "./src/jsx-runtime.ts",
-    "./jsx-dev-runtime": "./src/jsx-dev-runtime.ts",
-    "./cli": "./src/cli.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": "./dist/jsx-runtime.js",
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-dev-runtime.d.ts",
+      "import": "./dist/jsx-dev-runtime.js",
+      "default": "./dist/jsx-dev-runtime.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js",
+      "default": "./dist/cli.js"
+    }
   },
   "files": [
-    "src",
     "dist",
     "README.md",
     "CHANGELOG.md",
@@ -27,8 +43,11 @@
     "start": "bun run index.ts",
     "test": "bun test",
     "bench": "bun run bench/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun",
-    "typecheck": "tsc --noEmit"
+    "build": "bun run build:js && bun run build:types",
+    "build:js": "bun build src/index.ts src/cli.ts src/jsx-runtime.ts src/jsx-dev-runtime.ts --outdir dist --target node --minify --external @sinclair/typebox --splitting",
+    "build:types": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
   },
   "keywords": [
     "bun",
