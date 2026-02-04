@@ -310,4 +310,98 @@ export {
   type InferActions,
 } from "./actions";
 
+// i18n & Localization
+export {
+  i18n,
+  I18n,
+  createTranslator,
+  loadTranslations,
+  mergeTranslations,
+  getBrowserLocale,
+  dateFormats,
+  numberFormats,
+  type I18nOptions,
+  type I18nContext,
+  type Translation,
+  type Translations,
+  type PluralRules,
+  type LocaleDetection,
+  type TranslateFunction,
+} from "./i18n";
+
+// Edge / Serverless Adapters
+export {
+  toFetchHandler,
+  cloudflare,
+  vercelEdge,
+  deno,
+  lambdaEdge,
+  netlifyEdge,
+  createStaticHandler,
+  combineHandlers,
+  withCORS,
+  type FetchHandler,
+  type ExecutionContext,
+  type CloudflareEnv,
+  type VercelEdgeConfig,
+  type DenoHandler,
+  type LambdaEdgeEvent,
+  type LambdaEdgeResponse,
+  type AdapterOptions,
+} from "./edge";
+
+// Test Utilities
+export {
+  mockContext,
+  mockFormDataContext,
+  testClient,
+  buildRequest,
+  buildFormData,
+  mockFile,
+  assertStatus,
+  assertOk,
+  assertHeader,
+  assertContentType,
+  assertJson,
+  assertContains,
+  assertRedirect,
+  setupTest,
+  withApp,
+  snapshotResponse,
+  measureHandler,
+  benchmarkRoute,
+  type MockContextOptions,
+  type TestClientOptions,
+  type TestResponse,
+  type TestClient,
+} from "./testing";
+
+// Database Integration
+export {
+  drizzlePlugin,
+  prismaPlugin,
+  kyselyPlugin,
+  databasePlugin,
+  withTransaction,
+  prismaTransaction,
+  kyselyTransaction,
+  ConnectionPool,
+  sql,
+  buildWhere,
+  buildInsert,
+  buildUpdate,
+  createRepository,
+  runMigrations,
+  rollbackMigration,
+  type DrizzleConfig,
+  type PrismaConfig,
+  type KyselyConfig,
+  type DatabaseConfig,
+  type DatabaseClient,
+  type TransactionOptions,
+  type PoolStats,
+  type Repository,
+  type Migration,
+} from "./database";
+
 export type { TSchema, Static } from "@sinclair/typebox";

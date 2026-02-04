@@ -1,6 +1,6 @@
 {
   "name": "asijs",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Bun-first web framework — fast, type-safe, simple",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -30,6 +30,26 @@
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js",
       "default": "./dist/cli.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n.d.ts",
+      "import": "./dist/i18n.js",
+      "default": "./dist/i18n.js"
+    },
+    "./edge": {
+      "types": "./dist/edge.d.ts",
+      "import": "./dist/edge.js",
+      "default": "./dist/edge.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
+    },
+    "./database": {
+      "types": "./dist/database.d.ts",
+      "import": "./dist/database.js",
+      "default": "./dist/database.js"
     }
   },
   "files": [
@@ -44,7 +64,7 @@
     "test": "bun test",
     "bench": "bun run bench/index.ts",
     "build": "bun run build:js && bun run build:types",
-    "build:js": "bun build src/index.ts src/cli.ts src/jsx-runtime.ts src/jsx-dev-runtime.ts --outdir dist --target node --minify --external @sinclair/typebox --splitting",
+    "build:js": "bun build src/index.ts src/cli.ts src/jsx-runtime.ts src/jsx-dev-runtime.ts src/i18n.ts src/edge.ts src/testing.ts src/database.ts --outdir dist --target node --minify --external @sinclair/typebox --splitting",
     "build:types": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build",

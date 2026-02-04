@@ -5,6 +5,71 @@ All notable changes to AsiJS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-02-05
+
+### Added
+
+#### Internationalization (i18n)
+- **I18n Class** — Full internationalization with translations, interpolation, and pluralization
+- **Locale Detection** — Automatic detection from Accept-Language header, cookies, query params, URL path
+- **Formatting** — Date, time, number, currency, and list formatting via Intl API
+- **Pluralization** — Intl.PluralRules support for all languages (including complex rules like Russian)
+- **RTL Detection** — Automatic right-to-left language detection
+- **Fallback Locales** — Configurable fallback chain for missing translations
+- **i18n Plugin** — `i18n()` plugin for app integration with context helpers
+
+#### Edge/Serverless Adapters
+- **toFetchHandler()** — Universal adapter for any Fetch API environment
+- **cloudflare()** — Cloudflare Workers adapter with env/ctx access
+- **vercelEdge()** — Vercel Edge Functions adapter with GET/POST/etc exports
+- **deno()** — Deno Deploy adapter
+- **lambdaEdge()** — AWS Lambda@Edge adapter with CloudFront event handling
+- **netlifyEdge()** — Netlify Edge Functions adapter
+- **createStaticHandler()** — Edge-compatible static asset serving
+- **combineHandlers()** — Combine multiple handlers with routing
+- **withCORS()** — CORS wrapper for edge handlers
+
+#### Test Utilities
+- **mockContext()** — Create mock Context for unit testing handlers
+- **mockFormDataContext()** — Mock context with FormData
+- **testClient()** — HTTP client for integration testing
+- **buildRequest()** — Build mock Request objects
+- **buildFormData()** — Build FormData from objects
+- **mockFile()** — Create mock File objects
+- **Assertions** — `assertStatus`, `assertOk`, `assertHeader`, `assertContentType`, `assertJson`, `assertContains`, `assertRedirect`
+- **setupTest()** — Quick test setup helper
+- **withApp()** — Wrapper for app lifecycle in tests
+- **snapshotResponse()** — Response snapshot for comparison testing
+- **measureHandler()** — Performance measurement for handlers
+- **benchmarkRoute()** — Full route benchmarking
+
+#### Database Helpers
+- **drizzlePlugin()** — Drizzle ORM integration plugin
+- **prismaPlugin()** — Prisma integration plugin
+- **kyselyPlugin()** — Kysely integration plugin
+- **databasePlugin()** — Generic database plugin
+- **ConnectionPool** — Connection pooling with min/max, idle timeout, health checks
+- **sql template tag** — Parameterized query builder
+- **buildWhere()** — WHERE clause builder from objects
+- **buildInsert()** — INSERT statement builder
+- **buildUpdate()** — UPDATE statement builder
+- **createRepository()** — Generic CRUD repository factory
+- **withTransaction()** — Transaction wrapper for Drizzle
+- **prismaTransaction()** — Transaction wrapper for Prisma
+- **kyselyTransaction()** — Transaction wrapper for Kysely
+- **runMigrations()** — Migration runner
+- **rollbackMigration()** — Migration rollback
+
+### Changed
+- Updated exports in `src/index.ts` to include all new modules
+- Updated `jsr.json` with new entry points for i18n, edge, testing, database
+
+## [1.0.1] - 2026-02-04
+
+### Fixed
+- Minor documentation fixes
+- Package metadata updates
+
 ## [1.0.0] - 2026-02-04
 
 ### 🎉 Initial Release
