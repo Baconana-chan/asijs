@@ -277,6 +277,7 @@ export class Asi {
   private globalBeforeHandlers: BeforeHandler[] = [];
   private globalAfterHandlers: AfterHandler[] = [];
   private pathMiddlewares: Map<string, Middleware[]> = new Map();
+  private middlewareFlatCache: WeakMap<Middleware[], boolean> = new WeakMap();
   private server: Server<any> | null = null;
   private config: AsiConfig;
 
@@ -1266,6 +1267,17 @@ export class Asi {
       return this.toResponse(result, ctx);
     }
 
+    // Fast path for middlewares without next()
+    if (this.isFlatMiddlewares(middlewares)) {
+      for (let i = 0; i < len; i++) {
+        const result = await (middlewares[i] as (ctx: Context) => unknown)(ctx);
+        if (result instanceof Response) return result;
+        if (result !== undefined) return this.toResponse(result, ctx);
+      }
+      const result = await handler(ctx);
+      return this.toResponse(result, ctx);
+    }
+
     let index = 0;
     let handlerCalled = false;
 
@@ -1298,6 +1310,14 @@ export class Asi {
     };
 
     return next();
+  }
+
+  private isFlatMiddlewares(middlewares: Middleware[]): boolean {
+    const cached = this.middlewareFlatCache.get(middlewares);
+    if (cached !== undefined) return cached;
+    const flat = middlewares.every((mw) => mw.length < 2);
+    this.middlewareFlatCache.set(middlewares, flat);
+    return flat;
   }
 
   /** Преобразовать результат handler в Response (hot path, inline-optimized) */

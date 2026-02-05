@@ -138,6 +138,13 @@ export function staticFiles(
     : `${normalizedPrefix}/`;
 
   const cacheControl = maxAge > 0 ? `public, max-age=${maxAge}` : "no-cache";
+  const allowedSet = allowedExtensions
+    ? new Set(allowedExtensions.map((ext) => ext.toLowerCase()))
+    : null;
+  const headerCache = new Map<
+    string,
+    { headers: Record<string, string>; etag?: string; size: number; mtime: number }
+  >();
 
   return async (
     ctx: Context,
@@ -169,56 +176,80 @@ export function staticFiles(
     let filePath = join(root, relativePath);
 
     try {
-      const file = Bun.file(filePath);
-      let stat = (await file.exists()) ? file : null;
+      let file = Bun.file(filePath);
+      let exists = await file.exists();
 
       // Check if directory → try index file
-      if (!stat) {
+      if (!exists) {
         const indexPath = join(filePath, index);
-        const indexFile = Bun.file(indexPath);
-        if (await indexFile.exists()) {
+        file = Bun.file(indexPath);
+        exists = await file.exists();
+        if (exists) {
           filePath = indexPath;
-          stat = indexFile;
         }
       }
 
-      if (!stat || !(await stat.exists())) {
+      if (!exists) {
         return next();
       }
 
       // Check extension filter
       const ext = extname(filePath).slice(1).toLowerCase();
-      if (allowedExtensions && !allowedExtensions.includes(ext)) {
+      if (allowedSet && !allowedSet.has(ext)) {
         return next();
       }
 
+      const size = file.size;
+      const mtime = file.lastModified;
+      const cached = headerCache.get(filePath);
+
       // Build response headers
-      const headers = new Headers();
-      headers.set("Content-Type", getMimeType(ext));
-      headers.set("Cache-Control", cacheControl);
+      let headers: Headers;
+      let etagValue: string | undefined;
+
+      if (cached && cached.size === size && cached.mtime === mtime) {
+        headers = new Headers(cached.headers);
+        etagValue = cached.etag;
+      } else {
+        const baseHeaders: Record<string, string> = {
+          "Content-Type": getMimeType(ext),
+          "Cache-Control": cacheControl,
+        };
+
+        if (etag) {
+          etagValue = `"${mtime.toString(16)}-${size.toString(16)}"`;
+          baseHeaders.ETag = etagValue;
+        }
+
+        headerCache.set(filePath, {
+          headers: baseHeaders,
+          etag: etagValue,
+          size,
+          mtime,
+        });
+
+        headers = new Headers(baseHeaders);
+      }
 
       // ETag based on modified time and size
       if (etag) {
-        const size = stat.size;
-        const mtime = stat.lastModified;
-        const etagValue = `"${mtime.toString(16)}-${size.toString(16)}"`;
-        headers.set("ETag", etagValue);
+        const currentEtag = etagValue ?? headers.get("ETag");
 
         // Check If-None-Match
         const ifNoneMatch = ctx.header("If-None-Match");
-        if (ifNoneMatch === etagValue) {
+        if (currentEtag && ifNoneMatch === currentEtag) {
           return new Response(null, { status: 304, headers });
         }
       }
 
       // HEAD request
       if (ctx.method === "HEAD") {
-        headers.set("Content-Length", String(stat.size));
+        headers.set("Content-Length", String(size));
         return new Response(null, { status: 200, headers });
       }
 
       // Return file (Bun handles streaming automatically)
-      return new Response(stat, { headers });
+      return new Response(file, { headers });
     } catch (error) {
       // File not found or other error
       return next();
