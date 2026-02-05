@@ -63,7 +63,7 @@ export interface StaticOptions {
 
   /**
    * Кэшировать маленькие файлы в памяти
-   * @default true
+    * @default false
    */
   cacheSmallFiles?: boolean;
 
@@ -153,7 +153,7 @@ export function staticFiles(
     etag = true,
     listing = false,
     allowedExtensions,
-    cacheSmallFiles = true,
+    cacheSmallFiles = false,
     cacheMaxFileSize = 128 * 1024,
     cacheMaxEntries = 512,
     cacheMaxBytes = 16 * 1024 * 1024,
