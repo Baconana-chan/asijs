@@ -99,5 +99,5 @@ jobs:
         run: bun install
       
       - name: Run benchmarks
-        run: bun run bench
+        run: bun run bench:production
         continue-on-error: true
