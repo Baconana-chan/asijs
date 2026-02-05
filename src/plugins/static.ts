@@ -143,7 +143,12 @@ export function staticFiles(
     : null;
   const headerCache = new Map<
     string,
-    { headers: Record<string, string>; etag?: string; size: number; mtime: number }
+    {
+      headers: Record<string, string>;
+      etag?: string;
+      size: number;
+      mtime: number;
+    }
   >();
 
   return async (
