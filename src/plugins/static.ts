@@ -60,6 +60,30 @@ export interface StaticOptions {
    * @default undefined (все разрешены)
    */
   allowedExtensions?: string[];
+
+  /**
+   * Кэшировать маленькие файлы в памяти
+   * @default true
+   */
+  cacheSmallFiles?: boolean;
+
+  /**
+   * Максимальный размер файла для кэширования (в байтах)
+   * @default 131072 (128KB)
+   */
+  cacheMaxFileSize?: number;
+
+  /**
+   * Максимальное количество файлов в кэше
+   * @default 512
+   */
+  cacheMaxEntries?: number;
+
+  /**
+   * Максимальный суммарный размер кэша (в байтах)
+   * @default 16777216 (16MB)
+   */
+  cacheMaxBytes?: number;
 }
 
 // Минимальный набор MIME типов
@@ -129,6 +153,10 @@ export function staticFiles(
     etag = true,
     listing = false,
     allowedExtensions,
+    cacheSmallFiles = true,
+    cacheMaxFileSize = 128 * 1024,
+    cacheMaxEntries = 512,
+    cacheMaxBytes = 16 * 1024 * 1024,
   } = options;
 
   // Normalize prefix
@@ -150,6 +178,28 @@ export function staticFiles(
       mtime: number;
     }
   >();
+
+  const fileCache = new Map<
+    string,
+    {
+      body: Uint8Array;
+      headers: Record<string, string>;
+      etag?: string;
+      size: number;
+      mtime: number;
+    }
+  >();
+  let cacheBytes = 0;
+
+  const evictCache = () => {
+    while (fileCache.size > cacheMaxEntries || cacheBytes > cacheMaxBytes) {
+      const firstKey = fileCache.keys().next().value as string | undefined;
+      if (!firstKey) break;
+      const entry = fileCache.get(firstKey);
+      if (entry) cacheBytes -= entry.size;
+      fileCache.delete(firstKey);
+    }
+  };
 
   return async (
     ctx: Context,
@@ -211,12 +261,14 @@ export function staticFiles(
       // Build response headers
       let headers: Headers;
       let etagValue: string | undefined;
+      let baseHeaders: Record<string, string>;
 
       if (cached && cached.size === size && cached.mtime === mtime) {
-        headers = new Headers(cached.headers);
+        baseHeaders = cached.headers;
+        headers = new Headers(baseHeaders);
         etagValue = cached.etag;
       } else {
-        const baseHeaders: Record<string, string> = {
+        baseHeaders = {
           "Content-Type": getMimeType(ext),
           "Cache-Control": cacheControl,
         };
@@ -251,6 +303,31 @@ export function staticFiles(
       if (ctx.method === "HEAD") {
         headers.set("Content-Length", String(size));
         return new Response(null, { status: 200, headers });
+      }
+
+      const canCache = cacheSmallFiles && size <= cacheMaxFileSize;
+      if (canCache) {
+        const cachedFile = fileCache.get(filePath);
+        if (cachedFile && cachedFile.size === size && cachedFile.mtime === mtime) {
+          const responseHeaders = new Headers(cachedFile.headers);
+          responseHeaders.set("Content-Length", String(size));
+          return new Response(cachedFile.body, { headers: responseHeaders });
+        }
+
+        const buffer = new Uint8Array(await file.arrayBuffer());
+        fileCache.set(filePath, {
+          body: buffer,
+          headers: baseHeaders,
+          etag: etagValue,
+          size,
+          mtime,
+        });
+        cacheBytes += size;
+        evictCache();
+
+        const responseHeaders = new Headers(baseHeaders);
+        responseHeaders.set("Content-Length", String(size));
+        return new Response(buffer, { headers: responseHeaders });
       }
 
       // Return file (Bun handles streaming automatically)
