@@ -100,4 +100,5 @@ jobs:
       
       - name: Run benchmarks
         run: bun run bench:production
+        timeout-minutes: 30
         continue-on-error: true
