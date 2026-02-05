@@ -3,7 +3,7 @@
 <div align="center">
   <h3>⚡ Bun-first Web Framework — Fast, Type-safe, Simple</h3>
   <p>A high-performance web framework built exclusively for Bun runtime</p>
-  
+
   [![CI](https://github.com/user/asijs/actions/workflows/ci.yml/badge.svg)](https://github.com/user/asijs/actions/workflows/ci.yml)
   [![npm version](https://badge.fury.io/js/asijs.svg)](https://badge.fury.io/js/asijs)
   [![JSR](https://jsr.io/badges/@baconana/asijs)](https://jsr.io/@baconana/asijs)
@@ -358,75 +358,103 @@ app.listen(); // Uses PORT env or 3000
 
 ## 📊 Benchmarks
 
-AsiJS is built for performance. Benchmarks below are **averages from 6 GitHub Actions runs**.
+AsiJS is built for performance. Benchmarks below are **averages from 4 production runs** (`bun run bench/production.ts`).
 
-### Simple JSON Response (`GET /`)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| Elysia | ~616,000 | 0.0016ms | 100% |
-| Raw Bun | ~572,000 | 0.0017ms | 93% |
-| **AsiJS** | ~443,000 | 0.0023ms | 72% |
-| **AsiJS (compiled)** | ~438,000 | 0.0023ms | 71% |
-| Hono | ~296,000 | 0.0034ms | 48% |
-
-### Path Parameters (`GET /user/:id`)
+### Middleware Overhead (5 middleware chain)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| Elysia | ~498,000 | 0.0020ms | 100% |
-| Raw Bun | ~488,000 | 0.0020ms | 98% |
-| **AsiJS (compiled)** | ~391,000 | 0.0026ms | 79% |
-| **AsiJS** | ~378,000 | 0.0026ms | 76% |
-| Hono | ~220,000 | 0.0046ms | 44% |
+| Elysia (5 derive) | ~414,824 | 0.0025ms | 100% |
+| **AsiJS (5 middleware)** | ~188,980 | 0.0054ms | 45.6% |
+| Hono (5 middleware) | ~114,589 | 0.0088ms | 27.6% |
 
-### Query Parameters (`GET /search?q=...`)
+### Complex Validation (4-level nested object)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| Elysia | ~431,000 | 0.0023ms | 100% |
-| Raw Bun | ~319,000 | 0.0031ms | 74% |
-| **AsiJS (compiled)** | ~316,000 | 0.0031ms | 73% |
-| **AsiJS** | ~305,000 | 0.0033ms | 71% |
-| Hono | ~217,000 | 0.0046ms | 50% |
+| **AsiJS (complex validation)** | ~107,069 | 0.0094ms | **100%** |
+| Elysia (complex validation) | ~104,290 | 0.0096ms | 97.4% |
 
-### JSON POST (`POST /users`)
+### File Upload (1MB multipart)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| Elysia | ~270,000 | 0.0037ms | 100% |
-| Raw Bun | ~286,000 | 0.0035ms | 106% |
-| **AsiJS (compiled)** | ~229,000 | 0.0044ms | 85% |
-| **AsiJS** | ~215,000 | 0.0047ms | 80% |
-| Hono | ~164,000 | 0.0061ms | 61% |
+| Elysia (1MB) | ~4,890 | 0.2046ms | 100% |
+| Hono (1MB) | ~4,682 | 0.2140ms | 95.8% |
+| **AsiJS (1MB)** | ~4,651 | 0.2152ms | 95.1% |
 
-### With TypeBox Validation (`POST /users`)
+### File Upload (5MB multipart)
 
 | Framework | Requests/sec | Latency | Relative |
 |-----------|-------------|---------|----------|
-| **AsiJS (compiled + validation)** | ~244,000 | 0.0041ms | **100%** |
-| Elysia + validation | ~214,000 | 0.0047ms | 88% |
-| **AsiJS + validation** | ~169,000 | 0.0059ms | 69% |
+| Elysia (5MB) | ~964 | 1.0412ms | 100% |
+| Hono (5MB) | ~954 | 1.0533ms | 99.0% |
+| **AsiJS (5MB)** | ~822 | 1.2239ms | 85.2% |
 
-> 🏆 **AsiJS compiled routes match or beat Elysia when using validation!**
+### Static File Serving (small file)
+
+| Framework | Requests/sec | Latency | Relative |
+|-----------|-------------|---------|----------|
+| Hono (small) | ~157,329 | 0.0064ms | 100% |
+| **AsiJS (small)** | ~101,996 | 0.0099ms | 64.8% |
+
+### Static File Serving (2MB file)
+
+| Framework | Requests/sec | Latency | Relative |
+|-----------|-------------|---------|----------|
+| Hono (2MB) | ~157,367 | 0.0065ms | 100% |
+| **AsiJS (2MB)** | ~136,043 | 0.0074ms | 86.5% |
+
+### JSX / HTML Rendering (100-row table)
+
+| Framework | Requests/sec | Latency | Relative |
+|-----------|-------------|---------|----------|
+| **AsiJS (JSX + renderToString)** | ~54,878 | 0.0183ms | **100%** |
+| AsiJS (string template) | ~31,811 | 0.0315ms | 58.0% |
+| Hono (string template) | ~19,582 | 0.0512ms | 35.7% |
+
+### Blog API - GET /posts (list + pagination)
+
+| Framework | Requests/sec | Latency | Relative |
+|-----------|-------------|---------|----------|
+| Elysia (GET /posts) | ~152,197 | 0.0066ms | 100% |
+| **AsiJS (GET /posts)** | ~151,805 | 0.0066ms | 99.7% |
+| Hono (GET /posts) | ~124,925 | 0.0081ms | 82.1% |
+
+### Blog API - GET /posts/:id (single post)
+
+| Framework | Requests/sec | Latency | Relative |
+|-----------|-------------|---------|----------|
+| Elysia (GET /posts/:id) | ~320,098 | 0.0032ms | 100% |
+| **AsiJS (GET /posts/:id)** | ~273,989 | 0.0038ms | 85.6% |
+| Hono (GET /posts/:id) | ~195,105 | 0.0052ms | 61.0% |
+
+### Blog API - POST /posts (auth + validation)
+
+| Framework | Requests/sec | Latency | Relative |
+|-----------|-------------|---------|----------|
+| **AsiJS (POST /posts)** | ~161,090 | 0.0063ms | **100%** |
+| Elysia (POST /posts) | ~137,068 | 0.0074ms | 85.1% |
+| Hono (POST /posts) | ~109,381 | 0.0092ms | 67.9% |
 
 ### Key Takeaways
 
-- 🚀 **AsiJS compiled** is ~71–79% of Elysia on GET routes
-- ✅ **With validation**, AsiJS compiled is ~12% faster than Elysia on these runs
-- 📈 **30–55% faster than Hono** across all benchmarks
-- ⚡ Query parameter handling is consistently strong (~73% of Elysia)
+- 🚀 **Middleware chains** land at ~46% of Elysia while staying ahead of Hono
+- ✅ **Complex validation** is effectively on par with Elysia in production
+- 📦 **Static files** reach ~65% (small) and ~86% (2MB) of Hono
+- ⚡ **JSX rendering** leads the field; string templates stay competitive
+- 🧪 **Blog API** shows AsiJS leading on POST and near-parity on GET list
 
 Run benchmarks yourself:
 ```bash
-bun run bench
+bun run bench:production
 ```
 
 ### Benchmark Notes
 
 - All frameworks use explicit `request.json()` parsing for fair comparison
-- Request factories used instead of `clone()` to avoid ReadableStream overhead  
-- 100,000 iterations per test with 5,000 warmup iterations
+- Request factories used instead of `clone()` to avoid ReadableStream overhead
+- 10,000 iterations per test with 1,000 warmup iterations
 - Response status validated during warmup and benchmark
 
 ## 🧪 Testing
