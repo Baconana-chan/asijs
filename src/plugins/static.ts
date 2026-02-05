@@ -63,7 +63,7 @@ export interface StaticOptions {
 
   /**
    * Кэшировать маленькие файлы в памяти
-    * @default false
+   * @default false
    */
   cacheSmallFiles?: boolean;
 
@@ -135,21 +135,6 @@ const MIME_TYPES: Record<string, string> = {
   map: "application/json",
 };
 
-type StaticHeaderCacheEntry = {
-  headers: Record<string, string>;
-  etag?: string;
-  size: number;
-  mtime: number;
-};
-
-type StaticFileCacheEntry = {
-  body: ArrayBuffer;
-  headers: Record<string, string>;
-  etag?: string;
-  size: number;
-  mtime: number;
-};
-
 function getMimeType(ext: string): string {
   return MIME_TYPES[ext] || "application/octet-stream";
 }
@@ -184,15 +169,30 @@ export function staticFiles(
   const allowedSet = allowedExtensions
     ? new Set(allowedExtensions.map((ext) => ext.toLowerCase()))
     : null;
-  const headerCache = new Map<string, StaticHeaderCacheEntry>();
-  const fileCache = new Map<string, StaticFileCacheEntry>();
+  const headerCache = new Map<
+    string,
+    {
+      headers: Record<string, string>;
+      etag?: string;
+      size: number;
+      mtime: number;
+    }
+  >();
+
+  const fileCache = new Map<
+    string,
+    {
+      body: ArrayBuffer;
+      headers: Record<string, string>;
+      etag?: string;
+      size: number;
+      mtime: number;
+    }
+  >();
   let cacheBytes = 0;
 
   const evictCache = () => {
-    while (
-      fileCache.size > cacheMaxEntries ||
-      cacheBytes > cacheMaxBytes
-    ) {
+    while (fileCache.size > cacheMaxEntries || cacheBytes > cacheMaxBytes) {
       const firstKey = fileCache.keys().next().value as string | undefined;
       if (!firstKey) break;
       const entry = fileCache.get(firstKey);
