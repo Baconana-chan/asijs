@@ -63,6 +63,7 @@
     "start": "bun run index.ts",
     "test": "bun test",
     "bench": "bun run bench/index.ts",
+    "bench:production": "bun run bench/production.ts",
     "build": "bun run build:js && bun run build:types",
     "build:js": "bun build src/index.ts src/cli.ts src/jsx-runtime.ts src/jsx-dev-runtime.ts src/i18n.ts src/edge.ts src/testing.ts src/database.ts --outdir dist --target node --minify --external @sinclair/typebox --splitting",
     "build:types": "tsc --project tsconfig.build.json",

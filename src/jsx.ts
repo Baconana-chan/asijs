@@ -161,6 +161,7 @@ const booleanAttributes = new Set([
  * Convert props to HTML attributes string
  */
 function propsToAttributes(props: JSXProps): string {
+  if (!props) return "";
   const attrs: string[] = [];
 
   for (const [key, value] of Object.entries(props)) {
@@ -288,7 +289,7 @@ export async function renderToString(element: JSXNode): Promise<string> {
 
   // Handle Fragment
   if (type === "" || type === Fragment) {
-    return renderChildren(props.children);
+    return renderChildren(props?.children);
   }
 
   // Handle component functions
@@ -307,7 +308,7 @@ export async function renderToString(element: JSXNode): Promise<string> {
   }
 
   // Elements with children
-  const children = await renderChildren(props.children);
+  const children = await renderChildren(props?.children);
   return `<${tagName}${attributes}>${children}</${tagName}>`;
 }
 
@@ -368,7 +369,7 @@ async function streamElement(
 
   // Handle Fragment
   if (type === "" || type === Fragment) {
-    await streamChildren(props.children, controller, encoder);
+    await streamChildren(props?.children, controller, encoder);
     return;
   }
 
@@ -393,7 +394,7 @@ async function streamElement(
   controller.enqueue(encoder.encode(`<${tagName}${attributes}>`));
 
   // Stream children
-  await streamChildren(props.children, controller, encoder);
+  await streamChildren(props?.children, controller, encoder);
 
   // Stream closing tag
   controller.enqueue(encoder.encode(`</${tagName}>`));
