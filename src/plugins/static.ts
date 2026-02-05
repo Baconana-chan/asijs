@@ -192,7 +192,10 @@ export function staticFiles(
   let cacheBytes = 0;
 
   const evictCache = () => {
-    while (fileCache.size > cacheMaxEntries || cacheBytes > cacheMaxBytes) {
+    while (
+      fileCache.size > cacheMaxEntries ||
+      cacheBytes > cacheMaxBytes
+    ) {
       const firstKey = fileCache.keys().next().value as string | undefined;
       if (!firstKey) break;
       const entry = fileCache.get(firstKey);
