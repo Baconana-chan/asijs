@@ -182,7 +182,7 @@ export function staticFiles(
   const fileCache = new Map<
     string,
     {
-      body: Uint8Array;
+      body: ArrayBuffer;
       headers: Record<string, string>;
       etag?: string;
       size: number;
@@ -308,13 +308,17 @@ export function staticFiles(
       const canCache = cacheSmallFiles && size <= cacheMaxFileSize;
       if (canCache) {
         const cachedFile = fileCache.get(filePath);
-        if (cachedFile && cachedFile.size === size && cachedFile.mtime === mtime) {
+        if (
+          cachedFile &&
+          cachedFile.size === size &&
+          cachedFile.mtime === mtime
+        ) {
           const responseHeaders = new Headers(cachedFile.headers);
           responseHeaders.set("Content-Length", String(size));
           return new Response(cachedFile.body, { headers: responseHeaders });
         }
 
-        const buffer = new Uint8Array(await file.arrayBuffer());
+        const buffer = await file.arrayBuffer();
         fileCache.set(filePath, {
           body: buffer,
           headers: baseHeaders,
