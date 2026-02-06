@@ -45,9 +45,12 @@ import { swagger } from "@elysiajs/swagger";
 import { rateLimit as elysiaRateLimit } from "elysia-rate-limit";
 import { Hono } from "hono";
 
-// CI-aware iteration counts
-const ITERATIONS = process.env.CI ? 5_000 : 10_000;
-const WARMUP = process.env.CI ? 500 : 1_000;
+// CI-aware iteration counts (override with BENCH_ITERATIONS / BENCH_WARMUP)
+const ITERATIONS = getEnvNumber(
+  "BENCH_ITERATIONS",
+  process.env.CI ? 10_000 : 10_000,
+);
+const WARMUP = getEnvNumber("BENCH_WARMUP", process.env.CI ? 1000 : 1_000);
 
 const JWT_SECRET = "benchmark-secret-key-for-testing-only";
 
@@ -60,6 +63,52 @@ interface BenchResult {
 }
 
 type RequestFactory = () => Request;
+
+const FIXED_DATE = "2025-01-01T00:00:00.000Z";
+const PRODUCT_SEED = 1337;
+
+function getEnvNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function createRng(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+interface ProductStore {
+  products: Map<number, any>;
+  nextProductId: number;
+  seed: number;
+}
+
+function createProductStore(seed: number = PRODUCT_SEED): ProductStore {
+  return { products: new Map<number, any>(), nextProductId: 1, seed };
+}
+
+function seedProducts(store: ProductStore) {
+  store.products.clear();
+  store.nextProductId = 1;
+  const rng = createRng(store.seed);
+
+  for (let i = 0; i < 50; i++) {
+    const id = store.nextProductId++;
+    store.products.set(id, {
+      id,
+      name: `Product ${id}`,
+      price: +(rng() * 100).toFixed(2),
+      category: ["electronics", "books", "clothing"][i % 3],
+      inStock: i % 5 !== 0,
+      rating: +(1 + rng() * 4).toFixed(1),
+    });
+  }
+}
 
 // ========== Benchmark Runner ==========
 
@@ -287,7 +336,7 @@ function createAuthPostAsiApp() {
         id: 42,
         ...body,
         authorId: (ctx.store.user as any)?.sub,
-        createdAt: new Date().toISOString(),
+        createdAt: FIXED_DATE,
       });
     },
     {
@@ -330,7 +379,7 @@ function createAuthPostElysiaApp() {
           id: 42,
           ...body,
           authorId: payload.sub,
-          createdAt: new Date().toISOString(),
+          createdAt: FIXED_DATE,
         };
       },
       {
@@ -378,7 +427,7 @@ function createAuthPostHonoApp() {
           id: 42,
           ...body,
           authorId: payload.sub,
-          createdAt: new Date().toISOString(),
+          createdAt: FIXED_DATE,
         },
         201,
       );
@@ -627,26 +676,9 @@ async function benchGateway() {
 // Full REST API with validation + JWT + CORS + auto-generated docs
 // ============================================================================
 
-const products = new Map<number, any>();
-let nextProductId = 1;
 
-function seedProducts() {
-  products.clear();
-  nextProductId = 1;
-  for (let i = 0; i < 50; i++) {
-    const id = nextProductId++;
-    products.set(id, {
-      id,
-      name: `Product ${id}`,
-      price: +(Math.random() * 100).toFixed(2),
-      category: ["electronics", "books", "clothing"][i % 3],
-      inStock: i % 5 !== 0,
-      rating: +(1 + Math.random() * 4).toFixed(1),
-    });
-  }
-}
 
-function createCrudAsiApp() {
+function createCrudAsiApp(store: ProductStore) {
   const app = new Asi({ development: false });
   const jwtHelper = asiJwt({ secret: JWT_SECRET });
 
@@ -683,7 +715,7 @@ function createCrudAsiApp() {
       const limit = parseInt(ctx.query.limit || "10", 10);
       const offset = (page - 1) * limit;
 
-      let items = Array.from(products.values());
+      let items = Array.from(store.products.values());
       if (category) {
         items = items.filter((p) => p.category === category);
       }
@@ -709,7 +741,7 @@ function createCrudAsiApp() {
   app.get(
     "/api/products/:id",
     (ctx) => {
-      const product = products.get(parseInt(ctx.params.id, 10));
+      const product = store.products.get(parseInt(ctx.params.id, 10));
       if (!product) return ctx.status(404).jsonResponse({ error: "Not found" });
       return product;
     },
@@ -723,9 +755,9 @@ function createCrudAsiApp() {
     "/api/products",
     (ctx) => {
       const body = ctx.body as any;
-      const id = nextProductId++;
+      const id = store.nextProductId++;
       const product = { id, ...body, rating: 0 };
-      products.set(id, product);
+      store.products.set(id, product);
       return ctx.status(201).jsonResponse(product);
     },
     {
@@ -746,11 +778,11 @@ function createCrudAsiApp() {
     "/api/products/:id",
     (ctx) => {
       const id = parseInt(ctx.params.id, 10);
-      const existing = products.get(id);
+      const existing = store.products.get(id);
       if (!existing) return ctx.status(404).jsonResponse({ error: "Not found" });
       const body = ctx.body as any;
       const updated = { ...existing, ...body };
-      products.set(id, updated);
+      store.products.set(id, updated);
       return updated;
     },
     {
@@ -772,7 +804,7 @@ function createCrudAsiApp() {
     "/api/products/:id",
     (ctx) => {
       const id = parseInt(ctx.params.id, 10);
-      if (!products.delete(id)) {
+      if (!store.products.delete(id)) {
         return ctx.status(404).jsonResponse({ error: "Not found" });
       }
       return { deleted: true };
@@ -787,7 +819,7 @@ function createCrudAsiApp() {
   return app;
 }
 
-function createCrudElysiaApp() {
+function createCrudElysiaApp(store: ProductStore) {
   return new Elysia()
     .use(elysiaCors())
     .use(elysiaJwt({ name: "jwt", secret: JWT_SECRET }))
@@ -805,7 +837,7 @@ function createCrudElysiaApp() {
         const limit = parseInt(query.limit || "10", 10);
         const offset = (page - 1) * limit;
 
-        let items = Array.from(products.values());
+        let items = Array.from(store.products.values());
         if (query.category) {
           items = items.filter((p: any) => p.category === query.category);
         }
@@ -823,7 +855,7 @@ function createCrudElysiaApp() {
     .get(
       "/api/products/:id",
       ({ params }) => {
-        const product = products.get(parseInt(params.id, 10));
+        const product = store.products.get(parseInt(params.id, 10));
         if (!product) throw new Error("Not found");
         return product;
       },
@@ -836,9 +868,9 @@ function createCrudElysiaApp() {
         const payload = await jwt.verify(bearer);
         if (!payload) throw new Error("Invalid token");
 
-        const id = nextProductId++;
+        const id = store.nextProductId++;
         const product = { id, ...body, rating: 0 };
-        products.set(id, product);
+        store.products.set(id, product);
         set.status = 201;
         return product;
       },
@@ -859,10 +891,10 @@ function createCrudElysiaApp() {
         if (!payload) throw new Error("Invalid token");
 
         const id = parseInt(params.id, 10);
-        const existing = products.get(id);
+        const existing = store.products.get(id);
         if (!existing) throw new Error("Not found");
         const updated = { ...existing, ...body };
-        products.set(id, updated);
+        store.products.set(id, updated);
         return updated;
       },
       {
@@ -883,14 +915,14 @@ function createCrudElysiaApp() {
         if (!payload) throw new Error("Invalid token");
 
         const id = parseInt(params.id, 10);
-        if (!products.delete(id)) throw new Error("Not found");
+        if (!store.products.delete(id)) throw new Error("Not found");
         return { deleted: true };
       },
       { params: t.Object({ id: t.String() }) },
     );
 }
 
-function createCrudHonoApp() {
+function createCrudHonoApp(store: ProductStore) {
   const app = new Hono();
 
   app.use("*", honoCors());
@@ -914,14 +946,14 @@ function createCrudHonoApp() {
     const limit = parseInt(c.req.query("limit") || "10", 10);
     const offset = (page - 1) * limit;
 
-    let items = Array.from(products.values());
+    let items = Array.from(store.products.values());
     if (category) items = items.filter((p: any) => p.category === category);
     const paginated = items.slice(offset, offset + limit);
     return c.json({ products: paginated, pagination: { page, limit, total: items.length } });
   });
 
   app.get("/api/products/:id", (c) => {
-    const product = products.get(parseInt(c.req.param("id"), 10));
+    const product = store.products.get(parseInt(c.req.param("id"), 10));
     if (!product) return c.json({ error: "Not found" }, 404);
     return c.json(product);
   });
@@ -935,9 +967,9 @@ function createCrudHonoApp() {
       return c.json({ error: "Validation failed" }, 400);
     }
 
-    const id = nextProductId++;
+    const id = store.nextProductId++;
     const product = { id, ...body, rating: 0 };
-    products.set(id, product);
+    store.products.set(id, product);
     return c.json(product, 201);
   });
 
@@ -946,12 +978,12 @@ function createCrudHonoApp() {
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const id = parseInt(c.req.param("id"), 10);
-    const existing = products.get(id);
+    const existing = store.products.get(id);
     if (!existing) return c.json({ error: "Not found" }, 404);
 
     const body = await c.req.json();
     const updated = { ...existing, ...body };
-    products.set(id, updated);
+    store.products.set(id, updated);
     return c.json(updated);
   });
 
@@ -960,7 +992,7 @@ function createCrudHonoApp() {
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const id = parseInt(c.req.param("id"), 10);
-    if (!products.delete(id)) return c.json({ error: "Not found" }, 404);
+    if (!store.products.delete(id)) return c.json({ error: "Not found" }, 404);
     return c.json({ deleted: true });
   });
 
@@ -968,16 +1000,25 @@ function createCrudHonoApp() {
 }
 
 async function benchCrud() {
-  seedProducts();
+  const asiStore = createProductStore();
+  const elysiaStore = createProductStore();
+  const honoStore = createProductStore();
 
-  const asiApp = createCrudAsiApp();
-  const elysiaApp = createCrudElysiaApp();
-  const honoApp = createCrudHonoApp();
+  const asiApp = createCrudAsiApp(asiStore);
+  const elysiaApp = createCrudElysiaApp(elysiaStore);
+  const honoApp = createCrudHonoApp(honoStore);
+
+  const resetStores = () => {
+    seedProducts(asiStore);
+    seedProducts(elysiaStore);
+    seedProducts(honoStore);
+  };
 
   // 4a: GET list (no auth needed)
   const createListReq: RequestFactory = () =>
     new Request("http://localhost/api/products?page=2&limit=10&category=electronics");
 
+  resetStores();
   const listResults: BenchResult[] = [];
   listResults.push(
     await runBench("AsiJS (GET list)", (r) => asiApp.handle(r), createListReq),
@@ -995,6 +1036,7 @@ async function benchCrud() {
   const createGetReq: RequestFactory = () =>
     new Request("http://localhost/api/products/25");
 
+  resetStores();
   const getResults: BenchResult[] = [];
   getResults.push(
     await runBench("AsiJS (GET single)", (r) => asiApp.handle(r), createGetReq),
@@ -1046,6 +1088,7 @@ async function benchCrud() {
       body: createPostBody,
     });
 
+  resetStores();
   const postResults: BenchResult[] = [];
   postResults.push(
     await runBench("AsiJS (POST create)", (r) => asiApp.handle(r), createPostReqAsi),
@@ -1095,6 +1138,7 @@ async function benchCrud() {
       body: updateBody,
     });
 
+  resetStores();
   const putResults: BenchResult[] = [];
   putResults.push(
     await runBench("AsiJS (PUT update)", (r) => asiApp.handle(r), createPutReqAsi),
@@ -1225,4 +1269,15 @@ async function main() {
   console.log("   - JWT tokens pre-signed to isolate request handling performance");
 }
 
-main().catch(console.error);
+main()
+  .then(() => {
+    if (typeof process !== "undefined" && process.exit) {
+      process.exit(0);
+    }
+  })
+  .catch((error) => {
+    console.error(error);
+    if (typeof process !== "undefined" && process.exit) {
+      process.exit(1);
+    }
+  });
