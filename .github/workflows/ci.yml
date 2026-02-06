@@ -98,7 +98,12 @@ jobs:
       - name: Install dependencies
         run: bun install
       
-      - name: Run benchmarks
+      - name: Run production benchmarks
         run: bun run bench:production
+        timeout-minutes: 30
+        continue-on-error: true
+      
+      - name: Run fullstack benchmarks
+        run: bun run bench:fullstack
         timeout-minutes: 30
         continue-on-error: true
