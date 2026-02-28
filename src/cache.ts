@@ -249,7 +249,7 @@ export function buildCacheControl(options: CacheOptions): string {
 export function etag(options: ETagOptions = {}): Middleware {
   const {
     weak = false,
-    skipContentTypes = ["text/event-stream", "multipart/"],
+    skipContentTypes = ["text/event-stream", "multipart/", "application/json"],
     minSize = 0,
   } = options;
 
@@ -326,25 +326,20 @@ export function cache(options: CacheOptions = {}): AfterHandler {
       return response;
     }
 
-    const newHeaders = new Headers(response.headers);
-    newHeaders.set("Cache-Control", cacheControl);
+    response.headers.set("Cache-Control", cacheControl);
 
     // Add Vary headers
     if (options.vary && options.vary.length > 0) {
-      const existing = newHeaders.get("Vary");
+      const existing = response.headers.get("Vary");
       const newVary = existing
         ? [...existing.split(",").map((v) => v.trim()), ...options.vary].join(
             ", ",
           )
         : options.vary.join(", ");
-      newHeaders.set("Vary", newVary);
+      response.headers.set("Vary", newVary);
     }
 
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: newHeaders,
-    });
+    return response;
   };
 }
 

@@ -50,6 +50,14 @@ export interface StaticOptions {
   etag?: boolean;
 
   /**
+   * Стратегия генерации ETag
+   * - "mtime": на основе mtime+size (быстро, по умолчанию)
+   * - "bun": Bun.hash() для небольших файлов (точнее, но дороже)
+   * @default "mtime"
+   */
+  etagStrategy?: "mtime" | "bun";
+
+  /**
    * Показывать listing директории
    * @default false
    */
@@ -139,6 +147,15 @@ function getMimeType(ext: string): string {
   return MIME_TYPES[ext] || "application/octet-stream";
 }
 
+function buildBunHashEtag(buffer: ArrayBuffer): string {
+  const hash = Bun.hash(new Uint8Array(buffer));
+  const hex =
+    typeof hash === "bigint"
+      ? hash.toString(16)
+      : (hash >>> 0).toString(16);
+  return `"${hex}"`;
+}
+
 /**
  * Создать middleware для статических файлов
  */
@@ -151,6 +168,7 @@ export function staticFiles(
     index = "index.html",
     maxAge = 0,
     etag = true,
+    etagStrategy = "mtime",
     listing = false,
     allowedExtensions,
     cacheSmallFiles = false,
@@ -176,6 +194,7 @@ export function staticFiles(
       etag?: string;
       size: number;
       mtime: number;
+      etagStrategy?: "mtime" | "bun";
     }
   >();
 
@@ -256,6 +275,8 @@ export function staticFiles(
 
       const size = file.size;
       const mtime = file.lastModified;
+      const canCache = cacheSmallFiles && size <= cacheMaxFileSize;
+      const canHash = etag && etagStrategy === "bun" && size <= cacheMaxFileSize;
       const cached = headerCache.get(filePath);
 
       // Build response headers
@@ -263,7 +284,12 @@ export function staticFiles(
       let etagValue: string | undefined;
       let baseHeaders: Record<string, string>;
 
-      if (cached && cached.size === size && cached.mtime === mtime) {
+      if (
+        cached &&
+        cached.size === size &&
+        cached.mtime === mtime &&
+        cached.etagStrategy === etagStrategy
+      ) {
         baseHeaders = cached.headers;
         headers = new Headers(baseHeaders);
         etagValue = cached.etag;
@@ -273,7 +299,7 @@ export function staticFiles(
           "Cache-Control": cacheControl,
         };
 
-        if (etag) {
+        if (etag && !canHash) {
           etagValue = `"${mtime.toString(16)}-${size.toString(16)}"`;
           baseHeaders.ETag = etagValue;
         }
@@ -283,17 +309,26 @@ export function staticFiles(
           etag: etagValue,
           size,
           mtime,
+          etagStrategy,
         });
 
         headers = new Headers(baseHeaders);
       }
 
-      // ETag based on modified time and size
+      const cachedFile = canCache ? fileCache.get(filePath) : undefined;
+      if (cachedFile && cachedFile.size === size && cachedFile.mtime === mtime) {
+        baseHeaders = cachedFile.headers;
+        headers = new Headers(baseHeaders);
+        if (cachedFile.etag) {
+          etagValue = cachedFile.etag;
+        }
+      }
+
+      const ifNoneMatch = etag ? ctx.header("If-None-Match") : null;
+
+      // ETag check
       if (etag) {
         const currentEtag = etagValue ?? headers.get("ETag");
-
-        // Check If-None-Match
-        const ifNoneMatch = ctx.header("If-None-Match");
         if (currentEtag && ifNoneMatch === currentEtag) {
           return new Response(null, { status: 304, headers });
         }
@@ -305,20 +340,29 @@ export function staticFiles(
         return new Response(null, { status: 200, headers });
       }
 
-      const canCache = cacheSmallFiles && size <= cacheMaxFileSize;
       if (canCache) {
-        const cachedFile = fileCache.get(filePath);
-        if (
-          cachedFile &&
-          cachedFile.size === size &&
-          cachedFile.mtime === mtime
-        ) {
+        if (cachedFile && cachedFile.size === size && cachedFile.mtime === mtime) {
           const responseHeaders = new Headers(cachedFile.headers);
           responseHeaders.set("Content-Length", String(size));
           return new Response(cachedFile.body, { headers: responseHeaders });
         }
 
         const buffer = await file.arrayBuffer();
+        if (canHash) {
+          etagValue = buildBunHashEtag(buffer);
+          baseHeaders = { ...baseHeaders, ETag: etagValue };
+          headerCache.set(filePath, {
+            headers: baseHeaders,
+            etag: etagValue,
+            size,
+            mtime,
+            etagStrategy,
+          });
+          if (etagValue && ifNoneMatch === etagValue) {
+            const responseHeaders = new Headers(baseHeaders);
+            return new Response(null, { status: 304, headers: responseHeaders });
+          }
+        }
         fileCache.set(filePath, {
           body: buffer,
           headers: baseHeaders,
@@ -329,6 +373,26 @@ export function staticFiles(
         cacheBytes += size;
         evictCache();
 
+        const responseHeaders = new Headers(baseHeaders);
+        responseHeaders.set("Content-Length", String(size));
+        return new Response(buffer, { headers: responseHeaders });
+      }
+
+      if (canHash) {
+        const buffer = await file.arrayBuffer();
+        etagValue = buildBunHashEtag(buffer);
+        baseHeaders = { ...baseHeaders, ETag: etagValue };
+        headerCache.set(filePath, {
+          headers: baseHeaders,
+          etag: etagValue,
+          size,
+          mtime,
+          etagStrategy,
+        });
+        if (etagValue && ifNoneMatch === etagValue) {
+          const responseHeaders = new Headers(baseHeaders);
+          return new Response(null, { status: 304, headers: responseHeaders });
+        }
         const responseHeaders = new Headers(baseHeaders);
         responseHeaders.set("Content-Length", String(size));
         return new Response(buffer, { headers: responseHeaders });
