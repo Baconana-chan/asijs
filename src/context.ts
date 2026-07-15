@@ -1,3 +1,11 @@
+import type { NegotiateHandlers, NegotiateOptions } from "./negotiate";
+import { negotiateResponse } from "./negotiate";
+import type { StreamJsonOptions, StreamNDJsonOptions } from "./json-stream";
+import {
+  createJsonStream,
+  createNDJsonStream,
+} from "./json-stream";
+
 /**
  * Context — объект контекста запроса (аналог ctx в Elysia/Koa)
  */
@@ -27,6 +35,9 @@ export class Context<
 
   // Store для передачи данных между middleware
   store: Record<string, unknown> = {};
+
+  /** Session object (added by sessions() middleware) */
+  session?: import("./session").Session;
 
   // Валидированные данные (устанавливаются после валидации)
   /** Валидированное тело запроса */
@@ -369,6 +380,92 @@ export class Context<
     this.applySetCookies();
     return new Response(data, {
       status: this._status,
+      headers: this._headers,
+    });
+  }
+
+  /**
+   * Content negotiation — automatically selects the best response format
+   * based on the Accept request header.
+   *
+   * @example
+   * ```ts
+   * return ctx.negotiate({
+   *   json: { id: 1, name: "Alice" },
+   *   html: "<h1>Alice</h1>",
+   * });
+   *
+   * // With async handlers
+   * return ctx.negotiate({
+   *   json: () => db.findUser(id),
+   *   html: async () => renderUserTemplate(await db.findUser(id)),
+   * });
+   * ```
+   */
+  negotiate(
+    handlers: NegotiateHandlers,
+    options?: NegotiateOptions,
+  ): Promise<Response> {
+    return negotiateResponse(this, handlers, options);
+  }
+
+  // ===== JSON Streaming =====
+
+  /**
+   * Stream a JSON array without buffering the entire payload in memory.
+   *
+   * Accepts both synchronous arrays and async iterables, making it ideal
+   * for paginated database results or large datasets.
+   *
+   * @example
+   * ```ts
+   * // Sync array
+   * return ctx.streamJson([{ id: 1 }, { id: 2 }]);
+   *
+   * // Async generator (paginated)
+   * return ctx.streamJson(asyncDbResults());
+   * ```
+   */
+  streamJson<T = unknown>(
+    data: T[] | AsyncIterable<T>,
+    options: StreamJsonOptions = {},
+  ): Response {
+    this._headers.set("Content-Type", "application/json");
+    this._headers.set("X-Content-Type-Options", "nosniff");
+    this._headers.set("Cache-Control", "no-cache");
+    this.applySetCookies();
+    const stream = createJsonStream(data, { replacer: options.replacer });
+    return new Response(stream, {
+      status: options.status ?? this._status,
+      headers: this._headers,
+    });
+  }
+
+  /**
+   * Stream NDJSON (newline-delimited JSON) — one JSON object per line.
+   *
+   * Useful for log streams, real-time data feeds, and streaming ETL.
+   * Content-Type is set to `application/x-ndjson`.
+   *
+   * @example
+   * ```ts
+   * return ctx.streamNDJson([
+   *   { level: "info", msg: "started" },
+   *   { level: "warn", msg: "high memory" },
+   * ]);
+   * ```
+   */
+  streamNDJson<T = unknown>(
+    data: AsyncIterable<T> | Iterable<T>,
+    options: StreamNDJsonOptions = {},
+  ): Response {
+    this._headers.set("Content-Type", "application/x-ndjson");
+    this._headers.set("X-Content-Type-Options", "nosniff");
+    this._headers.set("Cache-Control", "no-cache");
+    this.applySetCookies();
+    const stream = createNDJsonStream(data, { replacer: options.replacer });
+    return new Response(stream, {
+      status: options.status ?? this._status,
       headers: this._headers,
     });
   }

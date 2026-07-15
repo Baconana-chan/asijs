@@ -1,0 +1,79 @@
+{
+  "name": "vscode-asijs",
+  "displayName": "AsiJS",
+  "description": "AsiJS framework support for VS Code — snippets, route explorer, and inline documentation",
+  "version": "0.1.0",
+  "publisher": "asijs",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "asijs",
+    "bun",
+    "typescript",
+    "api",
+    "framework"
+  ],
+  "icon": "icon.png",
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:javascript"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "asijs.openRouteExplorer",
+        "title": "AsiJS: Open Route Explorer"
+      },
+      {
+        "command": "asijs.showRoute",
+        "title": "AsiJS: Show Route Definition"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "typescript",
+        "path": "./snippets/typescript.json"
+      },
+      {
+        "language": "javascript",
+        "path": "./snippets/typescript.json"
+      },
+      {
+        "language": "typescriptreact",
+        "path": "./snippets/typescript.json"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "asijs.showRoute",
+          "when": "editorLangId == typescript",
+          "group": "asijs"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "asijs.openRouteExplorer",
+          "when": "explorerResourceIsFolder",
+          "group": "asijs"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -watch -p tsconfig.json",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  }
+}

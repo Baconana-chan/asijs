@@ -14,7 +14,6 @@
 import { Asi, Type } from "../src";
 import { Elysia, t } from "elysia";
 import { Hono } from "hono";
-
 const ITERATIONS = 100_000;
 const WARMUP = 5_000;
 

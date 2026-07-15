@@ -22,7 +22,7 @@ import {
 const app = new Asi({ development: true });
 
 // Enable graceful shutdown
-app.plugin(lifecycle({ verbose: true }));
+await app.plugin(lifecycle({ verbose: true }));
 
 // Create scheduler
 const scheduler = new Scheduler({ verbose: true });
@@ -73,40 +73,37 @@ scheduler.addJob({
 
 app.get("/", () => ({
   message: "Scheduler Example",
-  jobs: scheduler.listJobs().map(j => ({
-    name: j.name,
-    schedule: j.schedule,
-    lastRun: j.lastRun,
-    nextRun: j.nextRun,
+  jobs: scheduler.listJobs().map((job) => ({
+    name: job.name,
+    schedule: job.schedule,
+    ...scheduler.getJobStatus(job.name),
   })),
 }));
 
 app.get("/jobs", () => {
-  return scheduler.listJobs().map(j => ({
-    name: j.name,
-    schedule: typeof j.schedule === "number" 
-      ? `Every ${j.schedule}ms` 
-      : j.schedule,
-    running: j.running,
-    lastRun: j.lastRun,
-    nextRun: j.nextRun,
-    runCount: j.runCount,
+  return scheduler.listJobs().map((job) => ({
+    name: job.name,
+    schedule:
+      typeof job.schedule === "number"
+        ? `Every ${job.schedule}ms`
+        : job.schedule,
+    ...scheduler.getJobStatus(job.name),
   }));
 });
 
 app.post("/jobs/:name/run", async (ctx) => {
-  const job = scheduler.getJob(ctx.params.name);
-  
-  if (!job) {
+  const status = scheduler.getJobStatus(ctx.params.name);
+
+  if (!status) {
     return ctx.status(404).jsonResponse({ error: "Job not found" });
   }
   
   // Run immediately
-  await job.run();
+  await scheduler.runNow(ctx.params.name);
   
   return {
-    message: `Job ${job.name} executed`,
-    runCount: job.runCount,
+    message: `Job ${ctx.params.name} executed`,
+    runCount: scheduler.getJobStatus(ctx.params.name)?.runCount ?? 0,
   };
 });
 
@@ -128,19 +125,27 @@ scheduler.start();
 // Handle shutdown
 process.on("SIGINT", async () => {
   console.log("\n⏳ Stopping scheduler...");
-  await scheduler.stop();
+  scheduler.stop();
   process.exit(0);
 });
 
-app.listen(3000, () => {
-  console.log("\n📚 Scheduler is running!");
-  console.log("   Jobs:");
-  for (const job of scheduler.listJobs()) {
-    console.log(`   - ${job.name}: ${job.schedule}`);
-  }
-  console.log("");
-  console.log("📚 Try these commands:");
-  console.log("  curl http://localhost:3000/jobs");
-  console.log("  curl -X POST http://localhost:3000/jobs/health-ping/run");
-  console.log("");
-});
+const port = Number(process.env.PORT ?? 3000);
+const server = app.listen(port);
+
+console.log("\n📚 Scheduler is running!");
+console.log("   Jobs:");
+for (const job of scheduler.listJobs()) {
+  console.log(`   - ${job.name}: ${job.schedule}`);
+}
+console.log("");
+console.log("📚 Try these commands:");
+console.log(`  curl http://localhost:${server.port}/jobs`);
+console.log(`  curl -X POST http://localhost:${server.port}/jobs/health-ping/run`);
+console.log("");
+
+if (process.env.ASIJS_EXAMPLE_CHECK === "1") {
+  setTimeout(() => {
+    scheduler.stop();
+    server.stop();
+  }, 50);
+}

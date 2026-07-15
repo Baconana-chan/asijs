@@ -1,0 +1,20 @@
+{
+  "name": "asijs-docker-example",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run dist/index.js",
+    "build": "bun build src/index.ts --outdir dist --target bun --minify",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "asijs": "^1.1.0",
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/bun": "latest",
+    "bun-types": "latest"
+  }
+}

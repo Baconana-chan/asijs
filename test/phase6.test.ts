@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Asi } from "../src/asi";
 import {
+  // Health
+  healthCheck,
   // Lifecycle
   lifecycle,
-  healthCheck,
   LifecycleManager,
   // Security
   security,
@@ -72,7 +73,7 @@ describe("Phase 6 Features", () => {
 
     it("should add health check endpoints", async () => {
       const app = new Asi();
-      app.plugin(healthCheck());
+      app.use(healthCheck());
 
       const healthRes = await app.handle(
         new Request("http://localhost/health"),
@@ -80,11 +81,18 @@ describe("Phase 6 Features", () => {
       expect(healthRes.status).toBe(200);
       const body = await healthRes.json();
       expect(body.status).toBe("healthy");
+      expect(body.timestamp).toBeDefined();
+      expect(body.checks).toEqual({});
 
       const liveRes = await app.handle(new Request("http://localhost/live"));
       expect(liveRes.status).toBe(200);
       const liveBody = await liveRes.json();
-      expect(liveBody.alive).toBe(true);
+      expect(liveBody.status).toBe("healthy");
+
+      const readyRes = await app.handle(new Request("http://localhost/ready"));
+      expect(readyRes.status).toBe(200);
+      const readyBody = await readyRes.json();
+      expect(readyBody.status).toBe("healthy");
     });
   });
 
@@ -467,21 +475,24 @@ describe("Phase 6 Features", () => {
 
     it("should read PORT from environment", () => {
       const originalPort = process.env.PORT;
-      process.env.PORT = "4200";
+      const testPort = "42137"; // unique port to avoid conflicts in parallel runs
+      process.env.PORT = testPort;
 
-      const app = new Asi({ silent: true, startupBanner: false });
-      app.get("/", () => "ok");
+      try {
+        const app = new Asi({ silent: true, startupBanner: false });
+        app.get("/", () => "ok");
 
-      const server = app.listen();
-      expect(server.port).toBe(4200);
+        const server = app.listen();
+        expect(server.port).toBe(42137);
 
-      server.stop();
-
-      // Restore
-      if (originalPort) {
-        process.env.PORT = originalPort;
-      } else {
-        delete process.env.PORT;
+        server.stop();
+      } finally {
+        // Restore — гарантированно, даже если тест упал
+        if (originalPort !== undefined) {
+          process.env.PORT = originalPort;
+        } else {
+          delete process.env.PORT;
+        }
       }
     });
   });

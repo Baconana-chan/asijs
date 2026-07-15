@@ -13,6 +13,9 @@
  *   fullstack - API + JSX rendering
  *   auth      - Authentication with JWT
  *   realtime  - WebSocket chat example
+ *   cloudflare - Cloudflare Workers deployment
+ *   deno      - Deno / Deno Deploy
+ *   spa       - SPA + SSR with hydration
  */
 
 import {
@@ -22,8 +25,17 @@ import {
   readdirSync,
   statSync,
   readFileSync,
+  rmSync,
 } from "fs";
 import { join, resolve, basename } from "path";
+import { scanWorkspace, startWorkspaceDev, startStandaloneDev, findStandaloneEntry, type WorkspaceDevController } from "./workspace";
+import {
+  runCodemod,
+  detectProjectFramework,
+  printSummary,
+  type CodemodOptions,
+  type SourceFramework,
+} from "./codemod";
 
 // ===== Colors =====
 const colors = {
@@ -593,6 +605,591 @@ curl http://localhost:3000/me \\
     },
   },
 
+  workspace: {
+    name: "Workspace",
+    description: "Monorepo with multiple sub-apps + selective hot-reload",
+    files: {
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            private: true,
+            type: "module",
+            workspaces: ["apps/*"],
+            scripts: {
+              dev: "asijs dev",
+              build: "cd apps/api && bun run build",
+            },
+            devDependencies: {
+              asijs: "latest",
+              "@types/bun": "latest",
+              typescript: "^5",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+          },
+        },
+        null,
+        2,
+      ),
+      ".gitignore": `node_modules\ndist\n.env\n*.log\n`,
+      "apps/api/package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name: `${name}-api`,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "bun run --hot src/index.ts",
+              start: "bun run src/index.ts",
+              build: "bun build src/index.ts --outdir dist --target bun",
+            },
+            dependencies: {
+              asijs: "latest",
+              "@sinclair/typebox": "^0.34.0",
+            },
+          },
+          null,
+          2,
+        ),
+      "apps/api/tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+          },
+          include: ["src"],
+        },
+        null,
+        2,
+      ),
+      "apps/api/src/index.ts": `import { Asi } from "asijs";
+import { Type } from "@sinclair/typebox";
+
+const app = new Asi({ development: true });
+
+app.get("/", () => ({ service: "api", status: "ok" }));
+
+app.get("/users", () => [
+  { id: 1, name: "Alice" },
+  { id: 2, name: "Bob" },
+]);
+
+app.listen(Number(process.env.PORT ?? 3001), () => {
+  console.log("API sub-app running on port " + (process.env.PORT ?? 3001));
+});
+`,
+      "apps/web/package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name: `${name}-web`,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "bun run --hot src/index.tsx",
+              start: "bun run src/index.tsx",
+            },
+            dependencies: {
+              asijs: "latest",
+            },
+          },
+          null,
+          2,
+        ),
+      "apps/web/tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+            jsx: "react-jsx",
+            jsxImportSource: "asijs",
+          },
+          include: ["src"],
+        },
+        null,
+        2,
+      ),
+      "apps/web/src/index.tsx": `import { Asi, html, type FC } from "asijs";
+
+const app = new Asi({ development: true });
+
+const Layout: FC<{ title: string; children: any }> = ({ title, children }) => (
+  <html>
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>{title}</title>
+    </head>
+    <body>{children}</body>
+  </html>
+);
+
+app.get("/", (ctx) =>
+  ctx.html(
+    <Layout title="Workspace">
+      <h1>Workspace Sub-App: Web</h1>
+      <p>This runs independently on its own port.</p>
+      <p>Changes here only reload THIS app.</p>
+    </Layout>,
+  ),
+);
+
+app.listen(Number(process.env.PORT ?? 3002), () => {
+  console.log("Web sub-app running on port " + (process.env.PORT ?? 3002));
+});
+`,
+      "apps/shared/package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name: `${name}-shared`,
+            version: "0.1.0",
+            type: "module",
+            main: "src/index.ts",
+            types: "src/index.ts",
+          },
+          null,
+          2,
+        ),
+      "apps/shared/src/index.ts": `// Shared types for workspace
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export function createUser(name: string, email: string): User {
+  return { id: Date.now(), name, email };
+}
+`,
+      "README.md": (name: string) => `# ${name}
+
+AsiJS Workspace with independent hot-reload for each sub-app.
+
+## Structure
+
+\`\`\`
+apps/
+  api/     -- REST API sub-app (port 3001)
+  web/     -- Web sub-app (port 3002)
+  shared/  -- Shared types
+\`\`\`
+
+## Development
+
+\`\`\`bash
+bun install
+bun run dev
+\`\`\`
+
+Each sub-app runs as its own \`bun --hot\` process.
+Changes in one app only reload that app.
+`,
+    },
+  },
+
+  cloudflare: {
+    name: "Cloudflare Workers",
+    description: "Edge deployment on Cloudflare Workers",
+    files: {
+      "src/index.ts": `import { Asi } from "asijs";
+import { cloudflare, withWaitUntil } from "asijs/edge";
+
+const app = new Asi();
+
+app.get("/", () => ({
+  message: "Hello from Cloudflare Workers!",
+  runtime: "edge",
+}));
+
+app.get("/health", () => ({ status: "ok" }));
+
+// Background task via waitUntil
+app.use(withWaitUntil(async (ctx) => {
+  // This runs after the response is sent
+  // e.g., analytics, logging, etc.
+  console.log("Background task completed");
+}));
+
+export default cloudflare(app);
+`,
+      "wrangler.toml": (name: string) => `name = "${name}"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[env.production]
+name = "${name}-prod"
+`,
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "wrangler dev",
+              deploy: "wrangler deploy",
+              build: "bun build src/index.ts --outdir dist --target bun",
+            },
+            dependencies: {
+              asijs: "latest",
+            },
+            devDependencies: {
+              wrangler: "latest",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["@cloudflare/workers-types"],
+          },
+          include: ["src"],
+        },
+        null,
+        2,
+      ),
+      ".gitignore": `node_modules\ndist\n.env\n*.log\n.wrangler\n`,
+      ".env.example": `# Cloudflare API token (optional for wrangler deploy)
+CLOUDFLARE_API_TOKEN=
+`,
+      "README.md": (name: string) => `# ${name}
+
+Cloudflare Workers app built with [AsiJS](https://github.com/Baconana-chan/asijs).
+
+## Features
+
+- ✅ Edge deployment on Cloudflare Workers
+- ✅ waitUntil for background tasks
+- ✅ Edge caching (Cache-Control)
+- ✅ Zero cold-start with edge runtime
+
+## Getting Started
+
+\`\`\`bash
+bun install
+bun run dev        # wrangler dev
+bun run deploy     # wrangler deploy
+\`\`\`
+
+Open http://localhost:8787
+`,
+    },
+  },
+
+  spa: {
+    name: "SPA + SSR",
+    description: "Single Page App with SSR hydration and Islands",
+    files: {
+      "src/index.ts": `import { Asi, staticFiles } from "asijs";
+import { spaFallbackHandler } from "asijs/spa";
+import { App } from "./app";
+
+const app = new Asi({
+  spa: {
+    clientEntry: "src/client.tsx",
+    hmr: true,
+  },
+});
+
+// API routes
+app.get("/api/hello", () => ({ message: "Hello from AsiJS!" }));
+
+// Static files
+app.use(staticFiles("./public"));
+
+// SPA fallback — serve index.html for all other routes
+app.all("/*", spaFallbackHandler({
+  publicPath: "/_asi/client",
+  clientBundleName: "client.js",
+}));
+
+app.listen(3000, () => {
+  console.log("🚀 Server running at http://localhost:3000");
+});
+`,
+      "src/app.tsx": `import { type FC } from "asijs";
+
+export interface AppProps {
+  message?: string;
+}
+
+export const App: FC<AppProps> = ({ message }) => (
+  <html>
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>AsiJS SPA</title>
+      <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body>
+      <div id="app">
+        <h1>Hello from AsiJS!</h1>
+        <p>{message || "Server-rendered content"}</p>
+        <div id="counter">
+          <button id="decrement">-</button>
+          <span id="count">0</span>
+          <button id="increment">+</button>
+        </div>
+      </div>
+    </body>
+  </html>
+);
+`,
+      "src/client.tsx": `import { hydrate } from "asijs/spa-client";
+import { App } from "./app";
+
+// Hydrate the server-rendered HTML with client-side interactivity
+hydrate(function(props, root) {
+  console.log("[AsiJS] Hydrated with props:", props);
+
+  // Set up counter interactivity
+  var countEl = document.getElementById("count");
+  var decBtn = document.getElementById("decrement");
+  var incBtn = document.getElementById("increment");
+
+  if (countEl && decBtn && incBtn) {
+    var count = 0;
+    decBtn.onclick = function() { count--; countEl!.textContent = String(count); };
+    incBtn.onclick = function() { count++; countEl!.textContent = String(count); };
+  }
+});
+`,
+      "public/styles.css": `* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+h1 {
+  color: #58a6ff;
+  margin-bottom: 1rem;
+}
+
+p {
+  margin-bottom: 2rem;
+  color: #8b949e;
+}
+
+#counter {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+#counter button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #21262d;
+  color: #c9d1d9;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+#counter button:hover {
+  background: #30363d;
+}
+
+#count {
+  font-size: 1.5rem;
+  font-weight: bold;
+  min-width: 2rem;
+  text-align: center;
+}
+`,
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "bun run --hot src/index.ts",
+              start: "bun run src/index.ts",
+              build: "asi build",
+            },
+            dependencies: {
+              asijs: "latest",
+            },
+            devDependencies: {
+              "@types/bun": "latest",
+              typescript: "^5",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+            jsx: "react-jsx",
+            jsxImportSource: "asijs",
+          },
+          include: ["src"],
+        },
+        null,
+        2,
+      ),
+      ".gitignore": `node_modules\ndist\n.env\n*.log\n`,
+      "README.md": (name: string) => `# ${name}
+
+SPA + SSR app built with [AsiJS](https://github.com/Baconana-chan/asijs).
+
+## Features
+
+- ✅ Server-side rendering (SSR)
+- ✅ Client-side hydration
+- ✅ SPA fallback routing
+- ✅ Hot Module Replacement (HMR) in dev
+- ✅ Production build via \`asi build\`
+
+## Getting Started
+
+\`\`\`bash
+bun install
+bun run dev
+\`\`\`
+
+Open http://localhost:3000
+
+## Production Build
+
+\`\`\`bash
+bun run build   # or: asi build
+\`\`\`
+
+This creates client + server bundles in dist/.
+`,
+    },
+  },
+
+  deno: {
+    name: "Deno",
+    description: "Deploy on Deno / Deno Deploy",
+    files: {
+      "src/index.ts": `import { Asi } from "asijs";
+import { deno, denoServe } from "asijs/edge";
+
+const app = new Asi();
+
+app.get("/", () => ({
+  message: "Hello from Deno!",
+  runtime: "deno",
+}));
+
+app.get("/health", () => ({ status: "ok", timestamp: Date.now() }));
+
+// Option 1: Use denoServe() which auto-detects Deno/Bun/Node
+if (import.meta.main) {
+  denoServe(app, { port: 3000 });
+}
+
+// Option 2: Export fetch handler for Deno Deploy
+export default {
+  fetch: deno(app),
+};
+`,
+      "deno.json": JSON.stringify(
+        {
+          tasks: {
+            dev: "deno run --allow-net --allow-env --allow-read src/index.ts",
+            start: "deno run --allow-net --allow-env --allow-read src/index.ts",
+          },
+          imports: {
+            asijs: "npm:asijs",
+          },
+          compilerOptions: {
+            strict: true,
+          },
+        },
+        null,
+        2,
+      ),
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "deno task dev",
+              start: "deno task start",
+            },
+            dependencies: {
+              asijs: "latest",
+            },
+          },
+          null,
+          2,
+        ),
+      ".gitignore": `node_modules\ndist\n.env\n*.log\n`,
+      "README.md": (name: string) => `# ${name}
+
+Deno app built with [AsiJS](https://github.com/Baconana-chan/asijs).
+
+## Features
+
+- ✅ Runs on Deno / Deno Deploy
+- ✅ Native Deno.serve() via denoServe()
+- ✅ Fetch handler export for Deno Deploy
+- ✅ Compatible with npm specifier
+
+## Getting Started
+
+\`\`\`bash
+bun install          # Install deps
+bun run dev          # With Bun
+# OR
+deno task dev        # With Deno
+\`\`\`
+
+Open http://localhost:3000
+`,
+    },
+  },
+
   realtime: {
     name: "Realtime",
     description: "WebSocket chat application",
@@ -802,6 +1399,82 @@ Open http://localhost:3000 in multiple tabs to chat!
 
 type TemplateName = keyof typeof TEMPLATES;
 
+// ===== Dev Mode =====
+
+async function startDevMode(args: string[]) {
+  let basePort = 3000;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--port" || args[i] === "-p") {
+      basePort = parseInt(args[i + 1], 10) || 3000;
+      i++;
+    }
+  }
+
+  let controller: WorkspaceDevController | undefined;
+
+  const cleanup = async () => {
+    if (controller) {
+      await controller.stop();
+    }
+    process.exit(0);
+  };
+
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
+
+  // 1. Try workspace mode
+  console.log(c.bold("🏗️  AsiJS Dev"));
+  console.log("   Scanning for apps...");
+  console.log();
+
+  const apps = scanWorkspace({ cwd: process.cwd() });
+
+  if (apps.length > 0) {
+    console.log(`   ${c.bold("Workspace mode")} — found ${c.bold(String(apps.length))} sub-app(s)`);
+    console.log();
+
+    try {
+      controller = await startWorkspaceDev(apps, {
+        basePort,
+        verbose: true,
+      });
+    } catch (error) {
+      console.error(c.red("Error starting workspace:"), error);
+      process.exit(1);
+    }
+    return;
+  }
+
+  // 2. Try standalone mode
+  const entry = findStandaloneEntry();
+  if (entry) {
+    console.log(`   ${c.green("Standalone mode")} — found ${c.cyan(entry)}`);
+    console.log();
+
+    try {
+      controller = await startStandaloneDev({
+        basePort,
+        verbose: true,
+      });
+    } catch (error) {
+      console.error(c.red("Error starting app:"), error);
+      process.exit(1);
+    }
+    return;
+  }
+
+  // 3. Nothing found
+  console.log(c.yellow("⚠️  No AsiJS apps found."));
+  console.log();
+  console.log(`  Create a new project:`);
+  console.log(`    ${c.cyan("bunx asijs create my-app")}`);
+  console.log();
+  console.log(`  Or run an existing app directly:`);
+  console.log(`    ${c.dim("bun run --hot src/index.ts")}`);
+  console.log();
+}
+
 // ===== Main =====
 async function main() {
   const args = process.argv.slice(2);
@@ -812,7 +1485,37 @@ async function main() {
   let projectName: string | undefined;
   let template: TemplateName = "minimal";
 
-  // Parse arguments
+  // Handle `asijs dev` — start workspace dev mode
+  if (command === "dev") {
+    await startDevMode(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs build` — production build (SPA/SSR)
+  if (command === "build") {
+    await handleBuild(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs inspect` — inspect project
+  if (command === "inspect") {
+    await handleInspect(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs generate <type> [name]` — codegen
+  if (command === "generate" || command === "g") {
+    await handleGenerate(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs migrate <path> [options]` — codemod
+  if (command === "migrate") {
+    await handleMigrate(args.slice(1));
+    return;
+  }
+
+  // Parse arguments for create
   if (command === "create" || command === "init" || command === "new") {
     projectName = args[1];
 
@@ -830,7 +1533,7 @@ async function main() {
     printHelp();
     return;
   } else if (command === "--version" || command === "-v") {
-    console.log("asijs v1.0.0");
+    console.log("asijs v1.2.0");
     return;
   } else if (command && !command.startsWith("-")) {
     // Direct project name (bun create asijs my-app)
@@ -933,18 +1636,696 @@ async function createProject(name: string, templateName: TemplateName) {
   console.log(c.dim("Happy coding! 🎉"));
 }
 
+// ===== Inspect =====
+
+interface InspectRoute {
+  method: string;
+  path: string;
+  handler: string;
+  hasValidation: boolean;
+  isAsync: boolean;
+  line: number;
+}
+
+interface InspectResult {
+  routes: InspectRoute[];
+  plugins: string[];
+  wsRoutes: string[];
+  globalMiddleware: number;
+  pathMiddleware: number;
+  compilationEnabled: boolean;
+  port: number;
+  configPath: string | null;
+  entryFile: string | null;
+}
+
+async function handleInspect(args: string[]) {
+  let showVerbose = false;
+  let showSize = false;
+  let showRoutes = false;
+  let showPlugins = false;
+
+  for (const arg of args) {
+    if (arg === "--verbose" || arg === "-v") showVerbose = true;
+    if (arg === "--routes" || arg === "-r") showRoutes = true;
+    if (arg === "--plugins" || arg === "-p") showPlugins = true;
+    if (arg === "--size" || arg === "-s") showSize = true;
+  }
+
+  // Default: show all unless specific flags given
+  const showAll = !showRoutes && !showPlugins && !showSize;
+
+  console.log(c.bold("🔍 AsiJS Inspect"));
+  console.log();
+
+  const result = await inspectProject();
+
+  // === Routes ===
+  if (showAll || showRoutes) {
+    printRoutes(result, showVerbose);
+  }
+
+  // === Plugins ===
+  if (showAll || showPlugins) {
+    printPlugins(result);
+  }
+
+  // === Size ===
+  if (showSize) {
+    await printBundleSize();
+  }
+
+  // === Summary (always) ===
+  if (showAll) {
+    printSummaryLine(result);
+  }
+
+  console.log();
+}
+
+async function inspectProject(): Promise<InspectResult> {
+  const cwd = process.cwd();
+
+  // Find entry file
+  const entryFile = findStandaloneEntry(cwd);
+  let sourceCode = "";
+
+  if (entryFile) {
+    try {
+      sourceCode = readFileSync(entryFile, "utf-8");
+    } catch {
+      sourceCode = "";
+    }
+  } else {
+    // Try common entry points
+    for (const entry of ["src/index.ts", "src/index.tsx", "src/app.ts", "index.ts"]) {
+      const fullPath = join(cwd, entry);
+      if (existsSync(fullPath)) {
+        sourceCode = readFileSync(fullPath, "utf-8");
+        break;
+      }
+    }
+  }
+
+  // Parse routes from source code
+  const routes = parseRoutes(sourceCode);
+
+  // Parse plugin registrations
+  const plugins = parsePlugins(sourceCode);
+
+  // Parse WebSocket routes
+  const wsRoutes = parseWsRoutes(sourceCode);
+
+  // Parse global middleware (app.use() calls with function args)
+  const globalMw = countMiddleware(sourceCode);
+
+  // Check for compile() call
+  const hasCompilation = /app\.compile\(\)/.test(sourceCode);
+
+  // Detect port
+  const portMatch = sourceCode.match(/\.listen\((\d+)\)/);
+  const port = portMatch ? parseInt(portMatch[1]!, 10) : 3000;
+
+  // Detect config path
+  let configPath: string | null = null;
+  if (existsSync(join(cwd, "asi.config.ts"))) configPath = "asi.config.ts";
+  else if (existsSync(join(cwd, "asi.config.js"))) configPath = "asi.config.js";
+
+  return {
+    routes,
+    plugins,
+    wsRoutes,
+    globalMiddleware: globalMw.global,
+    pathMiddleware: globalMw.pathBased,
+    compilationEnabled: hasCompilation,
+    port,
+    configPath,
+    entryFile: entryFile ? relativePath(entryFile) : null,
+  };
+}
+
+function parseRoutes(source: string): InspectRoute[] {
+  // Match app.get(), app.post(), app.put(), app.delete(), app.patch(), app.all()
+  const routePattern = /app\.(get|post|put|delete|patch|all|head|options)\(\s*["'`]([^"'`]+)["'`]/g;
+  const routes: InspectRoute[] = [];
+  const seen = new Set<string>();
+
+  let match: RegExpExecArray | null;
+  while ((match = routePattern.exec(source)) !== null) {
+    const method = match[1]!.toUpperCase();
+    const path = match[2]!;
+    const key = `${method} ${path}`;
+
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    // Check for schema/validation options after the path
+    const remaining = source.slice(match.index + match[0].length, match.index + match[0].length + 200);
+    const hasValidation = /schema\s*:|Type\.Object\s*\(/.test(remaining) || /Type\.String|Type\.Number|Type\.Boolean|Type\.Array/.test(remaining);
+
+    // Check if handler is async
+    const isAsync = /async\s*\w/.test(remaining) || /async\s*\(/.test(remaining);
+
+    // Extract handler name / signature
+    const handlerMatch = remaining.match(/(?:=>\s*|:\s*|,\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(|([a-zA-Z_$][a-zA-Z0-9_$]*)\(/);
+    const handler = handlerMatch
+      ? (handlerMatch[1] || handlerMatch[2] || "inline")
+      : "inline";
+
+    // Get line number
+    const line = source.slice(0, match.index).split("\n").length;
+
+    routes.push({ method, path, handler, hasValidation, isAsync, line });
+  }
+
+  return routes;
+}
+
+function parsePlugins(source: string): string[] {
+  // Match app.plugin(something) or app.use(cors()/etc)
+  const pluginPattern = /app\.(?:plugin|use)\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+  const plugins: string[] = [];
+  const seen = new Set<string>();
+
+  let match: RegExpExecArray | null;
+  while ((match = pluginPattern.exec(source)) !== null) {
+    const name = match[1]!;
+    if (!seen.has(name)) {
+      seen.add(name);
+      plugins.push(name);
+    }
+  }
+
+  return plugins;
+}
+
+function parseWsRoutes(source: string): string[] {
+  const wsPattern = /app\.ws\(\s*["'`]([^"'`]+)["'`]/g;
+  const routes: string[] = [];
+
+  let match: RegExpExecArray | null;
+  while ((match = wsPattern.exec(source)) !== null) {
+    routes.push(match[1]!);
+  }
+
+  return routes;
+}
+
+function countMiddleware(source: string): { global: number; pathBased: number } {
+  // app.use(middlewareFn) — global middleware (function call, not string path)
+  const globalPattern = /app\.use\(\s*[a-zA-Z_$]/g;
+  const globalMatches = (source.match(globalPattern) || []).length;
+
+  // app.use('/path', middleware) — path-based middleware
+  const pathPattern = /app\.use\(\s*['"`\/]/g;
+  const pathMatches = (source.match(pathPattern) || []).length;
+
+  return { global: globalMatches, pathBased: pathMatches };
+}
+
+function relativePath(filePath: string): string {
+  const cwd = process.cwd();
+  if (filePath.startsWith(cwd)) {
+    return "." + filePath.slice(cwd.length).replace(/\\/g, "/");
+  }
+  return filePath;
+}
+
+function printRoutes(result: InspectResult, verbose: boolean) {
+  console.log(c.bold(c.cyan("  Routes:")));
+  console.log();
+
+  if (result.routes.length === 0) {
+    if (result.entryFile) {
+      console.log(`    ${c.dim("No routes found in " + result.entryFile)}`);
+    } else {
+      console.log(`    ${c.dim("No entry file found. Run from an AsiJS project directory.")}`);
+    }
+    console.log();
+    return;
+  }
+
+  // Display as table
+  const methodColors: Record<string, (s: string) => string> = {
+    GET: c.green,
+    POST: c.blue,
+    PUT: c.yellow,
+    DELETE: c.red,
+    PATCH: c.magenta,
+    ALL: c.cyan,
+    HEAD: c.dim,
+    OPTIONS: c.dim,
+  };
+
+  // Calculate column widths
+  let maxMethod = 8;
+  let maxPath = 20;
+  for (const r of result.routes) {
+    if (r.method.length > maxMethod) maxMethod = r.method.length;
+    if (r.path.length > maxPath) maxPath = Math.min(r.path.length, 60);
+  }
+
+  // Header (plain text for sizing, colored for display)
+  const plainHeader = `    METHOD${' '.repeat(maxMethod - 4)}  PATH${' '.repeat(maxPath - 4)}  VALIDATION${verbose ? '  HANDLER           LINE' : ''}`;
+  console.log(
+    `    ${c.dim("METHOD".padEnd(maxMethod + 2))}` +
+    `${c.dim("PATH".padEnd(maxPath + 2))}` +
+    `${c.dim("VALIDATION".padEnd(14))}` +
+    `${verbose ? c.dim("HANDLER".padEnd(18)) + c.dim("LINE") : ""}`,
+  );
+  console.log(c.dim("    " + "─".repeat(plainHeader.length - 4)));
+
+  for (const r of result.routes) {
+    const colorMethod = methodColors[r.method] || c.dim;
+    const validation = r.hasValidation
+      ? c.green("✓".padEnd(14))
+      : c.dim("—".padEnd(14));
+
+    const line =
+      `    ${colorMethod(r.method.padEnd(maxMethod + 2))}` +
+      `${c.bold(r.path.padEnd(maxPath + 2))}` +
+      `${validation}` +
+      `${verbose ? c.dim(r.handler.padEnd(18)) + c.dim(String(r.line)) : ""}`;
+
+    console.log(line);
+  }
+
+  // WebSocket routes
+  if (result.wsRoutes.length > 0) {
+    console.log();
+    for (const wsPath of result.wsRoutes) {
+      console.log(`    ${c.magenta("WS".padEnd(maxMethod + 2))}${c.bold(wsPath)} ${c.dim("(WebSocket)")}`);
+    }
+  }
+
+  console.log();
+}
+
+function printPlugins(result: InspectResult) {
+  console.log(c.bold(c.cyan("  Plugins & Middleware:")));
+  console.log();
+
+  if (result.plugins.length === 0 && result.globalMiddleware === 0) {
+    console.log(`    ${c.dim("No plugins or middleware registered")}`);
+    console.log();
+    return;
+  }
+
+  if (result.plugins.length > 0) {
+    for (const plugin of result.plugins) {
+      // Try to detect the plugin type by name
+      const pluginType = detectPluginType(plugin);
+      console.log(`    ${c.green("■")} ${c.bold(plugin)}${pluginType ? c.dim(" — " + pluginType) : ""}`);
+    }
+  }
+
+  console.log(
+    `    ${c.dim("Global middleware:")} ${result.globalMiddleware}`,
+  );
+  console.log(
+    `    ${c.dim("Path-based middleware:")} ${result.pathMiddleware}`,
+  );
+  console.log();
+}
+
+function detectPluginType(name: string): string | null {
+  const pluginMap: Record<string, string> = {
+    cors: "CORS headers",
+    openapi: "OpenAPI / Swagger",
+    jwt: "JWT auth",
+    bearer: "Bearer token",
+    rateLimit: "Rate limiting",
+    rateLimitMiddleware: "Rate limiting",
+    workspaceRateLimit: "Rate limiting",
+    lifecycle: "Graceful shutdown",
+    session: "Sessions",
+    sessions: "Sessions",
+    scheduler: "Cron / scheduling",
+    devMode: "Dev dashboard",
+    mcp: "MCP / AI",
+    healthCheck: "Healthchecks",
+    staticFiles: "Static files",
+    compression: "Response compression",
+    requestLogger: "Request logging",
+    sse: "Server-Sent Events",
+  };
+  return pluginMap[name] ?? null;
+}
+
+function printSummaryLine(result: InspectResult) {
+  const routeTypes = new Set(result.routes.map((r) => r.method));
+  const typeStr = Array.from(routeTypes).join("/");
+  const wsCount = result.wsRoutes.length;
+
+  console.log(
+    `${c.dim("  Summary:")}`,
+  );
+  console.log(
+    `    ${c.bold(String(result.routes.length))} routes (${c.green(typeStr)}${result.compilationEnabled ? c.dim(", compiled") : ""})` +
+    `${wsCount > 0 ? ` · ${c.magenta(String(wsCount))} WebSocket` : ""}` +
+    ` · ${c.bold(String(result.plugins.length))} plugins` +
+    ` · ${result.globalMiddleware + result.pathMiddleware} middleware` +
+    ` · port ${c.cyan(String(result.port))}`,
+  );
+  if (result.entryFile) {
+    console.log(`    ${c.dim("Entry:")} ${c.cyan(result.entryFile)}`);
+  }
+}
+
+async function printBundleSize() {
+  console.log(c.bold(c.cyan("  Bundle Size:")));
+  console.log();
+
+  // Find entry point
+  const entry = findStandaloneEntry() || "src/index.ts";
+  if (!existsSync(entry)) {
+    console.log(`    ${c.yellow("No entry file found at " + entry)}`);
+    console.log();
+    return;
+  }
+
+  // Build to temp directory using bun build
+  const tmpDir = join(process.cwd(), ".asijs-inspect-tmp");
+  try {
+    // Remove previous temp dir
+    try {
+      rmSync(tmpDir, { recursive: true });
+    } catch {}
+    mkdirSync(tmpDir, { recursive: true });
+
+    const outFile = join(tmpDir, "bundle.js");
+
+    console.log(`    ${c.dim("Building...")}`);
+
+    // Spawn bun build
+    const bunPath = process.argv[0];
+    const buildProcess = Bun.spawnSync([
+      bunPath,
+      "build",
+      entry,
+      "--outdir",
+      tmpDir,
+      "--target",
+      "bun",
+      "--minify",
+    ]);
+
+    if (!buildProcess.success) {
+      console.log(`    ${c.yellow("Build failed:")} ${buildProcess.stderr.toString().trim()}`);
+      console.log();
+      return;
+    }
+
+    // Read output files
+    const files = readdirSync(tmpDir);
+    let totalSize = 0;
+
+    for (const file of files) {
+      const filePath = join(tmpDir, file);
+      if (statSync(filePath).isFile()) {
+        const size = statSync(filePath).size;
+        totalSize += size;
+        console.log(`    ${c.dim("  " + file.padEnd(30))} ${formatSize(size)}`);
+      }
+    }
+
+    console.log(`    ${c.dim("  " + "─".repeat(30))} ${c.bold("───")}`);
+    console.log(`    ${c.dim("  Total".padEnd(30))} ${c.bold(formatSize(totalSize))}`);
+    console.log();
+
+    // Cleanup
+    try {
+      rmSync(tmpDir, { recursive: true });
+    } catch {}
+  } catch (error) {
+    console.log(`    ${c.yellow("Size analysis failed:")} ${(error as Error).message}`);
+    console.log();
+  }
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+async function handleBuild(args: string[]) {
+  var clientEntry = "src/client.tsx";
+  var serverEntry = "src/index.ts";
+  var outDir = "dist";
+  var noMinify = false;
+
+  for (var i = 0; i < args.length; i++) {
+    if (args[i] === "--client") {
+      clientEntry = args[++i];
+    } else if (args[i] === "--server") {
+      serverEntry = args[++i];
+    } else if (args[i] === "--outdir") {
+      outDir = args[++i];
+    } else if (args[i] === "--no-minify") {
+      noMinify = true;
+    } else if (args[i] === "--help" || args[i] === "-h") {
+      console.log(`
+${c.bold("AsiJS Build")} — Production build for SPA/SSR apps
+
+${c.bold("Usage:")}
+  asi build [options]
+
+${c.bold("Options:")}
+  --client <path>      Client entry point (default: src/client.tsx)
+  --server <path>      Server entry point (default: src/index.ts)
+  --outdir <path>      Output directory (default: dist)
+  --no-minify          Skip minification
+  -h, --help           Show this help
+
+${c.bold("Examples:")}
+  asi build
+  asi build --client src/client.tsx --server src/index.ts
+  asi build --outdir build
+`);
+      return;
+    }
+  }
+
+  console.log(c.bold("🏗️  AsiJS Build"));
+  console.log();
+
+  try {
+    var { buildProject } = await import("./spa");
+
+    var result = await buildProject({
+      clientEntry,
+      serverEntry,
+      outDir,
+      minify: !noMinify,
+      silent: false,
+    });
+
+    console.log();
+    console.log(c.green("✓ Build complete!"));
+    console.log(`  ${c.dim("Client:")} ${c.cyan(result.clientBundle)}`);
+    console.log(`  ${c.dim("Server:")} ${c.cyan(result.serverBundle)}`);
+    console.log(`  ${c.dim("Duration:")} ${result.durationMs}ms`);
+    console.log();
+
+    console.log(c.dim("Next steps:"));
+    console.log(`  ${c.cyan("bun run dist/server/index.js")}  # Start production server`);
+    console.log();
+  } catch (error) {
+    console.error(c.red("✗ Build failed:"), (error as Error).message);
+    process.exit(1);
+  }
+}
+
+// ===== Generate =====
+
+async function handleGenerate(args: string[]) {
+  const type = args[0];
+  const name = args[1];
+
+  if (!type || type === "--help" || type === "-h") {
+    console.log(`\n${c.bold("AsiJS Generate")} — Code generation scaffold\n\n${c.bold("Usage:")}\n  asi generate <type> <name>\n\n${c.bold("Types:")}\n  route  <path>  Generate a new route file\n  action <name>  Generate a server action\n  plugin <name>  Generate a plugin scaffold\n  app    <name>  Generate a sub-app\n`);
+    return;
+  }
+
+  const cwd = process.cwd();
+
+  switch (type) {
+    case "route": {
+      const routePath = name || "new-route";
+      const filePath = join(cwd, "src", "routes", `${routePath}.ts`);
+      mkdirSync(join(cwd, "src", "routes"), { recursive: true });
+      writeFileSync(filePath, `import { Asi, type Context } from "asijs";
+
+export function get(ctx: Context) {
+  return { message: "Hello from ${routePath}!" };
+}
+`);
+      console.log(`  ${c.green("✓")} Created ${c.cyan(filePath)}`);
+      break;
+    }
+    case "action": {
+      const actionName = name || "myAction";
+      const filePath = join(cwd, "src", "actions", `${actionName}.ts`);
+      mkdirSync(join(cwd, "src", "actions"), { recursive: true });
+      writeFileSync(filePath, `import { serverAction, rpc } from "asijs";
+import { Type } from "@sinclair/typebox";
+
+export const ${actionName} = serverAction(
+  Type.Object({
+    // Add input fields here
+    name: Type.String(),
+  }),
+  async ({ name }) => {
+    return { message: \`Hello, \${name}!\` };
+  },
+);
+`);
+      console.log(`  ${c.green("✓")} Created ${c.cyan(filePath)}`);
+      break;
+    }
+    case "plugin": {
+      const pluginName = name || "myPlugin";
+      const filePath = join(cwd, "src", "plugins", `${pluginName}.ts`);
+      mkdirSync(join(cwd, "src", "plugins"), { recursive: true });
+      writeFileSync(filePath, `import { createPlugin } from "asijs";
+
+export const ${pluginName} = createPlugin({
+  name: "${pluginName}",
+  setup(app) {
+    app.get("/${pluginName}", () => ({ plugin: "${pluginName}" }));
+  },
+});
+`);
+      console.log(`  ${c.green("✓")} Created ${c.cyan(filePath)}`);
+      break;
+    }
+    case "app": {
+      const appName = name || "my-app";
+      const appDir = join(cwd, "apps", appName);
+      mkdirSync(join(appDir, "src"), { recursive: true });
+      writeFileSync(join(appDir, "src", "index.ts"), `import { Asi } from "asijs";
+
+const app = new Asi();
+
+app.get("/", () => ({ service: "${appName}", status: "ok" }));
+
+app.listen(Number(process.env.PORT ?? 3001));
+`);
+      writeFileSync(join(appDir, "package.json"), JSON.stringify({
+        name: appName,
+        version: "0.1.0",
+        type: "module",
+        scripts: { dev: "bun run --hot src/index.ts", start: "bun run src/index.ts" },
+        dependencies: { asijs: "latest" },
+      }, null, 2));
+      console.log(`  ${c.green("✓")} Created sub-app in ${c.cyan(appDir)}`);
+      break;
+    }
+    default:
+      console.log(c.red(`Unknown generate type: "${type}"`));
+      console.log(`  Use: asi generate route|action|plugin|app <name>`);
+  }
+}
+
+async function handleMigrate(args: string[]) {
+  let targetPath = ".";
+  let from: SourceFramework | undefined;
+  let dryRun = false;
+  let verbose = false;
+
+  // Parse arguments
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--from" || args[i] === "-f") {
+      from = args[i + 1] as SourceFramework;
+      i++;
+    } else if (args[i] === "--dry-run") {
+      dryRun = true;
+    } else if (args[i] === "--verbose" || args[i] === "-v") {
+      verbose = true;
+    } else if (!args[i].startsWith("-")) {
+      targetPath = args[i];
+    }
+  }
+
+  console.log(c.bold("🔄 AsiJS Codemod — Auto Migration"));
+  console.log();
+
+  // Auto-detect framework if not specified
+  if (!from) {
+    console.log(c.dim("  Detecting source framework..."));
+    const detected = detectProjectFramework(resolve(targetPath));
+    if (detected) {
+      from = detected;
+      console.log(`  ${c.green("✓")} Detected: ${c.cyan(detected)}`);
+    } else {
+      console.error(c.red("✗ Could not detect source framework."));
+      console.log();
+      console.log(c.dim("  Specify it with --from flag:"));
+      console.log(c.dim("    bunx asijs migrate ./src --from elysia"));
+      console.log(c.dim("    bunx asijs migrate ./src --from hono"));
+      console.log(c.dim("    bunx asijs migrate ./src --from fastify"));
+      process.exit(1);
+    }
+  }
+
+  console.log(`  ${c.dim("Target:")}   ${resolve(targetPath)}`);
+  console.log(`  ${c.dim("From:")}     ${c.cyan(from)}`);
+  console.log(`  ${c.dim("Mode:")}     ${dryRun ? c.yellow("Dry Run") : c.green("Write")}`);
+  console.log();
+
+  try {
+    const result = runCodemod(targetPath, {
+      from,
+      dryRun,
+      verbose,
+    });
+
+    printSummary(result, dryRun);
+  } catch (error) {
+    console.error(c.red("\n✗ Migration failed:"), error);
+    process.exit(1);
+  }
+}
+
 function printHelp() {
   console.log(`
-${c.bold("AsiJS CLI")} - Create AsiJS projects
+${c.bold("AsiJS CLI")} — Create & migrate AsiJS projects
 
 ${c.bold("Usage:")}
   bunx asijs create <project-name> [options]
   bun create asijs <project-name> [options]
+  bunx asijs migrate <path> [options]
+  bunx asijs build [options]
 
-${c.bold("Options:")}
-  -t, --template <name>  Use a specific template
-  -h, --help             Show this help message
-  -v, --version          Show version
+${c.bold("Commands:")}
+  create   Create a new AsiJS project
+  build    Production build for SPA/SSR apps (client + server bundles)
+  migrate  Migrate existing project from Elysia / Hono / Fastify
+  dev      Start workspace dev mode with hot-reload
+  inspect  Inspect project: routes, plugins, middleware, bundle size
+
+${c.bold("Build Options:")}
+  --client <path>      Client entry point (default: src/client.tsx)
+  --server <path>      Server entry point (default: src/index.ts)
+  --outdir <path>      Output directory (default: dist)
+  --no-minify          Skip minification
+
+${c.bold("Inspect Options:")}
+  -r, --routes            Show routes table
+  -p, --plugins           Show plugins and middleware
+  -s, --size              Show bundle size analysis
+  -v, --verbose           Detailed route info (handler, line number)
+
+${c.bold("Migrate Options:")}
+  -f, --from <framework>  Source framework (elysia|hono|fastify)
+  --dry-run               Show changes without writing
+  -v, --verbose           Detailed transformation logs
+
+${c.bold("Create Options:")}
+  -t, --template <name>   Use a specific template
+  -h, --help              Show this help message
+  -v, --version           Show version
 
 ${c.bold("Templates:")}
 ${Object.entries(TEMPLATES)
@@ -954,7 +2335,15 @@ ${Object.entries(TEMPLATES)
 ${c.bold("Examples:")}
   bunx asijs create my-app
   bunx asijs create my-api -t api
-  bun create asijs my-app --template fullstack
+  bunx asijs inspect
+  bunx asijs inspect --routes --verbose
+  bunx asijs inspect --plugins
+  bunx asijs inspect --size
+  bunx asijs build
+  bunx asijs build --client src/client.tsx --outdir build
+  bunx asijs migrate ./src --from elysia
+  bunx asijs migrate ./app.ts --from hono --dry-run -v
+  bunx asijs migrate . --from fastify
 `);
 }
 

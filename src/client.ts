@@ -601,3 +601,10 @@ export type InferResponse<T> = T extends (
  * Extract routes from an Asi app type
  */
 export type InferRoutes<TApp> = TApp extends { routes: infer R } ? R : never;
+
+// Re-export RPC client for "asijs/client" import path
+export {
+  createRPCClient,
+  RPCActionError,
+  type RPCClientOptions,
+} from "./rpc";

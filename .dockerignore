@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+bun.lockb
+bun.lock
+bench/bun.lock
+bench/node_modules/
+
+# Build output
+dist/
+out/
+build/
+*.tgz
+
+# Test & coverage
+test/
+coverage/
+*.lcov
+test-results/
+bench/
+
+# Docs
+docs/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temp
+tmp/
+temp/
+*.tmp
+*.tsbuildinfo
+.cache

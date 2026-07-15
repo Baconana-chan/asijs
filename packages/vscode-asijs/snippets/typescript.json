@@ -1,0 +1,233 @@
+{
+  "AsiJS: New App": {
+    "prefix": ["asi-new", "asijs"],
+    "body": [
+      "import { Asi${2:, cors, openapi} } from \"asijs\";",
+      "import { Type } from \"@sinclair/typebox\";",
+      "",
+      "const app = new Asi(${3:{ development: true }});",
+      "",
+      "app.get(\"/\", () => ({ message: \"Hello from AsiJS! 🚀\" }));",
+      "",
+      "app.listen(${4:3000}, () => {",
+      "  console.log(`🚀 Server running at http://localhost:${4:3000}`);",
+      "});",
+      ""
+    ],
+    "description": "Create a new AsiJS application"
+  },
+  "AsiJS: GET Route": {
+    "prefix": ["asi-get", "app.get"],
+    "body": [
+      "app.get(\"${1:/path}\",${2: {${3:}}} (ctx) => {",
+      "  ${4:return { message: \"Hello\" };}",
+      "});"
+    ],
+    "description": "Register a GET route"
+  },
+  "AsiJS: GET Route with Validation": {
+    "prefix": ["asi-get-v", "app.get.validation"],
+    "body": [
+      "app.get(\"${1:/path}\",",
+      "  {",
+      "    schema: {",
+      "      query: Type.Object({",
+      "        ${2:q}: Type.Optional(Type.String()),",
+      "      }),",
+      "      params: Type.Object({",
+      "        ${3:id}: Type.String(),",
+      "      }),",
+      "    },",
+      "  },",
+      "  (ctx) => {",
+      "    ${4:return ctx.body;}",
+      "  },",
+      ");"
+    ],
+    "description": "Register a GET route with validation"
+  },
+  "AsiJS: POST Route": {
+    "prefix": ["asi-post", "app.post"],
+    "body": [
+      "app.post(\"${1:/path}\",",
+      "  {",
+      "    schema: {",
+      "      body: Type.Object({",
+      "        ${2:name}: Type.String(),",
+      "        ${3:email}: Type.String({ format: \"email\" }),",
+      "      }),",
+      "    },",
+      "  },",
+      "  (ctx) => {",
+      "    const { ${2:name}, ${3:email} } = ctx.body;",
+      "    ${4:return { success: true };}",
+      "  },",
+      ");"
+    ],
+    "description": "Register a POST route with body validation"
+  },
+  "AsiJS: Group Route": {
+    "prefix": ["asi-group", "app.group"],
+    "body": [
+      "app.group(\"${1:/api}\", (api) => {",
+      "  api.get(\"${2:/items}\", (ctx) => {",
+      "    ${3:return [];}",
+      "  });",
+      "});"
+    ],
+    "description": "Create a route group"
+  },
+  "AsiJS: WebSocket": {
+    "prefix": ["asi-ws", "app.ws"],
+    "body": [
+      "app.ws(\"${1:/ws}\", {",
+      "  open(ws) {",
+      "    console.log(\"Client connected\");",
+      "  },",
+      "  message(ws, message) {",
+      "    ws.send(`Echo: ${message}`);",
+      "  },",
+      "  close(ws) {",
+      "    console.log(\"Client disconnected\");",
+      "  },",
+      "});"
+    ],
+    "description": "Register a WebSocket endpoint"
+  },
+  "AsiJS: Plugin (CORS)": {
+    "prefix": ["asi-cors", "app.plugin.cors"],
+    "body": [
+      "import { cors } from \"asijs\";",
+      "app.plugin(cors({",
+      "  origin: \"${1:*}\",",
+      "  methods: [\"${2:GET\", \"POST\", \"PUT\", \"DELETE\"}],",
+      "}));"
+    ],
+    "description": "Add CORS plugin"
+  },
+  "AsiJS: Plugin (JWT Auth)": {
+    "prefix": ["asi-jwt", "app.plugin.jwt"],
+    "body": [
+      "import { jwt, bearer } from \"asijs\";",
+      "",
+      "const jwtHelper = jwt({ secret: process.env.JWT_SECRET || \"${1:your-secret}\" });",
+      "",
+      "app.get(\"/protected\",",
+      "  bearer({ verify: async (token) => jwtHelper.verify(token) }),",
+      "  (ctx) => ({ secret: \"protected data\" })",
+      ");"
+    ],
+    "description": "Add JWT authentication"
+  },
+  "AsiJS: Error Handler": {
+    "prefix": ["asi-error", "app.onError"],
+    "body": [
+      "app.onError((error, ctx) => {",
+      "  console.error(\"[Error]\", error);",
+      "  return ctx.status(500).jsonResponse({",
+      "    error: \"Internal Server Error\",",
+      "    message: process.env.NODE_ENV === \"development\" ? error.message : undefined,",
+      "  });",
+      "});"
+    ],
+    "description": "Custom error handler"
+  },
+  "AsiJS: Middleware": {
+    "prefix": ["asi-middleware", "app.use"],
+    "body": [
+      "app.use((ctx, next) => {",
+      "  const start = performance.now();",
+      "  return next().then((response) => {",
+      "    const duration = performance.now() - start;",
+      "    console.log(`${ctx.method} ${ctx.path} ${response.status} ${duration.toFixed(2)}ms`);",
+      "    return response;",
+      "  });",
+      "});"
+    ],
+    "description": "Add a middleware"
+  },
+  "AsiJS: OpenAPI Plugin": {
+    "prefix": ["asi-openapi", "app.plugin.openapi"],
+    "body": [
+      "import { openapi } from \"asijs\";",
+      "",
+      "app.plugin(openapi({",
+      "  title: \"${1:My API}\",",
+      "  version: \"${2:1.0.0}\",",
+      "  description: \"${3:API description}\",",
+      "  docsPath: \"${4:/docs}\",",
+      "}));"
+    ],
+    "description": "Add OpenAPI/Swagger plugin"
+  },
+  "AsiJS: Server Action (RPC)": {
+    "prefix": ["asi-action", "serverAction"],
+    "body": [
+      "import { serverAction, rpc } from \"asijs\";",
+      "import { Type } from \"@sinclair/typebox\";",
+      "",
+      "const greet = serverAction(",
+      "  Type.Object({ name: Type.String() }),",
+      "  async ({ name }, ctx) => {",
+      "    return { message: `Hello, ${name}!` };",
+      "  },",
+      ");",
+      "",
+      "const api = rpc(app, { greet });",
+      "export type AppAPI = typeof api;"
+    ],
+    "description": "Create a server action (RPC 2.0)"
+  },
+  "AsiJS: Health Check": {
+    "prefix": ["asi-health", "healthCheck"],
+    "body": [
+      "import { healthCheck } from \"asijs\";",
+      "",
+      "app.plugin(healthCheck({",
+      "  checks: {",
+      "    ${1:database}: async () => ${2:await db.ping()},\"",
+      "  },",
+      "}));"
+    ],
+    "description": "Add health check endpoints"
+  },
+  "AsiJS: Static Files": {
+    "prefix": ["asi-static", "staticFiles"],
+    "body": [
+      "import { staticFiles } from \"asijs\";",
+      "",
+      "app.use(staticFiles(\"${1:./public}\", {",
+      "  prefix: \"${2:/static}\",",
+      "}));"
+    ],
+    "description": "Serve static files"
+  },
+  "AsiJS: Rate Limiting": {
+    "prefix": ["asi-rate-limit", "rateLimit"],
+    "body": [
+      "import { rateLimit, standardLimit } from \"asijs\";",
+      "",
+      "app.plugin(rateLimit({",
+      "  max: ${1:100},",
+      "  windowMs: ${2:60000},",
+      "  message: \"${3:Too many requests}\",",
+      "}));"
+    ],
+    "description": "Add rate limiting"
+  },
+  "AsiJS: Scheduled Job": {
+    "prefix": ["asi-scheduler", "scheduler.cron"],
+    "body": [
+      "import { scheduler, cron } from \"asijs\";",
+      "",
+      "app.plugin(scheduler({",
+      "  jobs: [",
+      "    cron(\"${1:0 * * * *}\", async () => {",
+      "      ${2:console.log(\"Hourly job\");}",
+      "    }),",
+      "  ],",
+      "}));"
+    ],
+    "description": "Add a scheduled job"
+  }
+}

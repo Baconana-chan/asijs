@@ -148,16 +148,21 @@ app.post("/upload/avatar", async (ctx) => {
 
 // ===== Start Server =====
 
-app.listen(3000, () => {
-  console.log("\n📚 Try these commands:");
-  console.log("");
-  console.log("  # Single file upload");
-  console.log("  curl -X POST http://localhost:3000/upload/single -F 'file=@./README.md'");
-  console.log("");
-  console.log("  # Multiple file upload");
-  console.log("  curl -X POST http://localhost:3000/upload/multiple -F 'files=@./README.md' -F 'files=@./package.json'");
-  console.log("");
-  console.log("  # Avatar upload (with validation)");
-  console.log("  curl -X POST http://localhost:3000/upload/avatar -F 'username=john' -F 'avatar=@./avatar.jpg'");
-  console.log("");
-});
+const port = Number(process.env.PORT ?? 3000);
+const server = app.listen(port);
+
+console.log("\n📚 Try these commands:");
+console.log("");
+console.log("  # Single file upload");
+console.log(`  curl -X POST http://localhost:${server.port}/upload/single -F 'file=@./README.md'`);
+console.log("");
+console.log("  # Multiple file upload");
+console.log(`  curl -X POST http://localhost:${server.port}/upload/multiple -F 'files=@./README.md' -F 'files=@./package.json'`);
+console.log("");
+console.log("  # Avatar upload (with validation)");
+console.log(`  curl -X POST http://localhost:${server.port}/upload/avatar -F 'username=john' -F 'avatar=@./avatar.jpg'`);
+console.log("");
+
+if (process.env.ASIJS_EXAMPLE_CHECK === "1") {
+  setTimeout(() => server.stop(), 50);
+}

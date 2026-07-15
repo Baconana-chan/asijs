@@ -148,4 +148,9 @@ app.get("/", () => {
   `, { headers: { "Content-Type": "text/html" } });
 });
 
-app.listen(3000);
+const port = Number(process.env.PORT ?? 3000);
+const server = app.listen(port);
+
+if (process.env.ASIJS_EXAMPLE_CHECK === "1") {
+  setTimeout(() => server.stop(), 50);
+}

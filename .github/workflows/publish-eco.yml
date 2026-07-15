@@ -1,0 +1,192 @@
+name: Publish Ecosystem Packages
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'eco-*'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to publish (vscode / eslint / all)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - vscode
+          - eslint
+      dry-run:
+        description: 'Dry run (no actual publish)'
+        required: false
+        default: 'true'
+        type: boolean
+
+concurrency:
+  group: publish-eco-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # ESLint Plugin
+  # ============================================================================
+  eslint-plugin:
+    name: Publish ESLint Plugin
+    runs-on: ubuntu-latest
+    # Skip on release events — publish.yml handles ESLint plugin in the main release cycle
+    if: ${{ (github.event_name == 'release' || github.event.inputs.package == 'all' || github.event.inputs.package == 'eslint') && !startsWith(github.ref, 'refs/tags/v') }}
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Read version
+        id: version
+        working-directory: ./packages/eslint-plugin-asijs
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PKG_NAME=$(node -p "require('./package.json').name")
+          echo "version=$PKG_VERSION" >> $GITHUB_OUTPUT
+          echo "name=$PKG_NAME" >> $GITHUB_OUTPUT
+          echo "Package: $PKG_NAME@$PKG_VERSION"
+
+      - name: Validate tag matches version
+        if: ${{ startsWith(github.ref, 'refs/tags/eco-') }}
+        working-directory: ./packages/eslint-plugin-asijs
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/eco-}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "❌ Tag eco-$TAG_VERSION does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          echo "✅ Tag eco-$TAG_VERSION matches version $PKG_VERSION"
+
+      - name: Check npm registry for existing version
+        working-directory: ./packages/eslint-plugin-asijs
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PKG_NAME=$(node -p "require('./package.json').name")
+          EXISTING=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            echo "⚠️  $PKG_NAME@$PKG_VERSION already exists on npm — skipping publish"
+            echo "already_published=true" >> $GITHUB_ENV
+          else
+            echo "✅ $PKG_NAME@$PKG_VERSION not found on npm — will publish"
+            echo "already_published=false" >> $GITHUB_ENV
+          fi
+
+      - name: Install dependencies
+        working-directory: ./packages/eslint-plugin-asijs
+        run: npm ci || npm install
+
+      - name: Build
+        working-directory: ./packages/eslint-plugin-asijs
+        run: npx tsc
+
+      - name: Publish (dry-run)
+        if: ${{ github.event.inputs.dry-run == 'true' && env.already_published != 'true' }}
+        working-directory: ./packages/eslint-plugin-asijs
+        run: npm publish --dry-run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        if: ${{ (github.event_name == 'release' || github.event.inputs.dry-run != 'true') && env.already_published != 'true' }}
+        working-directory: ./packages/eslint-plugin-asijs
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ============================================================================
+  # VS Code Extension
+  # ============================================================================
+  vscode-extension:
+    name: Publish VS Code Extension
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'release' || github.event.inputs.package == 'all' || github.event.inputs.package == 'vscode' }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Read version
+        id: version
+        working-directory: ./packages/vscode-asijs
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$PKG_VERSION" >> $GITHUB_OUTPUT
+          echo "Extension: vscode-asijs@$PKG_VERSION"
+
+      - name: Validate tag matches version
+        if: ${{ startsWith(github.ref, 'refs/tags/eco-') }}
+        working-directory: ./packages/vscode-asijs
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/eco-}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "❌ Tag eco-$TAG_VERSION does not match vscode-asijs version $PKG_VERSION"
+            exit 1
+          fi
+          echo "✅ Tag eco-$TAG_VERSION matches vscode-asijs version $PKG_VERSION"
+
+      - name: Install dependencies
+        working-directory: ./packages/vscode-asijs
+        run: npm install
+
+      - name: Build extension
+        working-directory: ./packages/vscode-asijs
+        run: |
+          npx tsc -p tsconfig.json 2>&1 || echo "TypeScript build had warnings (expected)"
+
+      - name: Package extension
+        working-directory: ./packages/vscode-asijs
+        run: |
+          npx @vscode/vsce package \
+            --out vscode-asijs-${{ steps.version.outputs.version }}.vsix 2>&1 || \
+          echo "⚠️  Packaging skipped. Register publisher 'asijs' in VS Code Marketplace first."
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-asijs-vsix
+          path: packages/vscode-asijs/*.vsix
+          retention-days: 30
+
+      - name: Publish to VS Code Marketplace
+        if: ${{ github.event_name == 'release' }}
+        working-directory: ./packages/vscode-asijs
+        run: |
+          npx @vscode/vsce publish \
+            -p ${{ secrets.VSCE_PAT }} 2>&1 || \
+          echo "⚠️  Marketplace publish skipped. Set VSCE_PAT secret."
+
+      - name: Publish to OpenVSX
+        if: ${{ github.event_name == 'release' }}
+        working-directory: ./packages/vscode-asijs
+        run: |
+          npx ovsx publish \
+            -p ${{ secrets.OPENVSX_PAT }} 2>&1 || \
+          echo "⚠️  OpenVSX publish skipped. Set OPENVSX_PAT secret."

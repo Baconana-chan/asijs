@@ -1,0 +1,30 @@
+{
+  "name": "eslint-plugin-asijs",
+  "version": "0.1.0",
+  "description": "ESLint plugin for AsiJS framework — route validation, best practices, and code quality",
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "asijs",
+    "typescript"
+  ],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test",
+    "lint": "eslint src/"
+  },
+  "peerDependencies": {
+    "eslint": "^8.0.0 || ^9.0.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/utils": "^7.0.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.0.0"
+  }
+}

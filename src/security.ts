@@ -293,6 +293,10 @@ function buildPermissionsPolicyHeader(
 export function securityHeaders(options: SecurityOptions = {}): Middleware {
   // Pre-compute headers for performance
   const headers: Array<[string, string]> = [];
+  const hstsHeader =
+    options.hsts !== false
+      ? buildHstsHeader(typeof options.hsts === "object" ? options.hsts : {})
+      : null;
 
   // Content-Security-Policy
   if (options.contentSecurityPolicy !== false) {
@@ -402,6 +406,10 @@ export function securityHeaders(options: SecurityOptions = {}): Middleware {
     if (response instanceof Response) {
       for (const [name, value] of headers) {
         response.headers.set(name, value);
+      }
+
+      if (hstsHeader && ctx.url.protocol === "https:") {
+        response.headers.set("Strict-Transport-Security", hstsHeader);
       }
     }
 

@@ -230,7 +230,7 @@ export class TokenBucketStore implements RateLimitStore {
 
     return {
       limit: max,
-      remaining: Math.max(0, Math.floor(entry.tokens)),
+      remaining: Math.floor(entry.tokens),
       resetTime,
       retryAfter,
     };
@@ -260,23 +260,159 @@ export class TokenBucketStore implements RateLimitStore {
   }
 }
 
-// ===== Default Key Generator =====
+// ===== Key Generators =====
 
+/**
+ * Preset key generators for common rate limiting patterns.
+ *
+ * @example
+ * ```ts
+ * import { rateLimit, rateLimitPresets } from "asijs";
+ *
+ * // Rate limit by IP address
+ * app.plugin(rateLimit({
+ *   max: 100,
+ *   windowMs: 60_000,
+ *   keyGenerator: rateLimitPresets.byIp,
+ * }));
+ *
+ * // Rate limit by API key header
+ * app.use(rateLimitMiddlewareFunc({
+ *   max: 1000,
+ *   windowMs: 3600_000,
+ *   keyGenerator: rateLimitPresets.byApiKey("X-API-Key"),
+ * }));
+ *
+ * // Rate limit by user ID (from session or auth)
+ * app.use(rateLimitMiddlewareFunc({
+ *   max: 50,
+ *   windowMs: 60_000,
+ *   keyGenerator: rateLimitPresets.byUserId,
+ * }));
+ *
+ * // Combine multiple identifiers
+ * app.use(rateLimitMiddlewareFunc({
+ *   max: 200,
+ *   windowMs: 60_000,
+ *   keyGenerator: rateLimitPresets.combine(
+ *     rateLimitPresets.byIp,
+ *     rateLimitPresets.byApiKey("Authorization"),
+ *   ),
+ * }));
+ * ```
+ */
+export const rateLimitPresets = {
+  /**
+   * Rate limit by client IP address.
+   *
+   * Checks X-Forwarded-For, X-Real-IP headers,
+   * then falls back to "default-client".
+   */
+  byIp: function byIp(ctx: Context): string {
+    const forwardedFor = ctx.header("X-Forwarded-For");
+    if (forwardedFor) {
+      return forwardedFor.split(",")[0].trim();
+    }
+    const realIp = ctx.header("X-Real-IP");
+    if (realIp) return realIp;
+    return "default-client";
+  },
+
+  /**
+   * Rate limit by a specific request header (e.g., API key).
+   * Falls back to IP address if header is missing.
+   *
+   * @param headerName - The header to use as identifier
+   * @returns A key generator function
+   *
+   * @example
+   * ```ts
+   * keyGenerator: rateLimitPresets.byApiKey("X-API-Key")
+   * ```
+   */
+  byApiKey:
+    (headerName = "X-API-Key"): ((ctx: Context) => string) =>
+    (ctx: Context): string => {
+      const apiKey = ctx.header(headerName);
+      if (apiKey) return apiKey.trim();
+      // Fallback to IP
+      return rateLimitPresets.byIp(ctx);
+    },
+
+  /**
+   * Rate limit by user ID.
+   *
+   * Reads from `ctx.session?.userId`, `ctx.params.userId`,
+   * or falls back to IP address.
+   *
+   * @example
+   * ```ts
+   * keyGenerator: rateLimitPresets.byUserId
+   * ```
+   */
+  byUserId: function byUserId(ctx: Context): string {
+    // Check session for authenticated user ID
+    const session = (ctx as any).session;
+    if (session && typeof session.get === "function") {
+      const userId = session.get("userId");
+      if (userId) return `user:${userId}`;
+    }
+    // Fallback to IP (safe — never use URL params for auth)
+    return rateLimitPresets.byIp(ctx);
+  },
+
+  /**
+   * Rate limit by a custom request header.
+   * Similar to byApiKey but without API-specific naming.
+   *
+   * @param headerName - The header name to use
+   * @param prefix - Optional prefix for the key (e.g., "header:")
+   * @returns A key generator function
+   */
+  byHeader:
+    (
+      headerName: string,
+      prefix?: string,
+    ): ((ctx: Context) => string) =>
+    (ctx: Context): string => {
+      const value = ctx.header(headerName);
+      if (value) {
+        const key = value.trim();
+        return prefix ? `${prefix}${key}` : `header:${headerName}:${key}`;
+      }
+      return rateLimitPresets.byIp(ctx);
+    },
+
+  /**
+   * Combine multiple key generators into one.
+   *
+   * The resulting key is a combination of all generator outputs,
+   * useful when you want to rate limit by multiple dimensions
+   * (e.g., IP + API key).
+   *
+   * @param generators - Key generator functions to combine
+   * @returns A combined key generator function
+   *
+   * @example
+   * ```ts
+   * keyGenerator: rateLimitPresets.combine(
+   *   rateLimitPresets.byIp,
+   *   rateLimitPresets.byApiKey(),
+   * )
+   * // Produces keys like: "192.168.1.1:api-key-123"
+   * ```
+   */
+  combine:
+    (
+      ...generators: Array<(ctx: Context) => string>
+    ): ((ctx: Context) => string) =>
+    (ctx: Context): string =>
+      generators.map((fn) => fn(ctx)).join(":"),
+};
+
+/** @internal Default key generator — uses IP */
 function defaultKeyGenerator(ctx: Context): string {
-  // Try to get real IP from headers (for proxies)
-  const forwardedFor = ctx.header("X-Forwarded-For");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0].trim();
-  }
-
-  const realIp = ctx.header("X-Real-IP");
-  if (realIp) {
-    return realIp;
-  }
-
-  // Fallback: use a hash of headers as identifier
-  // In real Bun.serve we'd have access to the socket
-  return "default-client";
+  return rateLimitPresets.byIp(ctx);
 }
 
 // ===== Default Handler =====
@@ -438,3 +574,178 @@ export const authLimit = (
   message: "Too many authentication attempts, please try again later.",
   ...overrides,
 });
+
+// ========================================================================
+// Tenant Rate Limiting (for Workspace / Multi-Tenant)
+// ========================================================================
+
+/**
+ * Tenant-aware rate limit store.
+ * Wraps any RateLimitStore and prefixes keys with the tenant ID
+ * so that each tenant's counters are fully isolated.
+ */
+export class TenantStore implements RateLimitStore {
+  private inner: RateLimitStore;
+  private tenantId: string;
+
+  constructor(tenantId: string, inner?: RateLimitStore) {
+    this.tenantId = tenantId;
+    this.inner = inner ?? new MemoryStore();
+  }
+
+  private tenantKey(key: string): string {
+    return `${this.tenantId}:${key}`;
+  }
+
+  async increment(
+    key: string,
+    windowMs: number,
+    max: number,
+  ): Promise<RateLimitInfo> {
+    return this.inner.increment(this.tenantKey(key), windowMs, max);
+  }
+
+  async reset(key: string): Promise<void> {
+    return this.inner.reset(this.tenantKey(key));
+  }
+
+  async cleanup(): Promise<void> {
+    if (this.inner.cleanup) {
+      await this.inner.cleanup();
+    }
+  }
+}
+
+/**
+ * Options for workspace/tenant rate limiting.
+ */
+export interface TenantRateLimitOptions {
+  /**
+   * Tenant identifier.
+   * Defaults to ASIJS_APP_NAME env var, then ASIJS_TENANT_ID, then "default".
+   */
+  tenantId?: string;
+
+  /** Max requests in the window per tenant */
+  max?: number;
+
+  /** Time window in milliseconds */
+  windowMs?: number;
+
+  /** Custom store (will be wrapped with TenantStore) */
+  store?: RateLimitStore;
+
+  /** Algorithm to use */
+  algorithm?: "sliding-window" | "token-bucket";
+
+  /** Custom key generator (default: IP-based) */
+  keyGenerator?: (ctx: Context) => string;
+
+  /** Skip rate limiting for certain requests */
+  skip?: (ctx: Context) => boolean | Promise<boolean>;
+
+  /** Custom response when rate limited */
+  handler?: (ctx: Context, info: RateLimitInfo) => Response | Promise<Response>;
+
+  /** Message when rate limited */
+  message?: string;
+
+  /** HTTP status code when rate limited (default: 429) */
+  statusCode?: number;
+}
+
+/**
+ * Default env-based options for workspace rate limiting.
+ * Reads from environment variables:
+ *   ASIJS_APP_NAME | ASIJS_TENANT_ID  — tenant identifier
+ *   ASIJS_RATE_LIMIT_MAX               — max requests (default: 1000)
+ *   ASIJS_RATE_LIMIT_WINDOW_MS         — window in ms (default: 60_000)
+ *   ASIJS_RATE_LIMIT_ENABLED           — set "0" or "false" to disable
+ */
+export function defaultTenantOptions(): TenantRateLimitOptions {
+  const enabled = process.env.ASIJS_RATE_LIMIT_ENABLED;
+  if (enabled === "0" || enabled === "false" || enabled === "no") {
+    return { max: Infinity, windowMs: 1 };
+  }
+
+  return {
+    tenantId:
+      process.env.ASIJS_APP_NAME ??
+      process.env.ASIJS_TENANT_ID ??
+      "default",
+    max: Number(process.env.ASIJS_RATE_LIMIT_MAX) || 1000,
+    windowMs: Number(process.env.ASIJS_RATE_LIMIT_WINDOW_MS) || 60_000,
+  };
+}
+
+/**
+ * Create a tenant-isolated rate limit plugin for workspace sub-apps.
+ *
+ * Automatically reads tenant config from environment variables
+ * (set by the workspace controller), so sub-apps can just call:
+ *
+ * @example
+ * ```ts
+ * import { Asi, workspaceRateLimit } from "asijs";
+ *
+ * const app = new Asi();
+ * app.plugin(workspaceRateLimit());
+ * ```
+ *
+ * The workspace controller (asiDev) automatically injects:
+ *   ASIJS_APP_NAME → tenant ID
+ *   ASIJS_RATE_LIMIT_MAX → per-tenant request limit
+ *   ASIJS_RATE_LIMIT_WINDOW_MS → time window
+ */
+export function workspaceRateLimit(
+  options?: TenantRateLimitOptions,
+): AsiPlugin {
+  const resolved: TenantRateLimitOptions = {
+    ...defaultTenantOptions(),
+    ...options,
+  };
+
+  const inner = rateLimit({
+    max: resolved.max ?? 1000,
+    windowMs: resolved.windowMs ?? 60_000,
+    store: new TenantStore(
+      resolved.tenantId ?? "default",
+      resolved.store,
+    ),
+    keyGenerator: resolved.keyGenerator,
+    skip: resolved.skip,
+    handler: resolved.handler,
+    message: resolved.message,
+    statusCode: resolved.statusCode,
+    algorithm: resolved.algorithm,
+  });
+
+  return inner;
+}
+
+/**
+ * Create tenant-aware rate limit middleware for individual routes.
+ */
+export function tenantRateLimitMiddleware(
+  options?: TenantRateLimitOptions,
+): BeforeHandler {
+  const resolved: TenantRateLimitOptions = {
+    ...defaultTenantOptions(),
+    ...options,
+  };
+
+  return rateLimitMiddleware({
+    max: resolved.max ?? 1000,
+    windowMs: resolved.windowMs ?? 60_000,
+    store: new TenantStore(
+      resolved.tenantId ?? "default",
+      resolved.store,
+    ),
+    keyGenerator: resolved.keyGenerator,
+    skip: resolved.skip,
+    handler: resolved.handler,
+    message: resolved.message,
+    statusCode: resolved.statusCode,
+    algorithm: resolved.algorithm,
+  });
+}

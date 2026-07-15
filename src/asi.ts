@@ -1,4 +1,5 @@
 import type { Server, ServerWebSocket } from "bun";
+import type { ServerAdapter, ServerHandle } from "./runtime/types";
 import type { TSchema, Static } from "@sinclair/typebox";
 import { Context, type TypedContext } from "./context";
 import { Router } from "./router";
@@ -8,12 +9,28 @@ import {
   type ValidationError,
 } from "./validation";
 import {
+  renderDefaultErrorPage,
+  renderDiscoveredErrorPage,
+  shouldRenderHtmlErrorPage,
+  type ErrorPagesOptions,
+} from "./error-pages";
+export type { ErrorPagesOptions } from "./error-pages";
+import {
+  renderDevErrorPage,
+  renderDevNotFoundPage,
+} from "./dev-error-page";
+import {
   compileHandler,
   compileSchema,
   analyzeRoute,
   StaticRouter,
+  enableLRUSchemaCache,
   type CompiledRoute,
 } from "./compiler";
+import {
+  RadixTreeRouter,
+  MiddlewareChainFlattener,
+} from "./router-perf";
 import {
   isFormDataSchema,
   validateFormData,
@@ -67,6 +84,8 @@ export interface AsiConfig {
   hostname?: string;
   /** Включить подробные ошибки в dev режиме */
   development?: boolean;
+  /** HTML error pages with auto-discovery for 404/500 */
+  errorPages?: boolean | ErrorPagesOptions;
 
   // === Bun.serve() options ===
 
@@ -138,6 +157,91 @@ export interface AsiConfig {
    * По умолчанию: false для максимальной производительности
    */
   decodeQuery?: boolean;
+
+    /**
+   * Плагин для HTTP-сервера (например, nodeAdapter для Node.js)
+   * По умолчанию: undefined (используется Bun.serve())
+   */
+  serverAdapter?: ServerAdapter;
+
+  /**
+   * SPA / SSR / Hybrid Rendering mode
+   *
+   * When enabled:
+   * - `spa: true` — serves the SPA client bundle for all non-API routes
+   * - `spa: { ... }` — full configuration with SSR + islands
+   *
+   * In dev mode, HMR is automatically enabled.
+   * In production, `asi build` must be run first.
+   *
+   * @example
+   * ```ts
+   * // Simple SPA mode
+   * const app = new Asi({ spa: true });
+   *
+   * // With custom config
+   * const app = new Asi({
+   *   spa: {
+   *     clientEntry: "src/client.tsx",
+   *     hmr: true,
+   *     islands: {
+   *       Counter: "./src/islands/counter.tsx",
+   *     },
+   *   },
+   * });
+   * ```
+   */
+  spa?: boolean | import("./spa").SPAOptions;
+
+  /**
+   * Router backend selection.
+   *
+   * - `"trie"` (default) — standard segment-based trie router (proven, compatible)
+   * - `"radix"` — compressed radix tree with binary-search static children
+   *   Uses sorted arrays instead of Maps for static segment lookup.
+   *   More memory-efficient for 1M+ routes.
+   *
+   * @default "trie"
+   */
+  router?: "trie" | "radix";
+
+  /**
+   * Enable the middleware chain flattener.
+   * When true, middleware chains are compiled into a single flat async function
+   * during compile(), avoiding per-request loop/chain overhead.
+   *
+   * @default false
+   */
+  flattenMiddleware?: boolean;
+
+  /**
+   * Enable LRU-based schema validator cache instead of the simple Map.
+   * Prevents unbounded memory growth with large numbers of schemas.
+   *
+   * @default false (uses simple Map)
+   */
+  lruSchemaCache?: boolean | number;
+}
+
+/** Route info for public inspection (used by MCP, dev dashboard, etc.) */
+export interface RouteInfo {
+  method: RouteMethod;
+  path: string;
+  hasValidation: boolean;
+  hasMiddleware: boolean;
+}
+
+/** Middleware counts for public inspection */
+export interface MiddlewareInfo {
+  global: number;
+  pathBased: number;
+}
+
+/** Public app configuration accessible via getAppConfig() */
+export interface AppConfigInfo {
+  port: number;
+  hostname: string;
+  development: boolean;
 }
 
 /** Интерфейс для группировки роутов */
@@ -278,7 +382,7 @@ export class Asi {
   private globalAfterHandlers: AfterHandler[] = [];
   private pathMiddlewares: Map<string, Middleware[]> = new Map();
   private middlewareFlatCache: WeakMap<Middleware[], boolean> = new WeakMap();
-  private server: Server<any> | null = null;
+  private server: ServerHandle | null = null;
   private config: AsiConfig;
 
   private customErrorHandler: ErrorHandler | null = null;
@@ -287,11 +391,20 @@ export class Asi {
   // WebSocket routes
   private wsRoutes: Map<string, WebSocketRoute<any>> = new Map();
 
+  // Track active WebSocket connections for graceful shutdown
+  private activeWsConnections: Set<ServerWebSocket<any>> = new Set();
+
   // Compilation
   private isCompiled = false;
   private staticRouter = new StaticRouter();
   private compiledRoutes: Map<RouteMethod, Map<string, CompiledRoute>> =
     new Map();
+
+  // Router performance — optional when config.router === "radix"
+  private radixRouter: RadixTreeRouter | null = null;
+
+  // Middleware chain flattener — optional when config.flattenMiddleware === true
+  private chainFlattener: MiddlewareChainFlattener | null = null;
 
   // Route metadata for compilation
   private routeMetadata: Array<{
@@ -334,6 +447,35 @@ export class Asi {
         "⚠️  AsiJS is optimized for Bun. Running on Node.js may have reduced performance.",
       );
     }
+
+    // Router performance — initialise optional optimisations
+    if (this.config.router === "radix") {
+      this.radixRouter = new RadixTreeRouter();
+    }
+
+    if (this.config.flattenMiddleware) {
+      this.chainFlattener = new MiddlewareChainFlattener();
+    }
+
+    if (this.config.lruSchemaCache) {
+      const maxSize =
+        typeof this.config.lruSchemaCache === "number"
+          ? this.config.lruSchemaCache
+          : 10000;
+      enableLRUSchemaCache(maxSize);
+    }
+  }
+
+  private get errorPagesOptions(): ErrorPagesOptions | undefined {
+    if (this.config.errorPages === false) {
+      return { enabled: false };
+    }
+
+    if (this.config.errorPages === true || this.config.errorPages === undefined) {
+      return undefined;
+    }
+
+    return this.config.errorPages;
   }
 
   // ===== Route registration with type inference =====
@@ -510,6 +652,11 @@ export class Asi {
     const wrappedHandler = this.wrapHandler(handler, options);
     const middlewares = [...this.globalMiddlewares];
     this.router.add(method, path, wrappedHandler, middlewares);
+
+    // Radix tree — keep in sync
+    if (this.radixRouter) {
+      this.radixRouter.add(method, path, wrappedHandler, middlewares);
+    }
 
     // Сохраняем metadata для компиляции
     this.routeMetadata.push({
@@ -908,6 +1055,48 @@ export class Asi {
     return this._plugins.has(name);
   }
 
+  // ===== Public inspection API для плагинов и инструментов (MCP, dashboard) =====
+
+  /**
+   * Route info for public inspection.
+   */
+  getRoutes(): RouteInfo[] {
+    return this.routeMetadata.map((m) => ({
+      method: m.method,
+      path: m.path,
+      hasValidation: !!(m.schemas?.body || m.schemas?.query || m.schemas?.params),
+      hasMiddleware: m.middlewares.length > 0,
+    }));
+  }
+
+  /**
+   * Get names of all registered plugins.
+   */
+  getPlugins(): string[] {
+    return Array.from(this._plugins);
+  }
+
+  /**
+   * Get middleware counts.
+   */
+  getMiddlewareInfo(): MiddlewareInfo {
+    return {
+      global: this.globalMiddlewares.length,
+      pathBased: this.pathMiddlewares.size,
+    };
+  }
+
+  /**
+   * Get public app configuration.
+   */
+  getAppConfig(): AppConfigInfo {
+    return {
+      port: this.config.port ?? 3000,
+      hostname: this.config.hostname ?? "0.0.0.0",
+      development: this.config.development ?? false,
+    };
+  }
+
   // ===== Route grouping =====
 
   /** Группировка роутов с общим префиксом */
@@ -929,6 +1118,10 @@ export class Asi {
       // Добавляем global + group middleware
       const allMiddlewares = [...this.globalMiddlewares, ...groupMiddlewares];
       this.router.add(method, prefix + path, wrappedHandler, allMiddlewares);
+      // Radix tree — keep in sync
+      if (this.radixRouter) {
+        this.radixRouter.add(method, prefix + path, wrappedHandler, allMiddlewares);
+      }
     };
 
     const groupBuilder: GroupBuilder = {
@@ -968,6 +1161,37 @@ export class Asi {
     };
 
     callback(groupBuilder);
+    return this;
+  }
+
+    // ===== File-based routing =====
+
+  /**
+   * Register routes from a file-based routing directory.
+   *
+   * Scans a directory for route files and registers them automatically.
+   *
+   * Conventions:
+   * - `src/routes/users.ts` with `export function get(ctx) {}` → `GET /users`
+   * - `src/routes/users/[id].ts` → `GET /users/:id`
+   * - `src/routes/users.get.ts` → `GET /users` (method suffix)
+   * - `src/routes/users/index.ts` → `GET /users`
+   * - `src/routes/(auth)/login.ts` → `/login` ((group) ignored)
+   * - Files/dirs starting with `_` are ignored (private helpers)
+   *
+   * @example
+   * ```ts
+   * const app = new Asi();
+   * await app.fromFileRoutes();        // scans src/routes/
+   * await app.fromFileRoutes({ dir: "app/routes", verbose: true });
+   * app.listen(3000);
+   * ```
+   */
+  async fromFileRoutes(
+    options: import("./routes").FileRoutesOptions = {},
+  ): Promise<this> {
+    const { registerFileRoutes } = await import("./routes");
+    await registerFileRoutes(this, options);
     return this;
   }
 
@@ -1050,6 +1274,22 @@ export class Asi {
       methodMap.set(meta.path, compiledRoute);
     }
 
+    // Middleware chain flattener — compile all middleware chains
+    if (this.chainFlattener) {
+      let flattenedCount = 0;
+      for (const meta of this.routeMetadata) {
+        this.chainFlattener.flatten(
+          meta.handler,
+          meta.middlewares,
+          meta.method + ":" + meta.path,
+        );
+        flattenedCount++;
+      }
+      if (this.config.development) {
+        console.log("   Flattened " + flattenedCount + " middleware chains");
+      }
+    }
+
     this.isCompiled = true;
 
     const duration = (performance.now() - startTime).toFixed(2);
@@ -1058,6 +1298,9 @@ export class Asi {
         `⚡ Compiled ${this.routeMetadata.length} routes in ${duration}ms`,
       );
       console.log(`   Static: ${staticCount}, Dynamic: ${dynamicCount}`);
+      if (this.radixRouter) {
+        console.log("   Router: radix tree (compressed)");
+      }
     }
 
     return this;
@@ -1155,7 +1398,49 @@ export class Asi {
         }
       }
 
+      // === RADIX PATH: Radix tree router (when opted in) ===
+      if (this.radixRouter) {
+        const radixMatch = this.radixRouter.find(method, path);
+        if (radixMatch) {
+          ctx = getContext();
+          ctx.params = radixMatch.params;
+
+          // Use flattener if enabled
+          if (this.chainFlattener) {
+            const flat = this.chainFlattener.flatten(
+              radixMatch.handler,
+              radixMatch.middlewares,
+              method + ":" + radixMatch.path,
+            );
+            let response = await flat.execute(ctx);
+
+            // afterHandle
+            const afterHandlers = this.globalAfterHandlers;
+            for (let i = 0; i < afterHandlers.length; i++) {
+              response = await afterHandlers[i](ctx, response);
+            }
+            return response;
+          }
+
+          // Normal execution with radix match
+          let response = await this.executeHandler(
+            ctx,
+            radixMatch.middlewares,
+            radixMatch.handler,
+          );
+
+          const afterHandlers = this.globalAfterHandlers;
+          for (let i = 0; i < afterHandlers.length; i++) {
+            response = await afterHandlers[i](ctx, response);
+          }
+          return response;
+        }
+      }
+
       // === NORMAL PATH: Dynamic router ===
+      // When radix router is active, we already returned above
+      // (either with the match or with 404). This path is only
+      // reached when radixRouter is null (trie mode).
       const match = this.router.find(method, path);
 
       // Если есть глобальные middleware — они могут обработать запрос даже без роута
@@ -1404,6 +1689,55 @@ export class Asi {
       response.hint = "Did you mean one of these routes?";
     }
 
+    if (shouldRenderHtmlErrorPage(ctx.request)) {
+      const pageContext = {
+        status: 404 as const,
+        path: ctx.path,
+        method: ctx.method,
+        request: ctx.request,
+        development: this.config.development ?? false,
+        suggestions,
+      };
+
+      // Order: discovered (user custom) → dev pretty → default
+      try {
+        const discovered = await renderDiscoveredErrorPage(
+          404,
+          pageContext,
+          this.errorPagesOptions,
+        );
+        if (discovered) return discovered;
+      } catch (pageError) {
+        console.error("[Asi] Error rendering discovered 404 page:", pageError);
+      }
+
+      // In development mode, use the pretty dev error page
+      if (this.config.development) {
+        try {
+          const headers: Record<string, string> = {};
+          ctx.request.headers.forEach((v, k) => {
+            headers[k] = v;
+          });
+          return renderDevNotFoundPage({
+            status: 404,
+            method: ctx.method,
+            path: ctx.path,
+            headers,
+            query: ctx.query as Record<string, string>,
+            suggestions,
+          });
+        } catch (devPageError) {
+          console.error("[Asi] Error rendering dev 404 page:", devPageError);
+        }
+      }
+
+      try {
+        return renderDefaultErrorPage(pageContext);
+      } catch (defaultPageError) {
+        console.error("[Asi] Error rendering default 404 page:", defaultPageError);
+      }
+    }
+
     return ctx.status(404).jsonResponse(response);
   }
 
@@ -1473,6 +1807,55 @@ export class Asi {
         ? error.stack
         : undefined;
 
+    if (shouldRenderHtmlErrorPage(ctx.request)) {
+      // Order: discovered (user custom) → dev pretty → default
+      const pageContext = {
+        status: 500 as const,
+        path: ctx.path,
+        method: ctx.method,
+        request: ctx.request,
+        development: this.config.development ?? false,
+        error,
+      };
+
+      try {
+        const discovered = await renderDiscoveredErrorPage(
+          500,
+          pageContext,
+          this.errorPagesOptions,
+        );
+        if (discovered) return discovered;
+      } catch (pageError) {
+        console.error("[Asi] Error rendering discovered 500 page:", pageError);
+      }
+
+      // In development mode, use the pretty dev error page with full details
+      if (this.config.development && error instanceof Error) {
+        const devCtx: import("./dev-error-page").DevErrorPageContext = {
+          status: 500,
+          method: ctx.method,
+          path: ctx.path,
+          headers: (() => {
+            const h: Record<string, string> = {};
+            ctx.request.headers.forEach((v, k) => { h[k] = v; });
+            return h;
+          })(),
+          query: ctx.query as Record<string, string>,
+        };
+        try {
+          return renderDevErrorPage(error, devCtx);
+        } catch (devPageError) {
+          console.error("[Asi] Error rendering dev error page:", devPageError);
+        }
+      }
+
+      try {
+        return renderDefaultErrorPage(pageContext);
+      } catch (defaultPageError) {
+        console.error("[Asi] Error rendering default 500 page:", defaultPageError);
+      }
+    }
+
     return ctx.status(500).jsonResponse({
       error: message,
       ...(stack && { stack }),
@@ -1514,7 +1897,7 @@ export class Asi {
   }
 
   /** Запустить сервер */
-  listen(port?: number, callback?: () => void): Server<any> {
+  listen(port?: number, callback?: () => void): ServerHandle {
     // PORT from env takes priority, then argument, then config
     const envPort = process.env.PORT
       ? parseInt(process.env.PORT, 10)
@@ -1535,7 +1918,7 @@ export class Asi {
     // Port 0 = random available port
     if (basePort === 0) {
       this.server = this._createServer(0, hasWebSocket);
-      const actualPort = this.server.port;
+      const actualPort = this.server.port ?? 0;
       this._printStartupBanner(actualPort, hasWebSocket, silent);
       callback?.();
       return this.server;
@@ -1623,13 +2006,53 @@ export class Asi {
     console.log();
   }
 
-  /** Создать Bun.serve() сервер (внутренний метод) */
-  private _createServer(port: number, hasWebSocket: boolean): Server<any> {
-    return Bun.serve({
+  /** Создать сервер (через адаптер или Bun.serve) */
+  private _createServer(port: number, hasWebSocket: boolean): ServerHandle {
+    const adapter = this.config.serverAdapter;
+
+    if (adapter) {
+      // Convert wsRoutes to adapter config format
+      const wsRouteConfigs = hasWebSocket
+        ? Array.from(this.wsRoutes.values()).map((route) => ({
+            path: route.path,
+            beforeUpgrade: route.beforeUpgrade,
+            handlers: {
+              open: (ws: any) => route.handlers.open?.(ws),
+              message: (ws: any, data: any) =>
+                route.handlers.message?.(ws, data),
+              close: (ws: any, code: number, reason: string) =>
+                route.handlers.close?.(ws, code, reason),
+              error: (ws: any, error: Error) =>
+                route.handlers.error?.(ws, error),
+            },
+          }))
+        : undefined;
+
+      // Используем плагин-адаптер (Node.js, etc.) — синхронный вызов
+      return adapter.createServer(
+        this,
+        {
+          port,
+          hostname: this.config.hostname ?? "0.0.0.0",
+          tls: this.config.tls,
+          reusePort: this.config.reusePort,
+          maxRequestBodySize: this.config.maxRequestBodySize,
+          idleTimeout: this.config.idleTimeout,
+          // Pass auto-port config so adapter can handle EADDRINUSE internally
+          autoPort: this.config.autoPort ?? this.config.development ?? true,
+          autoPortRange: this.config.autoPortRange ?? 10,
+          webSocketRoutes: wsRouteConfigs,
+        },
+        (request: Request) => this.handle(request),
+      );
+    }
+
+    // Bun-native server (default) — синхронный
+    const bunServer = Bun.serve({
       port,
       hostname: this.config.hostname,
 
-      fetch: (request, server) => {
+      fetch: (request: Request, server: Server<{ path: string }>) => {
         // Проверяем WebSocket upgrade
         if (hasWebSocket) {
           const upgrade = request.headers.get("upgrade");
@@ -1637,7 +2060,6 @@ export class Asi {
             const url = new URL(request.url);
             const wsRoute = this.findWsRoute(url.pathname);
             if (!wsRoute) return this.handle(request);
-            // Проверка beforeUpgrade
             if (wsRoute.beforeUpgrade) {
               const allowed = wsRoute.beforeUpgrade(request);
               if (allowed instanceof Promise) {
@@ -1664,10 +2086,10 @@ export class Asi {
         return this.handle(request);
       },
 
-      // WebSocket handlers
       ...(hasWebSocket && {
         websocket: {
           open: (ws: ServerWebSocket<{ path: string }>) => {
+            this.activeWsConnections.add(ws);
             const route = this.findWsRoute(ws.data.path);
             route?.handlers.open?.(ws);
           },
@@ -1683,10 +2105,12 @@ export class Asi {
             code: number,
             reason: string,
           ) => {
+            this.activeWsConnections.delete(ws);
             const route = this.findWsRoute(ws.data.path);
             route?.handlers.close?.(ws, code, reason);
           },
           error: (ws: ServerWebSocket<{ path: string }>, error: Error) => {
+            this.activeWsConnections.delete(ws);
             const route = this.findWsRoute(ws.data.path);
             route?.handlers.error?.(ws, error);
           },
@@ -1697,21 +2121,74 @@ export class Asi {
         },
       }),
 
-      // Bun.serve() performance options
       reusePort: this.config.reusePort,
       maxRequestBodySize: this.config.maxRequestBodySize,
       idleTimeout: this.config.idleTimeout,
 
-      // TLS
       ...(this.config.tls && {
         tls: this.config.tls,
       }),
-    } as any);
+    } as any) as unknown as ServerHandle;
+
+    return bunServer;
+  }
+
+  /**
+   * Gracefully drain all active WebSocket connections
+   *
+   * Sends close frame (1001 - Going Away) to all active connections,
+   * waits for them to close gracefully, then forcefully terminates
+   * any remaining connections after the timeout.
+   *
+   * @param timeoutMs Maximum time to wait for connections to close (default 10000ms)
+   */
+  async drainWebSockets(timeoutMs: number = 10000): Promise<void> {
+    if (this.activeWsConnections.size === 0) return;
+
+    const connections = Array.from(this.activeWsConnections);
+    const count = connections.length;
+
+    // Send close frame (1001 = Going Away) to all active connections
+    for (const ws of connections) {
+      try {
+        ws.close(1001, "Server shutting down");
+      } catch {
+        // Ignore errors during close (connection may already be gone)
+      }
+    }
+
+    // Wait for all connections to close gracefully
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && this.activeWsConnections.size > 0) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    // Forcefully terminate any remaining connections
+    if (this.activeWsConnections.size > 0) {
+      const remaining = Array.from(this.activeWsConnections);
+      for (const ws of remaining) {
+        try {
+          ws.terminate();
+        } catch {
+          // Ignore errors
+        }
+      }
+      this.activeWsConnections.clear();
+    }
+  }
+
+  /**
+   * Get the number of active WebSocket connections.
+   * Useful for monitoring and health checks.
+   */
+  get wsConnectionCount(): number {
+    return this.activeWsConnections.size;
   }
 
   /** Остановить сервер */
   stop(): void {
     this.server?.stop();
     this.server = null;
+    this.activeWsConnections.clear();
   }
 }

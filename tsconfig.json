@@ -15,9 +15,8 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
-    // Best practices - relaxed for compatibility
-    "strict": false,
-    "strictNullChecks": false,
+    // Best practices - stricter defaults with a few targeted relaxations
+    "strict": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": false,

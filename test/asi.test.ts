@@ -1,4 +1,7 @@
 import { describe, it, expect } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { Asi } from "../src";
 
 describe("Asi Framework", () => {
@@ -335,6 +338,103 @@ describe("Asi Framework", () => {
       const res = await app.handle(new Request("http://localhost/unknown"));
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({ custom404: true, path: "/unknown" });
+    });
+  });
+
+  describe("Automatic error pages", () => {
+    it("should render default HTML 404 pages for browser requests", async () => {
+      const app = new Asi();
+
+      const res = await app.handle(
+        new Request("http://localhost/missing", {
+          headers: { Accept: "text/html" },
+        }),
+      );
+
+      expect(res.status).toBe(404);
+      expect(res.headers.get("content-type")).toContain("text/html");
+      expect(await res.text()).toContain("Page not found");
+    });
+
+    it("should keep JSON 404 responses for API requests", async () => {
+      const app = new Asi();
+
+      const res = await app.handle(
+        new Request("http://localhost/missing", {
+          headers: { Accept: "application/json" },
+        }),
+      );
+
+      expect(res.status).toBe(404);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      expect(await res.json()).toMatchObject({ error: "Not Found" });
+    });
+
+    it("should auto-discover custom 404 page files", async () => {
+      const rootDir = mkdtempSync(join(tmpdir(), "asijs-errors-"));
+
+      try {
+        const pagesDir = join(rootDir, "src/pages");
+        mkdirSync(pagesDir, { recursive: true });
+        writeFileSync(
+          join(rootDir, "src/pages/404.tsx"),
+          `export default function NotFoundPage(ctx) {
+  return "<html><body><h1>Custom 404</h1><p>" + ctx.path + "</p></body></html>";
+}`,
+        );
+
+        const app = new Asi({
+          errorPages: { rootDir },
+        });
+
+        const res = await app.handle(
+          new Request("http://localhost/ghost", {
+            headers: { Accept: "text/html" },
+          }),
+        );
+
+        expect(res.status).toBe(404);
+        const text = await res.text();
+        expect(text).toContain("Custom 404");
+        expect(text).toContain("/ghost");
+      } finally {
+        rmSync(rootDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should auto-discover custom 500 page files", async () => {
+      const rootDir = mkdtempSync(join(tmpdir(), "asijs-errors-"));
+
+      try {
+        mkdirSync(join(rootDir, "src/pages"), { recursive: true });
+        writeFileSync(
+          join(rootDir, "src/pages/error.tsx"),
+          `export default function ErrorPage(ctx) {
+  return "<html><body><h1>Custom 500</h1><p>" + ctx.status + "</p></body></html>";
+}`,
+        );
+
+        const app = new Asi({
+          errorPages: { rootDir },
+        });
+
+        app.get("/boom", () => {
+          throw new Error("Boom");
+        });
+
+        const res = await app.handle(
+          new Request("http://localhost/boom", {
+            headers: { Accept: "text/html" },
+          }),
+        );
+
+        expect(res.status).toBe(500);
+        const text = await res.text();
+        expect(text).toContain("Custom 500");
+        expect(text).toContain("500");
+      } finally {
+        rmSync(rootDir, { recursive: true, force: true });
+      }
     });
   });
 

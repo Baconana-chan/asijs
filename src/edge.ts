@@ -322,7 +322,7 @@ export function vercelEdge(
 }
 
 /**
- * Deno Deploy adapter
+ * Deno Deploy adapter — returns a fetch handler for Deno.
  *
  * @example
  * ```ts
@@ -339,6 +339,134 @@ export function vercelEdge(
 export function deno(app: AsiApp, options: AdapterOptions = {}): DenoHandler {
   const handler = toFetchHandler(app, options);
   return (request: Request) => handler(request);
+}
+
+/**
+ * Start AsiJS app with native Deno.serve() or Bun.serve() fallback.
+ *
+ * This provides a uniform interface across runtimes:
+ * - On Deno: uses Deno.serve() with Bun-compatible polyfill
+ * - On Bun: uses Bun.serve() as fallback
+ * - On Node.js: uses a basic http.createServer() (if available)
+ *
+ * @example
+ * ```ts
+ * import { Asi } from 'asijs';
+ * import { denoServe } from 'asijs/edge';
+ *
+ * const app = new Asi();
+ * app.get('/', () => 'Hello from any runtime!');
+ *
+ * denoServe(app, { port: 3000 });
+ * ```
+ */
+export function denoServe(
+  app: AsiApp,
+  options: { port?: number; hostname?: string } & AdapterOptions = {},
+): void {
+  const handler = toFetchHandler(app, options);
+  var port = options.port ?? 3000;
+  var hostname = options.hostname ?? "0.0.0.0";
+
+  // Deno Deploy / Deno
+  if (typeof (globalThis as any).Deno !== "undefined") {
+    var denoGlobal = globalThis as any;
+    if (typeof denoGlobal.Deno.serve === "function") {
+      denoGlobal.Deno.serve({ port, hostname }, handler);
+      console.log("  [AsiJS] Deno.serve on http://" + hostname + ":" + port);
+      return;
+    }
+  }
+
+  // Bun (fallback)
+  if (typeof (globalThis as any).Bun !== "undefined") {
+    var bunGlobal = globalThis as any;
+    if (typeof bunGlobal.Bun.serve === "function") {
+      bunGlobal.Bun.serve({
+        port,
+        hostname,
+        fetch: handler,
+      });
+      console.log("  [AsiJS] Bun.serve on http://" + hostname + ":" + port);
+      return;
+    }
+  }
+
+  // Node.js (last resort)
+  console.warn(
+    "  [AsiJS] No native server found. Falling back to Node.js http.",
+  );
+  import("http").then(function(http) {
+    var server = http.createServer(function(
+      req: any,
+      res: any,
+    ) {
+      var url = new URL(req.url || "/", "http://localhost");
+      requestToFetch(req, url, function(response: Response) {
+        var headerObj: Record<string, string> = {};
+        response.headers.forEach(function(v: string, k: string) { headerObj[k] = v; });
+        res.writeHead(response.status, headerObj);
+        if (response.body) {
+          response.arrayBuffer().then(function(buf) {
+            res.end(Buffer.from(buf));
+          });
+        } else {
+          res.end();
+        }
+      }, app);
+    });
+    server.listen(port, hostname, function() {
+      console.log(
+        "  [AsiJS] Node.js http on http://" + hostname + ":" + port,
+      );
+    });
+  });
+}
+
+/** Helper: convert Node.js IncomingMessage to fetch Request, get Response, send back */
+function requestToFetch(
+  req: any,
+  url: URL,
+  callback: (response: Response) => void,
+  asiApp: AsiApp,
+): void {
+  var method = (req.method || "GET").toUpperCase();
+  var hdrs = new Headers();
+  var rawHeaders = req.headers || {};
+  var keys = Object.keys(rawHeaders);
+  for (var ki = 0; ki < keys.length; ki++) {
+    var key = keys[ki];
+    var val = rawHeaders[key];
+    if (Array.isArray(val)) {
+      for (var vi = 0; vi < val.length; vi++) hdrs.append(key, val[vi]);
+    } else if (val != null) {
+      hdrs.set(key, String(val));
+    }
+  }
+
+  var body: BodyInit | null = null;
+  var request: Request;
+
+  if (method !== "GET" && method !== "HEAD") {
+    var chunks: Uint8Array[] = [];
+    req.on("data", function(chunk: Uint8Array) {
+      chunks.push(chunk);
+    });
+    req.on("end", function() {
+      body = Buffer.concat(chunks);
+      request = new Request(url.toString(), { method, headers: hdrs, body });
+      Promise.resolve(toFetchHandler(asiApp, {})(request)).then(callback).catch(function(err: unknown) {
+        console.error("[toFetchHandler] error:", err);
+        callback(new Response("Internal Server Error", { status: 500 }));
+      });
+    });
+  } else {
+    request = new Request(url.toString(), { method, headers: hdrs });
+    Promise.resolve(toFetchHandler(asiApp, {})(request)).then(callback).catch(function(err: unknown) {
+      console.error("[toFetchHandler] error:", err);
+      callback(new Response("Internal Server Error", { status: 500 }));
+    });
+  }
 }
 
 /**
@@ -643,4 +771,75 @@ function getStatusText(status: number): string {
   return statusTexts[status] || "Unknown";
 }
 
-// ============================================================================
+// ===== withWaitUntil =====
+
+/**
+ * Middleware that registers background tasks with Cloudflare's waitUntil().
+ *
+ * On Cloudflare Workers, the provided function runs AFTER the response
+ * is sent. The worker's lifetime is extended until the promise resolves.
+ * Falls back to fire-and-forget on other platforms.
+ *
+ * @example
+ * ```ts
+ * app.use(withWaitUntil(async (ctx) => {
+ *   await analytics.log(ctx);
+ * }));
+ * ```
+ */
+export function withWaitUntil(
+  fn: (ctx: any) => Promise<void>,
+): import("./types").Middleware {
+  return async function(ctx: any, next: () => any) {
+    var response = await next();
+    var req = ctx.request as Request & {
+      executionContext?: { waitUntil: (p: Promise<unknown>) => void };
+    };
+    var ec = req?.executionContext || (ctx.request as any)?.executionContext;
+
+    if (ec && typeof ec.waitUntil === "function") {
+      ec.waitUntil(
+        fn(ctx).catch(function(err: unknown) {
+          console.error("[waitUntil]", err);
+        }),
+      );
+    } else {
+      fn(ctx).catch(function(err: unknown) {
+        console.error("[waitUntil] fallback", err);
+      });
+    }
+
+    return response;
+  };
+}
+
+// ===== withEdgeCache =====
+
+/**
+ * Higher-order function that adds Cache-Control headers to responses.
+ * Useful for edge platforms (Cloudflare, Fastly, etc.).
+ */
+export function withEdgeCache(
+  options: {
+    ttl?: number;
+    swr?: number;
+    scope?: "public" | "private";
+  } = {},
+): (response: Response) => Response {
+  var ttl = options.ttl ?? 31536000;
+  var swr = options.swr;
+  var scope = options.scope ?? "public";
+  var directives = [scope, "max-age=" + ttl];
+  if (swr !== undefined) directives.push("stale-while-revalidate=" + swr);
+  var cacheControl = directives.join(", ");
+
+  return function(response: Response) {
+    var headers = new Headers(response.headers);
+    headers.set("Cache-Control", cacheControl);
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: headers,
+    });
+  };
+}

@@ -4,9 +4,13 @@
 export { Asi } from "./asi";
 export type {
   AsiConfig,
+  ErrorPagesOptions,
   GroupBuilder,
   WebSocketHandlers,
   WebSocketRoute,
+  RouteInfo,
+  MiddlewareInfo,
+  AppConfigInfo,
 } from "./asi";
 export { Context, type TypedContext, type CookieOptions } from "./context";
 export type {
@@ -104,9 +108,15 @@ export {
   strictLimit,
   apiLimit,
   authLimit,
+  rateLimitPresets,
+  workspaceRateLimit,
+  tenantRateLimitMiddleware,
+  TenantStore,
+  defaultTenantOptions,
   type RateLimitOptions,
   type RateLimitInfo,
   type RateLimitStore,
+  type TenantRateLimitOptions,
 } from "./ratelimit";
 
 // JWT & Auth
@@ -141,6 +151,14 @@ export {
   type BatchResponse,
   type RetryOptions,
 } from "./client";
+
+export {
+  renderDefaultErrorPage,
+  renderDiscoveredErrorPage,
+  shouldRenderHtmlErrorPage,
+  type ErrorPageContext,
+  type ErrorPageKind,
+} from "./error-pages";
 
 // JSX / HTML Streaming
 export {
@@ -177,12 +195,10 @@ export {
 // Lifecycle / Graceful Shutdown
 export {
   lifecycle,
-  healthCheck,
   createShutdownController,
   LifecycleManager,
   type LifecycleOptions,
   type ShutdownHandler,
-  type HealthCheckOptions,
 } from "./lifecycle";
 
 // Security Headers
@@ -243,6 +259,21 @@ export {
   type TraceContext,
   type RequestMetrics,
 } from "./trace";
+
+// Metrics Export (Prometheus + OTLP)
+export {
+  metricsPlugin,
+  metricsMiddleware,
+  RequestMetricsCollector,
+  PrometheusExporter,
+  OTLPMetricsExporter,
+  type MetricsPluginOptions,
+  type OTLPExporterOptions,
+  type MetricSnapshot,
+  type HistogramBucket,
+  type BucketConfig,
+} from "./metrics";
+export { DEFAULT_BUCKETS } from "./metrics";
 
 // Background Tasks / Cron
 export {
@@ -335,11 +366,14 @@ export {
   cloudflare,
   vercelEdge,
   deno,
+  denoServe,
   lambdaEdge,
   netlifyEdge,
   createStaticHandler,
   combineHandlers,
   withCORS,
+  withWaitUntil,
+  withEdgeCache,
   type FetchHandler,
   type ExecutionContext,
   type CloudflareEnv,
@@ -350,6 +384,45 @@ export {
   type AdapterOptions,
   type EdgeContext,
 } from "./edge";
+
+// ===== Workspace — Selective Hot-Reload in Bun Monorepos =====
+export {
+  scanWorkspace,
+  startWorkspaceDev,
+  startStandaloneDev,
+  findStandaloneEntry,
+  asiDev,
+  WorkspaceDevController,
+  type SubApp,
+  type SubAppProcess,
+  type SubAppConfig,
+  type WorkspaceDevOptions,
+  type WorkspaceRateLimitConfig,
+} from "./workspace";
+
+// ===== Workspace V2 — Production Multi-App Server =====
+export {
+  Workspace,
+  createWorkspace,
+  type WorkspaceOptions,
+  type WorkspaceAppConfig,
+} from "./workspace-v2";
+
+// ===== RPC 2.0 — Server Actions + Auto Treaty =====
+export {
+  serverAction,
+  rpc,
+  createRPCClient,
+  RPCActionError,
+  type RPCRegistry,
+  type RPCClient,
+  type RPCOptions,
+  type RPCClientOptions,
+  type InferRPCOutput,
+  type InferRPCInput,
+  type InferRPCAPI,
+  type RPCServerAction,
+} from "./rpc";
 
 // Test Utilities
 export {
@@ -405,5 +478,285 @@ export {
   type Migration,
   type DatabaseContext,
 } from "./database";
+
+// GraphQL Plugin/Adapters
+export {
+  graphql,
+  yogaGraphQLAdapter,
+  mercuriusGraphQLAdapter,
+  type GraphQLVariables,
+  type GraphQLRequestPayload,
+  type GraphQLContextFactory,
+  type GraphQLPluginOptions,
+  type YogaLikeServer,
+  type YogaGraphQLAdapterOptions,
+  type MercuriusExecuteRequest,
+  type MercuriusExecutorLike,
+  type MercuriusInstanceLike,
+  type MercuriusGraphQLAdapterOptions,
+} from "./graphql";
+
+// DI / Module decorators
+export {
+  DIContainer,
+  Module,
+  Injectable,
+  getModuleMetadata,
+  createContainerFromModule,
+  modulePlugin,
+  type ClassType,
+  type InjectionToken,
+  type ProviderScope,
+  type ValueProvider,
+  type ClassProvider,
+  type FactoryProvider,
+  type Provider,
+  type ModuleMetadata,
+  type ModuleType,
+  type InjectableOptions,
+  type CreateContainerOptions,
+  type ModulePluginOptions,
+} from "./di";
+
+// ===== File-based Routing =====
+export {
+  scanRoutes,
+  registerFileRoutes,
+  type FileRoute,
+  type FileRoutesOptions,
+  type RouteModule,
+} from "./routes";
+
+// ===== Codemods — Automatic Migration from Elysia / Hono / Fastify =====
+export {
+  runCodemod,
+  migrateFile,
+  transformSource,
+  detectFramework,
+  detectProjectFramework,
+  printSummary,
+  type CodemodOptions,
+  type CodemodFile,
+  type CodemodResult,
+  type SourceFramework,
+} from "./codemod";
+
+// ===== Sessions Middleware =====
+export {
+  sessions,
+  Session,
+  SessionMemoryStore,
+  CookieStore,
+  RedisSessionStore,
+  type SessionStore,
+  type SessionOptions,
+  type RedisLikeClient,
+} from "./session";
+
+// ===== Request Logger =====
+export {
+  requestLogger,
+  type RequestLogInfo,
+  type RequestLoggerOptions,
+  type LogFormat,
+} from "./logger";
+
+// ===== Response Compression =====
+export {
+  compression,
+  type CompressionOptions,
+} from "./compression";
+
+// ===== Content Negotiation =====
+export {
+  parseAccept,
+  bestMatch,
+  negotiateResponse,
+  type AcceptEntry,
+  type NegotiateHandlers,
+  type NegotiateOptions,
+} from "./negotiate";
+
+// ===== Dev Error Page =====
+export {
+  renderDevErrorPage,
+  renderDevNotFoundPage,
+} from "./dev-error-page";
+export type {
+  DevErrorPageContext,
+  StackFrame,
+} from "./dev-error-page";
+
+// ===== Health Checks =====
+export {
+  healthCheck,
+  type HealthCheckOptions,
+  type HealthCheckResult,
+  type HealthCheckFn,
+  type HealthChecks,
+  type HealthResponse,
+} from "./health";
+
+// ===== SSE (Server-Sent Events) =====
+export {
+  sse,
+  SSEController,
+  createSSEClient,
+  type SSEOptions,
+  type SSEEvent,
+  type SSEClientOptions,
+  type SSEClientEvents,
+} from "./sse";
+
+// ===== SPA / SSR / Hybrid Rendering =====
+export {
+  buildSSRPage,
+  serializeProps,
+  createIslandHTML,
+  createIsland,
+  island,
+  spaMiddleware,
+  spaFallbackHandler,
+  buildProject,
+  type SPAOptions,
+  type IslandDefinition,
+  type BuildResult,
+} from "./spa";
+
+// ===== Structured JSON Logger =====
+export {
+  structuredLogger,
+  createStructuredLogger,
+  apiLogger,
+  webLogger,
+  workerLogger,
+  type StructuredLoggerOptions,
+  type StructuredLogEntry,
+  type LogLevel,
+} from "./structured-logger";
+
+// ===== Sentry / Error Tracking =====
+export {
+  sentry,
+  getSentryClient,
+  createSentryClient,
+  type SentryOptions,
+  type SentryEvent,
+} from "./sentry";
+
+// ===== Redis Rate Limit Store & Queue =====
+export {
+  RedisRateLimitStore,
+  RedisQueue,
+  type RedisConnectionOptions,
+  type RedisQueueJob,
+  type RedisQueueOptions,
+  type RedisQueueHandler,
+  type RedisQueueMetrics,
+} from "./redis";
+
+// ===== JSON Streaming & NDJSON =====
+export {
+  createJsonStream,
+  streamJsonResponse,
+  createNDJsonStream,
+  streamNDJsonResponse,
+  type StreamJsonOptions,
+  type StreamNDJsonOptions,
+} from "./json-stream";
+
+// ===== Router Performance Optimizations =====
+export {
+  SchemaCacheLRU,
+  getDefaultSchemaCache,
+  MiddlewareChainFlattener,
+  RadixTreeRouter,
+} from "./router-perf";
+
+// ===== Web Infrastructure =====
+export {
+  webhooks,
+  webhookProviders,
+  rangeRequests,
+  trustProxy,
+  domainRouting,
+  domainRoute,
+  indexHtmlFallback,
+  serverPush,
+  type WebhookOptions,
+  type WebhookProvider,
+  type RangeRequestOptions,
+  type TrustProxyOptions,
+  type DomainRoute,
+  type IndexHtmlOptions,
+  type PushHint,
+  type ServerPushOptions,
+} from "./web-infra";
+
+// ===== Type Safety Enhancements =====
+export {
+  createResponseValidator,
+  getResponseValidator,
+  resetResponseValidator,
+  upgradeToOpenAPI31,
+  convertSchemaTo202012,
+  createOpenAPI31Generator,
+  createTypedTranslator,
+  JSON_SCHEMA_DIALECT,
+  type ResponseValidationOptions,
+  type TypedTranslateFunction,
+  type TranslationKeys,
+  type SupportedLocale,
+  type OpenAPI31Document,
+  type OpenAPI31Operation,
+  type OpenAPI31Parameter,
+  type OpenAPI31RequestBody,
+  type OpenAPI31Response,
+} from "./type-safety";
+
+// ===== Ecosystem: OpenAPI Client Codegen =====
+export {
+  generateClient,
+  type CodegenOptions,
+  type CodegenResult,
+  type CodegenOperation,
+} from "./codegen";
+
+// ===== Ecosystem: Auth.js Adapter =====
+export {
+  authjs,
+  authProviders,
+  requireAuth as authjsRequireAuth,
+  requireRole,
+  type AuthjsOptions,
+  type AuthContext,
+  type AuthSession,
+  type AuthUser,
+  type AuthProvider,
+  type AuthJWT,
+  type OAuthProfile,
+} from "./authjs";
+
+// ===== Ecosystem: Upload Provider (S3/R2/Local) =====
+export {
+  upload,
+  uploadStorage,
+  type UploadOptions,
+  type UploadStorage,
+  type UploadedFile,
+  type S3StorageConfig,
+} from "./upload";
+
+// ===== Ecosystem: PostgREST-like Auto API =====
+export {
+  autoAPI,
+  introspectSchema,
+  parseQueryParams,
+  buildSelectSQL,
+  type AutoAPIOptions,
+  type AutoAPIOperation,
+  type TableSchema,
+  type ColumnSchema,
+} from "./auto-api";
 
 export type { TSchema, Static } from "@sinclair/typebox";

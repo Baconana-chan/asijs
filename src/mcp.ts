@@ -493,35 +493,19 @@ export class MCPServer {
     hasValidation: boolean;
     hasMiddleware: boolean;
   }> {
-    // @ts-ignore - accessing private property
-    const metadata = app["routeMetadata"] || [];
-
-    return metadata.map((m: any) => ({
-      method: m.method,
-      path: m.path,
-      hasValidation: !!(
-        m.schemas?.body ||
-        m.schemas?.query ||
-        m.schemas?.params
-      ),
-      hasMiddleware: m.middlewares?.length > 0,
-    }));
+    // Используем публичный API Asi вместо доступа к private полям
+    return app.getRoutes();
   }
 
   private getPlugins(app: Asi): string[] {
-    // @ts-ignore - accessing private property
-    return Array.from(app["_plugins"] || []);
+    return app.getPlugins();
   }
 
   private getMiddleware(app: Asi): {
     global: number;
     pathBased: number;
   } {
-    // @ts-ignore - accessing private properties
-    return {
-      global: app["globalMiddlewares"]?.length || 0,
-      pathBased: app["pathMiddlewares"]?.size || 0,
-    };
+    return app.getMiddlewareInfo();
   }
 
   private generateOpenAPI(app: Asi): Record<string, unknown> {
@@ -593,8 +577,7 @@ export class MCPServer {
   }
 
   private getAppState(app: Asi): Record<string, unknown> {
-    // @ts-ignore - accessing private properties
-    const config = app["config"] || {};
+    const config = app.getAppConfig();
 
     return {
       port: config.port,

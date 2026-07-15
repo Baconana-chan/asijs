@@ -5,6 +5,177 @@ All notable changes to AsiJS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-15
+
+### ⚠️ Breaking Changes
+
+- **`app.notFound()` renamed to `app.onNotFound()`** — Aligns with the naming convention of `onError`, `onBeforeHandle`, `onAfterHandle`. The old name is removed. Use the codemod (`asi migrate`) or search/replace `app.notFound` → `app.onNotFound`.
+
+### 🚀 Major New Features
+
+#### Core Framework Enhancements
+- **Router Performance (P3.8)** — New `RadixTreeRouter` with compressed radix tree and binary-search static children; `MiddlewareChainFlattener` for compile-time chain optimization; `SchemaCacheLRU` for bounded TypeBox validator caching. Config: `router: "trie" | "radix"`, `flattenMiddleware`, `lruSchemaCache`
+- **Response Validation (P3.11)** — `createResponseValidator()` validates handler output against response TypeBox schemas in dev mode (warn/error/silent modes)
+- **OpenAPI 3.1 / JSON Schema 2020-12 (P3.11)** — `upgradeToOpenAPI31()` converts 3.0.x docs to 3.1.0; `createOpenAPI31Generator()` reuse existing `OpenAPIGenerator`
+- **Graceful Shutdown (P2.8)** — `drainWebSockets()` with 1001 close frames, lifecycle integration
+- **Content Negotiation (P2.6)** — `parseAccept()`, `bestMatch()`, `ctx.negotiate()` for JSON/HTML/XML/auto selection
+- **Response Compression (P2.5)** — gzip/brotli via Bun native + Node.js zlib fallback, configurable threshold/content-types
+- **Rate Limit Presets (P2.7)** — `rateLimitPresets.byIp`, `.byApiKey()`, `.byUserId()`, `.byHeader()`, `.combine()`
+
+#### CLI & DX
+- **`asi inspect` (P2.10)** — Route/plugin/middleware/size analysis with color-coded tables
+- **`asi generate` (P3.9)** — Scaffold routes, server actions, plugins, and sub-apps
+- **Pretty Error Page (P2.4)** — Stack trace with source context, syntax highlighting, collapsible frames, env info panel, "Copy error" button
+- **`asi build`** — Production SPA/SSR build pipeline
+
+#### Node.js Adapter (P1.2)
+- Pluggable `ServerAdapter` interface with full Node.js HTTP(S) support
+- EADDRINUSE retry with automatic port scanning
+- WebSocket via `ws` package (beforeUpgrade, echo, multiple routes)
+- Entry point: `asijs/node`
+
+#### Sessions (P1.3)
+- `sessions()` middleware with MemoryStore, CookieStore
+- Signed cookies (HMAC-SHA256), TTL-based auto-cleanup
+- Type-safe `session.get<User>("key")`
+
+#### SSE (P2.1)
+- `app.sse("/events", handler)` with auto-reconnect, id, retry
+- Client helper: `createSSEClient(url)`
+
+#### Platform Adapters (P3.3)
+- `denoServe()` — native `Deno.serve` with auto-detect
+- Cloudflare Workers: `withWaitUntil()`, `withEdgeCache()`
+- Lambda@Edge, Vercel Edge, Netlify Edge
+- `createStaticHandler()` — edge-safe static serving
+
+#### SPA + Hybrid Rendering (P3.4)
+- `spa: true` in AsiConfig with `SPAOptions` (clientEntry, hmr, islands)
+- Client-side hydration (`hydrate()`, `hydrateIslands()`, `connectHMR()`)
+- Islands architecture (`createIsland()`, `island()` compile-time markers)
+- `asi build` — production pipeline
+
+#### Web Infrastructure (P3.10)
+- **Webhooks** — signature verification for Stripe, GitHub, Svix with `crypto.subtle`
+- **Range Requests** — 206 Partial Content, 416 handling, content-type whitelist
+- **Trust Proxy** — real IP extraction from X-Forwarded-For / X-Real-IP
+- **Subdomain Routing** — `domainRouting()` / `domainRoute()` per-hostname routing
+- **index.html Auto-Serve** — SPA fallback, non-blocking for API routes
+- **Server Push Hints** — Link preload headers
+
+#### Type Safety (P3.11)
+- **Type-safe i18n** — `createTypedTranslator<T>()`, `TranslationKeys<T>` for autocomplete
+- **Response validation** — `createResponseValidator()` for dev mode
+
+### 🧩 Ecosystem (P3.9)
+
+#### VS Code Extension (`packages/vscode-asijs/`)
+- 15 code snippets (GET/POST, WebSocket, CORS, JWT, OpenAPI, Server Actions, etc.)
+- Route Explorer webview panel with color-coded method badges, goto-line
+- Hover provider for `app.get()/post()` showing method + path
+
+#### ESLint Plugin (`packages/eslint-plugin-asijs/`)
+- `no-duplicate-route` — detects duplicate registrations with first-definition line
+- `no-missing-handler` — ensures routes have handler functions
+- `validate-schema` — ensures URL params have validation schemas
+- `no-unused-route` — warns about unused routes
+- Configs: `recommended` + `all`
+
+#### OpenAPI Client Codegen (`src/codegen.ts`)
+- `generateClient(spec, options)` — generates TypeScript fetch client from OpenAPI schema
+- Path/query/body params, response types, bearer auth, JSDoc
+
+#### Auth.js Adapter (`src/authjs.ts`)
+- `authjs()` plugin — session middleware + signin/signout/session/providers/csrf routes
+- Built-in providers: GitHub, Google, Credentials
+- Custom JWT with `crypto.subtle` (HMAC-SHA256)
+- `requireAuth` / `requireRole()` middleware helpers
+
+#### Upload Provider (`src/upload.ts`)
+- Local, S3-compatible, Cloudflare R2 storage
+- Multipart file upload middleware, MIME validation, size limits
+
+#### PostgREST-like Auto API (`src/auto-api.ts`)
+- Auto-generates CRUD endpoints from database tables
+- PostgREST-style filters (`field=gt.10`, `like.*pattern*`, `is.null`)
+- Pagination, sorting, schema introspection
+
+### 📦 New Modules
+
+#### Redis Integration
+- `RedisRateLimitStore` — distributed sliding window rate limiting
+- `RedisQueue` — background job queue with FIFO, delayed jobs, dead letter queue
+
+#### JSON Streaming
+- `createJsonStream()` / `streamJsonResponse()` — streaming JSON arrays
+- `createNDJsonStream()` / `streamNDJsonResponse()` — NDJSON streaming
+
+#### Structured Logging / Sentry
+- `structuredLogger()` — JSON log middleware for ELK/Datadog/Splunk
+- `sentry()` — fetch-based Sentry error tracking (no SDK required)
+- Prometheus `/metrics` in OpenMetrics format
+
+#### GraphQL Plugin
+- `graphql()` plugin with Yoga/GraphQL Helix adapter
+
+#### DI / Module Decorators
+- `DIContainer`, `@Module()`, `@Injectable()` decorators
+- Singleton/transient/request scoped providers
+
+#### Workspace v2
+- `Workspace` class with unified `Bun.serve()` for multi-app production deployment
+- Dev dashboard at `/__asi/workspace`
+- Unified OpenAPI at `/__asi/docs`
+
+#### Benchmarks Dashboard
+- `bench/collect.ts` + `bench/generate-dashboard.ts`
+- Chart.js dashboard with bar charts and trend lines
+- GitHub Actions CI pipeline with gh-pages deploy
+
+### 🔧 Improvements
+
+#### CLI
+- **`asi inspect`** — route table, plugin list, bundle size analysis
+- **`asi build`** — production SPA/SSR build
+- **`asi generate`** — route/action/plugin/app scaffolding
+- Templates: `cloudflare`, `deno`, `spa` workspace variants
+
+#### Documentation
+- Full VitePress docs site (23 pages, search, gh-pages deploy)
+- Updated MIGRATION.md with codemod guide
+- Updated DOCUMENTATION.md with all new features
+
+#### Plugin System
+- New plugins: `sessions`, `requestLogger`, `compression`, `negotiate`, `devMode(chaos)`, `healthCheck`, `sse`, `graphql`, `sentry`, `structuredLogger`
+- Plugin dependencies and duplicate prevention
+
+### 🐛 Bug Fixes
+
+- Fixed: `PORT` env var mutation in tests (added try/finally)
+- Fixed: ENOENT in `findStandaloneEntry()` test (missing mkdirSync)
+- Fixed: XSS in error page stack trace
+- Fixed: EADDRINUSE handling in Node.js adapter
+- Fixed: Radix tree miss now correctly returns 404
+- Fixed: `group()` routes not syncing with radix router
+- Fixed: CORS wildcard matching for single '*' origin
+- Fixed: Double clone in `upgradeToOpenAPI31`
+- Fixed: TypeScript export issues (requireAuth alias, schema exports)
+
+### 📊 Test Improvements
+
+- **700 total tests** (up from 568) — all passing, 0 type errors
+- New test files: error-pages (41), type-safety (22), web-infra (24), ecosystem (19), node-adapter (21), router-perf (33), json-stream (34), session, logger, compression, negotiate, health, sse, dev-error-page, cors-advanced, docker, cli-inspect, benchmarks, workspace-v2, spa, sentry, structured-logger, redis, graphql, di, platform-adapters
+- Full coverage for all P0-P3 features
+
+### 🔬 Performance
+
+- **Radix Tree Router** — up to 2× faster for 1M+ routes (compressed nodes, binary search)
+- **Middleware Chain Flattener** — compile-time flattening eliminates per-request loop overhead
+- **LRU Schema Cache** — prevents unbounded growth with 10k+ schemas
+- **Schema Cache LRU** — bounded memory for TypeBox compiled validators
+
+---
+
 ## [1.1.1] - 2026-02-06
 
 ### Optimized

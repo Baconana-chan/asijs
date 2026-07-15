@@ -23,8 +23,10 @@ Complete API reference and guide for the AsiJS web framework.
 17. [Lifecycle](#lifecycle)
 18. [MCP Server](#mcp-server)
 19. [Server Actions](#server-actions)
-20. [Development Mode](#development-mode)
-21. [API Reference](#api-reference)
+20. [RPC 2.0 — Type-Safe Remote Calls](#rpc-20-type-safe-remote-calls)
+21. [Workspace Development](#workspace-development)
+22. [Development Mode](#development-mode)
+23. [API Reference](#api-reference)
 
 ---
 
@@ -52,6 +54,7 @@ bun create asijs my-app -t fullstack
 | `fullstack` | API + JSX server-side rendering |
 | `auth` | Authentication with JWT and protected routes |
 | `realtime` | WebSocket chat application |
+| `workspace` | Monorepo with multiple sub-apps and independent hot-reload |
 
 ```bash
 # Examples
@@ -414,11 +417,25 @@ app.onError((error, ctx) => {
   });
 });
 
-app.notFound((ctx) => {
+app.onNotFound((ctx) => {
   return ctx.status(404).jsonResponse({
     error: "Not Found",
     path: ctx.path,
   });
+});
+
+// Browser requests can also auto-render HTML 404/500 pages.
+// AsiJS will look for files like:
+//   src/pages/404.tsx
+//   src/pages/not-found.tsx
+//   src/pages/error.tsx
+//   src/pages/500.tsx
+//
+// You can configure discovery with:
+const web = new Asi({
+  errorPages: {
+    rootDir: process.cwd(),
+  },
 });
 ```
 
@@ -780,6 +797,100 @@ app.plugin(rateLimit({
   }),
 }));
 ```
+
+### Per-Tenant Rate Limiting (Workspace)
+
+In a workspace with multiple sub-apps, `workspaceRateLimit()` automatically isolates rate limits per tenant
+(sub-app). It reads configuration from environment variables injected by the workspace controller:
+
+```typescript
+import { Asi, workspaceRateLimit } from "asijs";
+
+const app = new Asi();
+
+// Zero-config — reads ASIJS_APP_NAME, ASIJS_RATE_LIMIT_MAX, etc. from env
+app.plugin(workspaceRateLimit());
+```
+
+Or configure explicitly:
+
+```typescript
+import { Asi, workspaceRateLimit, TenantStore } from "asijs";
+
+app.plugin(workspaceRateLimit({
+  tenantId: "my-api",       // Override tenant identifier
+  max: 1000,                // Max requests per window
+  windowMs: 60_000,         // Time window (1 minute)
+  message: "Rate limit exceeded",
+  store: new TenantStore("my-api"),  // Optional: custom store with tenant isolation
+}));
+```
+
+The workspace controller auto-injects env vars when `rateLimit` config is set:
+
+```typescript
+import { asiDev } from "asijs";
+
+await asiDev({
+  rateLimit: {
+    enabled: true,
+    max: 500,
+    windowMs: 60_000,
+  },
+});
+```
+
+Each sub-app then receives:
+- `ASIJS_APP_NAME` — automatically set as the tenant ID
+- `ASIJS_RATE_LIMIT_MAX` — per-tenant limit
+- `ASIJS_RATE_LIMIT_WINDOW_MS` — time window
+- `ASIJS_RATE_LIMIT_ENABLED` — `"1"` when enabled
+
+### Tenant-Isolated Middleware
+
+For per-route rate limiting with tenant isolation:
+
+```typescript
+import { tenantRateLimitMiddleware } from "asijs";
+
+app.post("/auth/login", handler, {
+  beforeHandle: tenantRateLimitMiddleware({
+    tenantId: "auth-service",
+    max: 10,                // 10 requests
+    windowMs: 60_000,       // per minute
+    keyGenerator: (ctx) => ctx.header("X-API-Key") ?? "unknown",
+  }),
+});
+```
+
+### TenantStore
+
+`TenantStore` wraps any `RateLimitStore` and prefixes all keys with a tenant ID,
+ensuring counters are fully isolated between tenants:
+
+```typescript
+import { TenantStore, MemoryStore } from "asijs";
+
+const shared = new MemoryStore();
+const storeA = new TenantStore("tenant-alpha", shared);
+const storeB = new TenantStore("tenant-beta", shared);
+
+await storeA.increment("client-ip", 60_000, 100);  // key: "tenant-alpha:client-ip"
+await storeB.increment("client-ip", 60_000, 100);  // key: "tenant-beta:client-ip"
+//              ^— fully isolated from storeA!
+```
+
+### Environment Variables
+
+`defaultTenantOptions()` reads config from environment, making it easy to configure
+rate limits per deployment without code changes:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ASIJS_APP_NAME` | `"default"` | Tenant identifier |
+| `ASIJS_RATE_LIMIT_MAX` | `1000` | Max requests per window |
+| `ASIJS_RATE_LIMIT_WINDOW_MS` | `60000` | Time window in ms |
+| `ASIJS_RATE_LIMIT_ENABLED` | `"1"` | Set to `"0"` to disable |
 
 ---
 
@@ -1303,6 +1414,348 @@ type CreateUserOutput = InferActionOutput<typeof createUser>;
 
 ---
 
+## RPC 2.0 — Type-Safe Remote Calls
+
+RPC 2.0 provides a modern, type-safe RPC layer built on top of AsiJS. Define typed actions once on the server, then call them from both server-side code (direct, no HTTP) and client-side code (fetch-based, with full type inference).
+
+The pattern is similar to tRPC or Next.js Server Actions, but requires no code generation — types flow automatically from server to client.
+
+### Key Concepts
+
+- **`serverAction(schema, handler)`** — Define a typed action with TypeBox validation
+- **`rpc(app, actions, options?)`** — Register actions as POST endpoints and get a typed callable API
+- **`createRPCClient<T>(baseUrl, options?)`** — Client-side proxy client with auto-complete ("auto treaty")
+- **`RPCActionError`** — Structured error class with code + details
+
+### Defining Actions
+
+```typescript
+import { serverAction } from "asijs";
+import { Type } from "@sinclair/typebox";
+
+// Action with validated input
+const greet = serverAction(
+  Type.Object({
+    name: Type.String({ minLength: 1 }),
+  }),
+  async ({ name }, ctx) => {
+    return { message: `Hello, ${name}!` };
+  },
+);
+
+// Action with no input
+const ping = serverAction(
+  Type.Object({}),
+  async () => ({ status: "ok", timestamp: Date.now() }),
+);
+```
+
+### Register with App
+
+```typescript
+import { Asi, serverAction, rpc } from "asijs";
+import { Type } from "@sinclair/typebox";
+
+const app = new Asi();
+
+// Define actions
+const api = rpc(app, {
+  greet,
+  ping,
+  createUser: serverAction(
+    Type.Object({
+      name: Type.String(),
+      email: Type.String({ format: "email" }),
+    }),
+    async (input) => {
+      const user = { id: Date.now(), ...input };
+      return { user };
+    },
+  ),
+});
+
+// Export type for client use!
+export type AppAPI = typeof api;
+```
+
+This registers POST endpoints:
+- `POST /rpc/greet`
+- `POST /rpc/ping`
+- `POST /rpc/createUser`
+
+### Server-Side Direct Calls
+
+The returned `api` object can be used directly on the server without HTTP:
+
+```typescript
+const result = await api.greet({ name: "World" });
+//    ^? { message: string }
+
+const status = await api.ping();
+//    ^? { status: string; timestamp: number }
+```
+
+Direct calls validate input and execute the handler with a minimal Context. They skip HTTP overhead entirely.
+
+### Client-Side Usage (Auto Treaty)
+
+On the client side, import the exported type and use `createRPCClient`:
+
+```typescript
+import { createRPCClient } from "asijs/client";
+import type { AppAPI } from "./server";
+
+const api = createRPCClient<AppAPI>("http://localhost:3000");
+
+// Fully type-safe — full autocomplete in editors
+const result = await api.greet({ name: "World" });
+//    ^? { message: string }
+
+const status = await api.ping();
+//    ^? { status: string; timestamp: number }
+```
+
+No code generation, no build step — just export the type from the server and import it on the client.
+
+### Custom Prefix
+
+```typescript
+const api = rpc(app, actions, { prefix: "/api/rpc" });
+// Endpoints: POST /api/rpc/greet, POST /api/rpc/ping, ...
+
+// Client must match:
+const client = createRPCClient<AppAPI>("http://localhost:3000", {
+  prefix: "/api/rpc",
+});
+```
+
+### Error Handling
+
+```typescript
+import { RPCActionError } from "asijs";
+
+// On the server, throw structured errors
+const withdraw = serverAction(
+  Type.Object({ amount: Type.Number() }),
+  async ({ amount }, ctx) => {
+    if (amount > balance) {
+      throw new RPCActionError(
+        "Insufficient funds",
+        "INSUFFICIENT_FUNDS",
+        { balance, requested: amount },
+      );
+    }
+    return { newBalance: balance - amount };
+  },
+);
+
+// On the client, errors are caught as RPCActionError
+try {
+  await client.withdraw({ amount: 999999 });
+} catch (error) {
+  if (error instanceof RPCActionError) {
+    console.log(error.code);       // "INSUFFICIENT_FUNDS"
+    console.log(error.details);    // { balance, requested }
+    console.log(error.message);    // "Insufficient funds"
+  }
+}
+```
+
+### Custom Error Handler
+
+```typescript
+const api = rpc(app, actions, {
+  onError(error, actionName) {
+    console.error(`[${actionName}]`, error);
+    return new Response(JSON.stringify({
+      error: "Something went wrong",
+    }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+});
+```
+
+### Custom Fetch Client
+
+```typescript
+const client = createRPCClient<AppAPI>("http://localhost:3000", {
+  fetch: customFetch,        // For testing or custom adapters
+  headers: { Authorization: `Bearer ${token}` },
+});
+```
+
+### Type Inference Helpers
+
+```typescript
+import type { InferRPCInput, InferRPCOutput, InferRPCAPI } from "asijs";
+
+// Extract input/output types from a single action
+type GreetInput = InferRPCInput<typeof greet>;
+// { name: string }
+
+type GreetOutput = InferRPCOutput<typeof greet>;
+// { message: string }
+
+// Extract all types from an API
+type AllTypes = InferRPCAPI<typeof api>;
+// { greet: { input: { name: string }, output: { message: string } }, ... }
+```
+
+### How It Works
+
+1. `serverAction()` creates a branded action object with phantom types for input and output
+2. `rpc()` iterates actions, compiles TypeBox validators once, registers POST endpoints
+3. The returned `RPCClient` maps each action to a direct-call function (skips HTTP on server)
+4. `createRPCClient()` uses a JavaScript Proxy to intercept property access and build fetch calls
+5. TypeScript infers input/output types through the phantom type markers on `RPCServerAction`
+
+---
+
+## Workspace Development
+
+In a Bun monorepo with multiple sub-apps, `bun --hot` normally restarts the entire process when any file changes. AsiJS Workspace Development solves this by spawning **each sub-app as its own Bun process** with `--hot`, so only the sub-app whose files changed gets reloaded.
+
+### Quick Start
+
+```bash
+# Create a workspace project
+bunx asijs create my-project -t workspace
+
+# Start all sub-apps with independent hot-reload
+cd my-project
+bun run dev
+# Or:
+bunx asijs dev
+```
+
+### Programmatic Usage
+
+```typescript
+import { asiDev, scanWorkspace, startWorkspaceDev } from "asijs";
+
+// Option 1: Convenience — scan + start
+const controller = await asiDev();
+
+// Option 2: Scan first, then start
+const apps = scanWorkspace();
+const controller = await startWorkspaceDev(apps, {
+  basePort: 3000,
+  verbose: true,
+});
+
+// Option 3: Manual configuration
+const controller = await startWorkspaceDev([
+  {
+    name: "api",
+    entryPoint: "./apps/api/src/index.ts",
+    rootDir: "./apps/api",
+  },
+  {
+    name: "web",
+    entryPoint: "./apps/web/src/index.ts",
+    rootDir: "./apps/web",
+  },
+], {
+  basePort: 3000,
+  verbose: true,
+});
+
+// Stop all processes
+await controller.stop();
+```
+
+### Workspace Scanner
+
+`scanWorkspace()` automatically detects AsiJS sub-apps:
+
+1. Reads root `package.json` for `workspaces` field
+2. Expands workspace globs to find packages
+3. Checks each package for AsiJS entry files (`src/index.ts`, `src/index.tsx`, `src/app.ts`, `index.ts`)
+4. Verifies the file imports from `"asijs"` (heuristic)
+5. Falls back to scanning `apps/`, `packages/`, `sub-apps/` directories
+
+```typescript
+const apps = scanWorkspace({ cwd: process.cwd() });
+// Returns: SubApp[] with name, entryPoint, rootDir, auto-assigned port
+```
+
+### Controller API
+
+```typescript
+const controller = await startWorkspaceDev(apps);
+
+// Check status
+controller.running;  // boolean
+
+// Restart a specific sub-app
+await controller.restartApp("api");
+
+// Stop all
+await controller.stop();
+
+// Access app list
+controller.apps;  // SubApp[]
+// Each app has: name, entryPoint, rootDir, port, status, lastError
+```
+
+### Environment Variables
+
+Each sub-app receives:
+
+| Variable | Value |
+|----------|-------|
+| `PORT` | Auto-assigned port (3000, 3001, 3002, ...) |
+| `ASIJS_DEV` | `"1"` |
+| `ASIJS_WORKSPACE` | `"1"` |
+| `ASIJS_APP_NAME` | Sub-app name (also used as tenant ID for rate limiting) |
+
+When rate limiting is configured, each sub-app also receives:
+
+| Variable | Value |
+|----------|-------|
+| `ASIJS_RATE_LIMIT_ENABLED` | `"1"` when enabled, `"0"` when disabled |
+| `ASIJS_RATE_LIMIT_MAX` | Max requests per tenant window |
+| `ASIJS_RATE_LIMIT_WINDOW_MS` | Time window in milliseconds |
+
+Custom env vars can be passed via `env` option:
+
+```typescript
+const controller = await asiDev({
+  env: {
+    DATABASE_URL: "postgres://localhost:5432/mydb",
+    REDIS_URL: "redis://localhost:6379",
+  },
+});
+```
+
+### Sub-App Status
+
+Each sub-app has a status field for monitoring:
+
+- `"stopped"` — Not running
+- `"starting"` — Process being spawned
+- `"running"` — Process is alive
+- `"error"` — Crashed or failed to start (check `app.lastError`)
+
+If a sub-app crashes (non-zero exit), the controller logs the error and marks it as `"error"`. Other sub-apps keep running.
+
+### Managing Processes
+
+```typescript
+// Graceful stop all
+process.on("SIGINT", async () => {
+  await controller.stop();
+  process.exit(0);
+});
+
+// Restart on demand
+await controller.restartApp("web");
+```
+
+---
+
 ## Development Mode
 
 ### Dev Mode Plugin
@@ -1365,7 +1818,7 @@ class Asi {
   before(handler): this;
   after(handler): this;
   onError(handler): this;
-  notFound(handler): this;
+  onNotFound(handler): this;
   
   // Plugins
   plugin(plugin): this;
@@ -1377,6 +1830,45 @@ class Asi {
   // Internals
   fetch(request): Response | Promise<Response>;
 }
+```
+
+### RPC Functions
+
+```typescript
+// Create a type-safe server action
+function serverAction<TInput extends TSchema, TOutput>(
+  schema: TInput,
+  handler: (input: Static<TInput>, ctx: Context) => Promise<TOutput>,
+): RPCServerAction<Static<TInput>, TOutput>;
+
+// Register actions and get typed API
+function rpc<T extends RPCRegistry>(
+  app: Asi,
+  actions: T,
+  options?: RPCOptions,
+): RPCClient<T>;
+
+// Create client-side RPC client (auto treaty)
+function createRPCClient<T>(
+  baseUrl: string,
+  options?: RPCClientOptions,
+): T;
+```
+
+### Workspace Functions
+
+```typescript
+// Scan workspace for AsiJS sub-apps
+function scanWorkspace(options?: { cwd?: string }): SubApp[];
+
+// Start workspace dev mode (convenience)
+function asiDev(options?: WorkspaceDevOptions): Promise<WorkspaceDevController>;
+
+// Start workspace dev mode (explicit)
+function startWorkspaceDev(
+  apps: SubApp[],
+  options?: WorkspaceDevOptions,
+): Promise<WorkspaceDevController>;
 ```
 
 ### Context Class
@@ -1445,6 +1937,20 @@ export {
   scheduler,
   devMode,
   mcp,
+  workspaceRateLimit,
+};
+
+// Rate Limit Utilities
+export {
+  rateLimitMiddleware,
+  tenantRateLimitMiddleware,
+  MemoryStore,
+  TokenBucketStore,
+  TenantStore,
+  standardLimit,
+  strictLimit,
+  apiLimit,
+  authLimit,
 };
 
 // Auth
@@ -1471,6 +1977,53 @@ export {
   html,
   stream,
   Suspense,
+};
+
+// RPC 2.0
+export {
+  serverAction,
+  rpc,
+  createRPCClient,
+  RPCActionError,
+};
+
+// Workspace
+export type {
+  SubApp,
+  SubAppConfig,
+  SubAppProcess,
+  WorkspaceDevOptions,
+  WorkspaceRateLimitConfig,
+  WorkspaceDevController,
+};
+
+export {
+  scanWorkspace,
+  startWorkspaceDev,
+  asiDev,
+};
+
+// Tenant Rate Limiting
+export {
+  workspaceRateLimit,
+  tenantRateLimitMiddleware,
+  TenantStore,
+  defaultTenantOptions,
+};
+
+export type {
+  TenantRateLimitOptions,
+};
+
+// RPC Types
+export type {
+  RPCServerAction,
+  RPCRegistry,
+  RPCClient,
+  RPCClientOptions,
+  InferRPCOutput,
+  InferRPCInput,
+  InferRPCAPI,
 };
 ```
 

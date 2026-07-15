@@ -1,0 +1,126 @@
+version: "3.9"
+
+services:
+  # ===== AsiJS Application =====
+  app:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.app
+      target: production
+    image: asijs-app:latest
+    container_name: asijs-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      # App config
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-postgres://asijs:asijs@postgres:5432/asijs}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+
+      # Rate limiting (shared store via Redis)
+      ASIJS_RATE_LIMIT_ENABLED: "1"
+      ASIJS_RATE_LIMIT_MAX: "1000"
+      ASIJS_RATE_LIMIT_WINDOW_MS: "60000"
+
+      # Session
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3000/health').then(r => r.status === 200 ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - asijs-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===== PostgreSQL =====
+  postgres:
+    image: postgres:16-alpine
+    container_name: asijs-postgres
+    restart: unless-stopped
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${PG_USER:-asijs}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-asijs}
+      POSTGRES_DB: ${PG_DB:-asijs}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-asijs} -d ${PG_DB:-asijs}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - asijs-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===== Redis =====
+  redis:
+    image: redis:7-alpine
+    container_name: asijs-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - asijs-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===== Optional: Adminer (DB UI) =====
+  adminer:
+    image: adminer:latest
+    container_name: asijs-adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      - postgres
+    networks:
+      - asijs-network
+    profiles:
+      - admin
+      - dev
+
+volumes:
+  pg-data:
+    name: asijs-pg-data
+  redis-data:
+    name: asijs-redis-data
+
+networks:
+  asijs-network:
+    name: asijs-network
+    driver: bridge

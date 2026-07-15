@@ -154,7 +154,7 @@ app.post("/login", async (ctx) => {
 
 // Apply bearer middleware to /me and /refresh
 const authMiddleware = bearer({
-  secret: JWT_SECRET,
+  jwt: jwtHelper,
   onError: (ctx) => {
     return ctx.status(401).jsonResponse({
       error: "Unauthorized",
@@ -220,15 +220,20 @@ app.post("/refresh", async (ctx) => {
 
 // ===== Start Server =====
 
-app.listen(3000, () => {
-  console.log("\n📚 Try these commands:");
-  console.log('  # Register');
-  console.log('  curl -X POST http://localhost:3000/register -H "Content-Type: application/json" -d \'{"email":"test@example.com","password":"password123","name":"Test User"}\'');
-  console.log("");
-  console.log('  # Login');
-  console.log('  curl -X POST http://localhost:3000/login -H "Content-Type: application/json" -d \'{"email":"test@example.com","password":"password123"}\'');
-  console.log("");
-  console.log('  # Get current user (replace TOKEN)');
-  console.log('  curl http://localhost:3000/me -H "Authorization: Bearer TOKEN"');
-  console.log("");
-});
+const port = Number(process.env.PORT ?? 3000);
+const server = app.listen(port);
+
+console.log("\n📚 Try these commands:");
+console.log('  # Register');
+console.log(`  curl -X POST http://localhost:${server.port}/register -H "Content-Type: application/json" -d '{"email":"test@example.com","password":"password123","name":"Test User"}'`);
+console.log("");
+console.log('  # Login');
+console.log(`  curl -X POST http://localhost:${server.port}/login -H "Content-Type: application/json" -d '{"email":"test@example.com","password":"password123"}'`);
+console.log("");
+console.log('  # Get current user (replace TOKEN)');
+console.log(`  curl http://localhost:${server.port}/me -H "Authorization: Bearer TOKEN"`);
+console.log("");
+
+if (process.env.ASIJS_EXAMPLE_CHECK === "1") {
+  setTimeout(() => server.stop(), 50);
+}

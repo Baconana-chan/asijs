@@ -1,0 +1,113 @@
+name: Benchmarks Dashboard
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'Benchmark iterations'
+        required: false
+        default: '10000'
+      warmup:
+        description: 'Warmup iterations'
+        required: false
+        default: '1000'
+
+# Allow one concurrent deployment
+concurrency:
+  group: benchmark-dashboard
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    outputs:
+      has_results: ${{ steps.collect.outputs.has_results }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies (root)
+        run: bun install
+
+      - name: Install dependencies (bench)
+        working-directory: ./bench
+        run: bun install
+
+      - name: Run benchmarks
+        id: collect
+        env:
+          BENCH_ITERATIONS: ${{ github.event.inputs.iterations || '10000' }}
+          BENCH_WARMUP: ${{ github.event.inputs.warmup || '1000' }}
+        run: |
+          bun run bench:collect 2>&1
+          # Check if results were generated
+          if [ -f bench/results/latest.json ]; then
+            echo "has_results=true" >> $GITHUB_OUTPUT
+            echo "Results generated successfully"
+          else
+            echo "has_results=false" >> $GITHUB_OUTPUT
+            echo "No results generated"
+          fi
+
+      - name: Generate dashboard
+        if: steps.collect.outputs.has_results == 'true'
+        env:
+          BENCH_ITERATIONS: ${{ github.event.inputs.iterations || '10000' }}
+          BENCH_WARMUP: ${{ github.event.inputs.warmup || '1000' }}
+        run: |
+          bun run bench:dashboard
+
+      - name: Upload benchmark artifacts
+        if: steps.collect.outputs.has_results == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            bench/results/
+            docs/benchmarks/
+          retention-days: 90
+
+  deploy:
+    name: Deploy Dashboard
+    needs: benchmark
+    if: needs.benchmark.outputs.has_results == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results
+          path: ./
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/benchmarks/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -169,11 +169,16 @@ app.delete("/users/:id", (ctx) => {
 
 // ===== Start Server =====
 
-app.listen(3000, () => {
-  console.log("\n📚 Try these commands:");
-  console.log("  curl http://localhost:3000/");
-  console.log("  curl http://localhost:3000/users");
-  console.log('  curl -X POST http://localhost:3000/users -H "Content-Type: application/json" -d \'{"name":"John","email":"john@example.com"}\'');
-  console.log("  curl http://localhost:3000/users/1");
-  console.log("");
-});
+const port = Number(process.env.PORT ?? 3000);
+const server = app.listen(port);
+
+console.log("\n📚 Try these commands:");
+console.log(`  curl http://localhost:${server.port}/`);
+console.log(`  curl http://localhost:${server.port}/users`);
+console.log(`  curl -X POST http://localhost:${server.port}/users -H "Content-Type: application/json" -d '{"name":"John","email":"john@example.com"}'`);
+console.log(`  curl http://localhost:${server.port}/users/1`);
+console.log("");
+
+if (process.env.ASIJS_EXAMPLE_CHECK === "1") {
+  setTimeout(() => server.stop(), 50);
+}

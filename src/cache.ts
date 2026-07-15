@@ -249,7 +249,7 @@ export function buildCacheControl(options: CacheOptions): string {
 export function etag(options: ETagOptions = {}): Middleware {
   const {
     weak = false,
-    skipContentTypes = ["text/event-stream", "multipart/", "application/json"],
+    skipContentTypes = ["text/event-stream", "multipart/"],
     minSize = 0,
   } = options;
 

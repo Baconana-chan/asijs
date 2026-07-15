@@ -408,7 +408,7 @@ export function traceMiddleware(options: TraceOptions = {}): Middleware {
       method: ctx.method,
       path: ctx.path,
       startTime,
-      ip: ctx.header("X-Forwarded-For") ?? ctx.header("X-Real-IP"),
+      ip: ctx.header("X-Forwarded-For") ?? ctx.header("X-Real-IP") ?? undefined,
       userAgent: ctx.header("User-Agent") ?? undefined,
       attributes: new Map(),
       events: [],

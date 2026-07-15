@@ -32,8 +32,29 @@ export interface CompileOptions {
   cacheValidators?: boolean;
 }
 
-// Кэш скомпилированных TypeBox схем
-const validatorCache = new Map<TSchema, TypeCheck<TSchema>>();
+// Кэш скомпилированных TypeBox схем — использует LRU cache по умолчанию
+import { getDefaultSchemaCache, type SchemaCacheLRU } from "./router-perf";
+
+let validatorCache: Map<TSchema, TypeCheck<TSchema>> | SchemaCacheLRU = new Map();
+let useLRUCache = false;
+let lruCacheInstance: SchemaCacheLRU | null = null;
+
+/**
+ * Enable LRU-based schema caching with a maximum size.
+ * Call this before compilation for memory-bounded caching.
+ */
+export function enableLRUSchemaCache(maxSize: number = 10000): void {
+  lruCacheInstance = getDefaultSchemaCache(maxSize);
+  validatorCache = lruCacheInstance;
+  useLRUCache = true;
+}
+
+/** Reset to simple Map cache (unbounded) */
+export function disableLRUSchemaCache(): void {
+  lruCacheInstance = null;
+  validatorCache = new Map();
+  useLRUCache = false;
+}
 
 /**
  * Скомпилировать TypeBox схему в быстрый валидатор
@@ -391,12 +412,54 @@ export function generateRouteMatcherCode(
     for (const route of groupRoutes) {
       const segments = route.path.split("/").filter(Boolean);
       lines.push(`      // ${route.method} ${route.path}`);
-      lines.push(
-        `      if (method === "${route.method}" && segments.length === ${segments.length}) {`,
-      );
-      lines.push(`        // TODO: full match logic`);
-      lines.push(`        return { matched: true, route: "${route.path}" };`);
-      lines.push(`      }`);
+
+      // Build segment comparison for each segment
+      const segmentChecks: string[] = [];
+      const paramExtractions: string[] = [];
+      let hasWildcard = false;
+
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (seg.startsWith(":")) {
+          // Param segment — extract value, no comparison needed
+          const paramName = seg.slice(1);
+          paramExtractions.push(`        params["${paramName}"] = segments[${i}];`);
+        } else if (seg === "*") {
+          // Wildcard — captures remaining segments
+          hasWildcard = true;
+          paramExtractions.push(`        params["*"] = segments.slice(${i}).join("/");`);
+          segmentChecks.push(`segments.length >= ${i}`);
+        } else {
+          // Static segment — compare literal
+          segmentChecks.push(`segments[${i}] === "${seg}"`);
+        }
+      }
+
+      if (hasWildcard) {
+        lines.push(`      if (method === "${route.method}" && ${segmentChecks.join(" && ")}) {`);
+        lines.push(`        const params: Record<string, string> = {};`);
+        for (const extract of paramExtractions) {
+          lines.push(extract);
+        }
+        lines.push(`        return { matched: true, route: "${route.path}", params };`);
+        lines.push(`      }`);
+      } else if (paramExtractions.length > 0) {
+        // Route with params — check length + static segments, extract params
+        const allChecks = [`method === "${route.method}"`, `segments.length === ${segments.length}`, ...segmentChecks];
+        lines.push(`      if (${allChecks.join(" && ")}) {`);
+        lines.push(`        const params: Record<string, string> = {};`);
+        for (const extract of paramExtractions) {
+          lines.push(extract);
+        }
+        lines.push(`        return { matched: true, route: "${route.path}", params };`);
+        lines.push(`      }`);
+      } else {
+        // Fully static route — check method, length, and all segments
+        const checks = [`method === "${route.method}"`, `segments.length === ${segments.length}`, ...segmentChecks];
+        lines.push(`      if (${checks.join(" && ")}) {`);
+        lines.push(`        return { matched: true, route: "${route.path}" };`);
+        lines.push(`      }`);
+      }
     }
 
     lines.push("      break;");

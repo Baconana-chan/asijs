@@ -1,11 +1,53 @@
-# Migration Guide: Elysia / Hono → AsiJS
+# Migration Guide: Elysia / Hono / Fastify → AsiJS
 
-This guide helps you migrate existing applications from Elysia or Hono to AsiJS.
+This guide helps you migrate existing applications from Elysia, Hono, or Fastify to AsiJS.
+
+## Automatic Migration (Codemod)
+
+AsiJS includes a built-in codemod CLI that automatically transforms source code from other frameworks.
+It handles 60+ patterns: imports, route definitions, validation schemas, plugins, and middleware.
+
+```bash
+# Auto-detect framework and migrate (dry-run first to preview changes)
+bunx asijs migrate ./src --dry-run -v
+
+# Migrate from Elysia (explicit framework)
+bunx asijs migrate ./src --from elysia
+
+# Migrate from Hono
+bunx asijs migrate ./src --from hono
+
+# Migrate from Fastify (including v4/v5 require syntax)
+bunx asijs migrate ./app.ts --from fastify
+
+# Apply changes (remove --dry-run)
+bunx asijs migrate ./src --from elysia
+```
+
+### What the Codemod Transforms
+
+| Framework | Transformation |
+|-----------|----------------|
+| **Elysia** | `new Elysia()` → `new Asi()`, `t.*` → `Type.*`, chained `.get()` → `app.get()`, `.use()` → `.plugin()`, `.derive()` → `.before()`, `@elysiajs/*` → `asijs`, `set.status` → `ctx.status()` |
+| **Hono** | `new Hono()` → `new Asi()`, `c.text/json/html()` → `return` / `ctx.*()`, `c.req.param/query/header/json()` → `ctx.*`, `c.status/header()` → `ctx.*`, `hono/*` → `asijs`, Zod → TypeBox, `export default app` → `app.listen()` |
+| **Fastify** | `fastify()` → `new Asi()`, `reply.code/send/header/redirect/type()` → `ctx.*()`, `request/req.*` → `ctx.*`, `app.register()` → `app.plugin()`, `app.listen({port})` → `app.listen(port)`, `request.log` → `console` |
+
+> **Note:** The codemod is a best-effort regex-based transformation. Complex cases (nested routes,
+> custom plugins, advanced middleware) may require manual adjustments after migration.
+> Run `--dry-run` first to preview changes, then review the output.
+
+---
+
+## Manual Migration Guide
+
+If you prefer to migrate manually, or need to handle cases the codemod doesn't cover,
+this guide provides detailed API mappings.
 
 ## Table of Contents
 
 - [Why Migrate to AsiJS?](#why-migrate-to-asijs)
 - [Quick Comparison](#quick-comparison)
+- [Automatic Migration (Codemod)](#automatic-migration-codemod)
 - [Migrating from Elysia](#migrating-from-elysia)
 - [Migrating from Hono](#migrating-from-hono)
 - [Feature Mapping](#feature-mapping)

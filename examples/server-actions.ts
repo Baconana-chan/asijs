@@ -412,32 +412,37 @@ const user = await client.createUser({
 
 // ===== Start Server =====
 
-app.listen(3000, () => {
-  console.log("\n🚀 Server Actions Example");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("");
-  console.log("📡 Demo: http://localhost:3000");
-  console.log("");
-  console.log("📚 Actions:");
-  console.log("   POST /api/actions/getUsers");
-  console.log("   POST /api/actions/createUser");
-  console.log("   POST /api/actions/deleteUser  (auth: Bearer {userId})");
-  console.log("   POST /api/actions/getTodos");
-  console.log("   POST /api/actions/createTodo  (auth required)");
-  console.log("   POST /api/actions/toggleTodo  (auth required)");
-  console.log("   POST /api/actions/deleteTodo  (auth required)");
-  console.log("   POST /api/actions/getStats");
-  console.log("   POST /api/actions/__batch     (batch multiple)");
-  console.log("");
-  console.log("🔑 Auth header: Authorization: Bearer 1 (admin) or Bearer 2 (user)");
-  console.log("");
-  console.log("📝 Example calls:");
-  console.log('   curl -X POST http://localhost:3000/api/actions/getUsers');
-  console.log('   curl -X POST http://localhost:3000/api/actions/createUser \\');
-  console.log('        -H "Content-Type: application/json" \\');
-  console.log('        -d \'{"name":"Test","email":"test@test.com"}\'');
-  console.log("");
-});
+const port = Number(process.env.PORT ?? 3000);
+const server = app.listen(port);
+
+console.log("\n🚀 Server Actions Example");
+console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+console.log("");
+console.log(`📡 Demo: http://localhost:${server.port}`);
+console.log("");
+console.log("📚 Actions:");
+console.log("   POST /api/actions/getUsers");
+console.log("   POST /api/actions/createUser");
+console.log("   POST /api/actions/deleteUser  (auth: Bearer {userId})");
+console.log("   POST /api/actions/getTodos");
+console.log("   POST /api/actions/createTodo  (auth required)");
+console.log("   POST /api/actions/toggleTodo  (auth required)");
+console.log("   POST /api/actions/deleteTodo  (auth required)");
+console.log("   POST /api/actions/getStats");
+console.log("   POST /api/actions/__batch     (batch multiple)");
+console.log("");
+console.log("🔑 Auth header: Authorization: Bearer 1 (admin) or Bearer 2 (user)");
+console.log("");
+console.log("📝 Example calls:");
+console.log(`   curl -X POST http://localhost:${server.port}/api/actions/getUsers`);
+console.log(`   curl -X POST http://localhost:${server.port}/api/actions/createUser \\`);
+console.log('        -H "Content-Type: application/json" \\');
+console.log('        -d \'{"name":"Test","email":"test@test.com"}\'');
+console.log("");
+
+if (process.env.ASIJS_EXAMPLE_CHECK === "1") {
+  setTimeout(() => server.stop(), 50);
+}
 
 // ===== Client Usage Example (for reference) =====
 

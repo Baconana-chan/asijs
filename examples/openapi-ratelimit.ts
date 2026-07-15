@@ -25,24 +25,26 @@ const app = new Asi({ development: true });
 // ===== Plugins =====
 
 // CORS
-app.plugin(cors());
+app.use(cors());
 
 // Security headers
-app.plugin(security());
+await app.plugin(security());
 
 // OpenAPI documentation at /docs
-app.plugin(openapi({
+await app.plugin(openapi({
   title: "Pet Store API",
   version: "1.0.0",
   description: "A sample Pet Store API with OpenAPI documentation",
-  contact: {
-    name: "API Support",
-    email: "support@example.com",
+  info: {
+    contact: {
+      name: "API Support",
+      email: "support@example.com",
+    },
   },
 }));
 
 // Rate limiting (100 requests per minute)
-app.plugin(rateLimit(standardLimit));
+await app.plugin(rateLimit(standardLimit()));
 
 // ===== Data =====
 
@@ -181,15 +183,20 @@ app.delete("/pets/:id", (ctx) => {
 
 // ===== Start Server =====
 
-app.listen(3000, () => {
-  console.log("\n📚 Features:");
-  console.log("  🔗 Swagger UI: http://localhost:3000/docs");
-  console.log("  🔒 Rate limiting: 100 requests/minute");
-  console.log("  🛡️  Security headers enabled");
-  console.log("");
-  console.log("📚 Try these commands:");
-  console.log("  curl http://localhost:3000/pets");
-  console.log("  curl http://localhost:3000/pets/1");
-  console.log('  curl -X POST http://localhost:3000/pets -H "Content-Type: application/json" -d \'{"name":"Rex","species":"dog","age":2}\'');
-  console.log("");
-});
+const port = Number(process.env.PORT ?? 3000);
+const server = app.listen(port);
+
+console.log("\n📚 Features:");
+console.log(`  🔗 Swagger UI: http://localhost:${server.port}/docs`);
+console.log("  🔒 Rate limiting: 100 requests/minute");
+console.log("  🛡️  Security headers enabled");
+console.log("");
+console.log("📚 Try these commands:");
+console.log(`  curl http://localhost:${server.port}/pets`);
+console.log(`  curl http://localhost:${server.port}/pets/1`);
+console.log(`  curl -X POST http://localhost:${server.port}/pets -H "Content-Type: application/json" -d '{"name":"Rex","species":"dog","age":2}'`);
+console.log("");
+
+if (process.env.ASIJS_EXAMPLE_CHECK === "1") {
+  setTimeout(() => server.stop(), 50);
+}
