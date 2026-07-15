@@ -208,6 +208,9 @@ export function scanWorkspace(
     }
   }
 
+  // Sort by name for deterministic order (filesystem order varies by OS)
+  apps.sort((a, b) => a.name.localeCompare(b.name));
+
   return apps;
 }
 

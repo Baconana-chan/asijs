@@ -6,7 +6,9 @@
     "bench": "bun run index.ts",
     "production": "bun run production.ts",
     "fullstack": "bun run fullstack.ts",
-    "rpc": "bun run rpc-bench.ts"
+    "rpc": "bun run rpc-bench.ts",
+    "collect": "bun run collect.ts",
+    "generate-dashboard": "bun run generate-dashboard.ts"
   },
   "dependencies": {
     "@elysiajs/bearer": "^1.4.3",

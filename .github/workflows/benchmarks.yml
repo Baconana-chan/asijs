@@ -101,13 +101,21 @@ jobs:
           path: ./
 
       - name: Setup Pages
+        id: pages
         uses: actions/configure-pages@v5
+        continue-on-error: true
 
       - name: Upload Pages artifact
+        if: steps.pages.conclusion == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/benchmarks/
 
       - name: Deploy to GitHub Pages
+        if: steps.pages.conclusion == 'success'
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Skip deploy notice
+        if: steps.pages.conclusion != 'success'
+        run: echo "⚠️  GitHub Pages not enabled for this repo — skipping deploy. Enable it in repo Settings > Pages."
