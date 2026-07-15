@@ -19,8 +19,8 @@ import { Elysia, t } from "elysia";
 import { Hono } from "hono";
 import { writeFileSync, mkdirSync, existsSync, rmSync } from "fs";
 
-const ITERATIONS = 10_000;
-const WARMUP = 1_000;
+const ITERATIONS = parseInt(process.env.BENCH_ITERATIONS || "10000", 10);
+const WARMUP = parseInt(process.env.BENCH_WARMUP || "1000", 10);
 
 interface BenchResult {
   name: string;

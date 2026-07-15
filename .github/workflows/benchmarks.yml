@@ -48,14 +48,29 @@ jobs:
           BENCH_ITERATIONS: ${{ github.event.inputs.iterations || '10000' }}
           BENCH_WARMUP: ${{ github.event.inputs.warmup || '1000' }}
         run: |
-          bun run bench:collect 2>&1
+          echo "📊 Running benchmark collector..."
+          echo "   BENCH_ITERATIONS=$BENCH_ITERATIONS"
+          echo "   BENCH_WARMUP=$BENCH_WARMUP"
+          
+          # Create results dir upfront
+          mkdir -p bench/results
+          
+          # Run collector — capture both stdout and stderr
+          bun run bench:collect 2>&1; EXIT_CODE=$?
+          echo ""
+          echo "   Exit code: $EXIT_CODE"
+          
+          # Debug: check what's in results dir
+          echo "   Results dir contents:"
+          ls -la bench/results/ 2>&1 || echo "   (no results dir)"
+          
           # Check if results were generated
           if [ -f bench/results/latest.json ]; then
             echo "has_results=true" >> $GITHUB_OUTPUT
-            echo "Results generated successfully"
+            echo "   ✅ Results generated successfully"
           else
             echo "has_results=false" >> $GITHUB_OUTPUT
-            echo "No results generated"
+            echo "   ⚠️  No results generated"
           fi
 
       - name: Generate dashboard

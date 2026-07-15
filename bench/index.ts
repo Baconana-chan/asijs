@@ -14,8 +14,8 @@
 import { Asi, Type } from "../src";
 import { Elysia, t } from "elysia";
 import { Hono } from "hono";
-const ITERATIONS = 100_000;
-const WARMUP = 5_000;
+const ITERATIONS = parseInt(process.env.BENCH_ITERATIONS || "100000", 10);
+const WARMUP = parseInt(process.env.BENCH_WARMUP || "5000", 10);
 
 interface BenchResult {
   name: string;
