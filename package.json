@@ -1,6 +1,6 @@
 {
   "name": "asijs",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Bun-first web framework — fast, type-safe, simple",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -128,7 +128,7 @@
     "bench:collect": "cd bench && bun run collect.ts",
     "bench:dashboard": "cd bench && bun run generate-dashboard.ts",
     "build": "bun run build:js && bun run build:types",
-    "build:js": "bun build src/index.ts src/cli.ts src/jsx-runtime.ts src/jsx-dev-runtime.ts src/i18n.ts src/edge.ts src/testing.ts src/database.ts src/rpc.ts src/client.ts src/workspace.ts src/metrics.ts src/codemod.ts src/runtime/node/index.ts src/spa.ts src/spa-client.ts src/structured-logger.ts src/sentry.ts src/json-stream.ts src/redis.ts --outdir dist --target node --minify --external @sinclair/typebox --splitting",
+    "build:js": "bun build src/index.ts src/cli.ts src/jsx-runtime.ts src/jsx-dev-runtime.ts src/i18n.ts src/edge.ts src/testing.ts src/database.ts src/rpc.ts src/client.ts src/workspace.ts src/metrics.ts src/codemod.ts src/spa.ts src/spa-client.ts src/structured-logger.ts src/sentry.ts src/json-stream.ts src/redis.ts src/serverless.ts --outdir dist --target node --minify --external @sinclair/typebox --splitting && bun build src/runtime/node/index.ts --outdir dist/runtime/node --target node --external @sinclair/typebox --external ws --external ioredis --splitting",
     "build:types": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "typecheck:examples": "tsc --project tsconfig.examples.json --noEmit",

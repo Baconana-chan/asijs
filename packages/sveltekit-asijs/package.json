@@ -1,0 +1,29 @@
+{
+  "name": "@asijs/sveltekit",
+  "version": "0.1.0",
+  "description": "SvelteKit adapter for AsiJS — run AsiJS as SvelteKit server hooks and API endpoints",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --external asijs --external @sveltejs/kit",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "keywords": ["asijs", "sveltekit", "adapter", "server-hooks"],
+  "peerDependencies": {
+    "asijs": "latest",
+    "@sveltejs/kit": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

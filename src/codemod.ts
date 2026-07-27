@@ -8,12 +8,16 @@
  *   - Elysia → AsiJS
  *   - Hono → AsiJS
  *   - Fastify → AsiJS (including Fastify v4/v5)
+ *   - Express → AsiJS (with runtime adapter via asijs/migrate-express)
+ *   - Koa → AsiJS (with runtime adapter via asijs/migrate-koa)
  *
  * @example CLI
  * ```bash
  * bunx asijs migrate ./src --from elysia
  * bunx asijs migrate ./app.ts --from hono
  * bunx asijs migrate ./src --from fastify --dry-run
+ * bunx asijs migrate ./src --from express
+ * bunx asijs migrate ./src --from koa
  * ```
  */
 
@@ -24,7 +28,7 @@ import { join, resolve, relative, extname } from "path";
 // Types
 // ========================================================================
 
-export type SourceFramework = "elysia" | "hono" | "fastify";
+export type SourceFramework = "elysia" | "hono" | "fastify" | "express" | "koa";
 
 export interface CodemodOptions {
   /** Source framework to migrate from */
@@ -654,13 +658,44 @@ const RULES: Record<SourceFramework, TransformRule[]> = {
   elysia: ELYSIA_RULES,
   hono: HONO_RULES,
   fastify: FASTIFY_RULES,
+  express: [],
+  koa: [],
 };
+
+// Import Express and Koa rules dynamically (they're in separate modules)
+let _expressRulesLoaded = false;
+let _koaRulesLoaded = false;
+
+function ensureExpressRules() {
+  if (_expressRulesLoaded) return;
+  try {
+    const { EXPRESS_CODEMOD_RULES } = require("./migrate-express") as typeof import("./migrate-express");
+    RULES.express = EXPRESS_CODEMOD_RULES;
+    _expressRulesLoaded = true;
+  } catch {}
+}
+
+function ensureKoaRules() {
+  if (_koaRulesLoaded) return;
+  try {
+    const { KOA_CODEMOD_RULES } = require("./migrate-koa") as typeof import("./migrate-koa");
+    RULES.koa = KOA_CODEMOD_RULES;
+    _koaRulesLoaded = true;
+  } catch {}
+}
+
+// Lazy load rules when needed
+function getRules(framework: SourceFramework): TransformRule[] {
+  if (framework === "express") ensureExpressRules();
+  if (framework === "koa") ensureKoaRules();
+  return RULES[framework] || [];
+}
 
 // ========================================================================
 // Detection
 // ========================================================================
 
-const FRAMEWORK_DETECTORS: Record<SourceFramework, RegExp[]> = {
+const FRAMEWORK_DETECTORS: Record<string, RegExp[]> = {
   elysia: [
     /from\s+["']elysia["']/,
     /from\s+["']@elysiajs\//,
@@ -677,6 +712,23 @@ const FRAMEWORK_DETECTORS: Record<SourceFramework, RegExp[]> = {
     /require\s*\(\s*["']fastify["']\s*\)/,
     /app\.register\(/,
     /reply\.(send|code|redirect)\(/,
+  ],
+  express: [
+    /from\s+["']express["']/,
+    /require\s*\(\s*["']express["']\s*\)/,
+    /express\s*\(\s*\)/,
+    /\.Router\s*\(\s*\)/,
+    /\b(?:res|response)\.(send|json|redirect|status)\(/,
+    /\bnext\s*\(\)/,
+  ],
+  koa: [
+    /from\s+["']koa["']/,
+    /require\s*\(\s*["']koa["']\s*\)/,
+    /new\s+Koa\s*\(\s*\)/,
+    /\bctx\.body\s*=/,
+    /\bctx\.status\s*=\s*\d+/,
+    /\bctx\.throw\s*\(/,
+    /\bctx\.cookies\b/,
   ],
 };
 
@@ -750,7 +802,7 @@ export function transformSource(
   framework: SourceFramework,
   verbose = false,
 ): { result: string; applied: string[] } {
-  const rules = RULES[framework];
+  const rules = getRules(framework);
   const applied: string[] = [];
   let result = source;
 

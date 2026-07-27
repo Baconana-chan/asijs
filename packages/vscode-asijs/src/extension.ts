@@ -1,46 +1,12 @@
 import * as vscode from "vscode";
-import * as fs from "fs";
-import * as path from "path";
-
-/**
- * Parse AsiJS routes from TypeScript source code.
- */
-interface RouteInfo {
-  method: string;
-  path: string;
-  line: number;
-  hasValidation: boolean;
-  isWebSocket: boolean;
-}
-
-function parseRoutes(source: string): RouteInfo[] {
-  const routes: RouteInfo[] = [];
-  const routePattern = /app\.(get|post|put|delete|patch|all|head|options|ws)\(\s*['"`]([^'"`]+)['"`]/g;
-
-  let match: RegExpExecArray | null;
-  while ((match = routePattern.exec(source)) !== null) {
-    const method = match[1]!.toUpperCase();
-    const routePath = match[2]!;
-    const line = source.slice(0, match.index).split("\n").length;
-
-    // Check for validation
-    const remaining = source.slice(match.index, match.index + 300);
-    const hasValidation = /schema\s*:|Type\.Object\s*\(/.test(remaining);
-
-    routes.push({
-      method: method === "WS" ? "WS" : method,
-      path: routePath,
-      line,
-      hasValidation,
-      isWebSocket: method === "ws",
-    });
-  }
-
-  return routes;
-}
+import { parseRoutes, type RouteInfo } from "./parse-routes";
+import { activateDebugConfig } from "./debug-config";
+import { activateTemplateExplorer } from "./template-explorer";
+import { activateCreateWizard } from "./create-wizard";
+import { activateDiagnostics } from "./diagnostics";
 
 // ============================================================================
-// Route Explorer Webview
+// Route Explorer Webview (existing)
 // ============================================================================
 
 class RouteExplorerProvider implements vscode.WebviewViewProvider {
@@ -171,6 +137,8 @@ class RouteExplorerProvider implements vscode.WebviewViewProvider {
 // ============================================================================
 
 export function activate(context: vscode.ExtensionContext) {
+  // === Existing features ===
+
   // Register route explorer
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
@@ -182,7 +150,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Command: Open Route Explorer
   context.subscriptions.push(
     vscode.commands.registerCommand("asijs.openRouteExplorer", () => {
-      vscode.commands.executeCommand("workbench.view.extension.asijs-routeExplorer");
+      vscode.commands.executeCommand("workbench.view.extension.asijs-sidebar");
     }),
   );
 
@@ -235,7 +203,21 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  console.log("AsiJS extension activated");
+  // === New features (3.6) ===
+
+  // Debug configuration
+  activateDebugConfig(context);
+
+  // Template Explorer
+  activateTemplateExplorer(context);
+
+  // Create Project Wizard
+  activateCreateWizard(context);
+
+  // Diagnostics and inline error highlighting
+  activateDiagnostics(context);
+
+  console.log("AsiJS extension activated (v3.6 — Debugger & Template Explorer)");
 }
 
 export function deactivate() {

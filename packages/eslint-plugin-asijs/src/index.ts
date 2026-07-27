@@ -206,39 +206,23 @@ const validateSchema: Rule.RuleModule = {
               // Check for URL parameters
               const hasParams = path.includes(":") || path.includes("*");
 
-              if (hasParams && node.arguments.length < 3) {
-                // No options object — definitely missing schema
-                context.report({
-                  node,
-                  messageId: "missingSchema",
-                  data: { method: method.toUpperCase(), path },
-                });
-                return;
-              }
-
-              if (hasParams && node.arguments.length >= 3) {
-                const optionsArg = node.arguments[2];
-                // Check if options has schema
-                if (
-                  optionsArg.type === "ObjectExpression" &&
-                  !optionsArg.properties.some(
-                    (p: any) => p.key?.name === "schema" || p.key?.value === "schema",
-                  )
-                ) {
-                  // Also check if second arg might contain schema
-                  const schemaArg = node.arguments[1];
-                  if (
-                    schemaArg.type !== "ObjectExpression" ||
-                    !schemaArg.properties.some(
+              if (hasParams) {
+                // Check if any argument (other than path) contains a schema
+                const hasSchemaArg = node.arguments.slice(1).some((arg: any) => {
+                  if (arg.type === "ObjectExpression") {
+                    return arg.properties.some(
                       (p: any) => p.key?.name === "schema" || p.key?.value === "schema",
-                    )
-                  ) {
-                    context.report({
-                      node,
-                      messageId: "missingSchema",
-                      data: { method: method.toUpperCase(), path },
-                    });
+                    );
                   }
+                  return false;
+                });
+
+                if (!hasSchemaArg) {
+                  context.report({
+                    node,
+                    messageId: "missingSchema",
+                    data: { method: method.toUpperCase(), path },
+                  });
                 }
               }
             }

@@ -1,0 +1,29 @@
+{
+  "name": "@asijs/next",
+  "version": "0.1.0",
+  "description": "Next.js adapter for AsiJS — run AsiJS as API routes in Next.js",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --external asijs --external next",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "keywords": ["asijs", "nextjs", "adapter", "api-routes"],
+  "peerDependencies": {
+    "asijs": "latest",
+    "next": "^14.0.0 || ^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

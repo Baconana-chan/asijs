@@ -35,7 +35,7 @@
  * ```
  */
 
-import type { AsiPlugin } from "./plugin";
+import { createPlugin, type AsiPlugin } from "./plugin";
 
 // ============================================================================
 // Types
@@ -349,11 +349,9 @@ export function autoAPI(
     }
   }
 
-  return {
+  return createPlugin({
     name: "auto-api",
-    config: {
-      name: "auto-api",
-      setup: async (app: any) => {
+    setup: async (app: any) => {
         await init();
 
         // Store schemas in state for introspection
@@ -535,7 +533,6 @@ export function autoAPI(
             });
           }
         }
-      },
-    },
-  } as unknown as AsiPlugin;
+      }
+    });
 }

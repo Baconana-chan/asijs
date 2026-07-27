@@ -39,6 +39,20 @@ export class Context<
   /** Session object (added by sessions() middleware) */
   session?: import("./session").Session;
 
+  /**
+   * Circuit breaker helper (added by circuitBreaker() middleware).
+   * Call through a named circuit breaker to add resilience to external API calls.
+   *
+   * @example
+   * ```ts
+   * const data = await ctx.circuitBreaker!("stripe-api", async () => {
+   *   const res = await fetch("https://api.stripe.com/...");
+   *   return res.json();
+   * });
+   * ```
+   */
+  circuitBreaker?: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+
   // Валидированные данные (устанавливаются после валидации)
   /** Валидированное тело запроса */
   body!: TBody;
@@ -83,6 +97,17 @@ export class Context<
       this._path = path;
       this._queryString = queryString;
     }
+  }
+
+  /** @internal Установить path (для middleware, изменяющих путь — например apiVersion) */
+  _setPath(path: string): void {
+    this._path = path;
+  }
+
+  /** @internal Установить path без проверок (принудительно) */
+  _forceUrl(path: string, queryString?: string): void {
+    this._path = path;
+    if (queryString !== undefined) this._queryString = queryString;
   }
 
   /** Полный URL объект (lazy) */

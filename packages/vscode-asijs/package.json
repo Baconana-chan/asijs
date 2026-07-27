@@ -1,8 +1,8 @@
 {
   "name": "vscode-asijs",
   "displayName": "AsiJS",
-  "description": "AsiJS framework support for VS Code — snippets, route explorer, and inline documentation",
-  "version": "0.1.0",
+  "description": "AsiJS framework support for VS Code — snippets, route explorer, debugger, templates, inline diagnostics",
+  "version": "0.2.0",
   "publisher": "asijs",
   "license": "MIT",
   "engines": {
@@ -10,19 +10,27 @@
   },
   "categories": [
     "Programming Languages",
-    "Snippets"
+    "Snippets",
+    "Debuggers",
+    "Other"
   ],
   "keywords": [
     "asijs",
     "bun",
     "typescript",
     "api",
-    "framework"
+    "framework",
+    "debug",
+    "templates"
   ],
   "icon": "icon.png",
   "activationEvents": [
     "onLanguage:typescript",
-    "onLanguage:javascript"
+    "onLanguage:javascript",
+    "onCommand:asijs.openRouteExplorer",
+    "onCommand:asijs.createProject",
+    "onCommand:asijs.startDebugging",
+    "onCommand:asijs.openTemplateExplorer"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -34,8 +42,99 @@
       {
         "command": "asijs.showRoute",
         "title": "AsiJS: Show Route Definition"
+      },
+      {
+        "command": "asijs.createProject",
+        "title": "AsiJS: Create New Project...",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "asijs.startDebugging",
+        "title": "AsiJS: Start Debugging",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "asijs.openTemplateExplorer",
+        "title": "AsiJS: Open Template Explorer",
+        "icon": "$(file-directory)"
+      },
+      {
+        "command": "asijs.checkDiagnostics",
+        "title": "AsiJS: Check File for Issues",
+        "icon": "$(check)"
       }
     ],
+    "debuggers": [
+      {
+        "type": "asijs",
+        "label": "AsiJS",
+        "runtime": "node",
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Path to the AsiJS entry file"
+              },
+              "runtimeArgs": {
+                "type": "array",
+                "description": "Additional runtime arguments for bun"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "name": "AsiJS: Launch",
+            "type": "asijs",
+            "request": "launch",
+            "runtimeExecutable": "bun",
+            "runtimeArgs": ["run", "--hot"],
+            "program": "${workspaceFolder}/src/index.ts",
+            "cwd": "${workspaceFolder}"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "AsiJS: Launch App",
+            "description": "Launch AsiJS application with hot reload",
+            "body": {
+              "name": "AsiJS: Launch",
+              "type": "asijs",
+              "request": "launch",
+              "runtimeExecutable": "bun",
+              "runtimeArgs": ["run", "--hot"],
+              "program": "${workspaceFolder}/src/index.ts",
+              "cwd": "${workspaceFolder}"
+            }
+          }
+        ]
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "asijs-sidebar",
+          "title": "AsiJS",
+          "icon": "$(symbol-ruler)"
+        }
+      ]
+    },
+    "views": {
+      "asijs-sidebar": [
+        {
+          "type": "webview",
+          "id": "asijs.routeExplorer",
+          "name": "Routes"
+        },
+        {
+          "type": "webview",
+          "id": "asijs.templateExplorer",
+          "name": "Templates"
+        }
+      ]
+    },
     "snippets": [
       {
         "language": "typescript",
@@ -51,11 +150,26 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "asijs.createProject",
+          "when": "workspaceFolderCount >= 0"
+        },
+        {
+          "command": "asijs.startDebugging",
+          "when": "editorLangId == typescript"
+        }
+      ],
       "editor/context": [
         {
           "command": "asijs.showRoute",
           "when": "editorLangId == typescript",
-          "group": "asijs"
+          "group": "asijs@1"
+        },
+        {
+          "command": "asijs.checkDiagnostics",
+          "when": "editorLangId == typescript",
+          "group": "asijs@2"
         }
       ],
       "explorer/context": [
@@ -64,12 +178,40 @@
           "when": "explorerResourceIsFolder",
           "group": "asijs"
         }
+      ],
+      "editor/title/run": [
+        {
+          "command": "asijs.startDebugging",
+          "when": "editorLangId == typescript",
+          "group": "asijs@1"
+        }
       ]
+    },
+    "configuration": {
+      "title": "AsiJS",
+      "properties": {
+        "asijs.entryFile": {
+          "type": "string",
+          "default": "src/index.ts",
+          "description": "Default entry file for AsiJS application"
+        },
+        "asijs.defaultPort": {
+          "type": "number",
+          "default": 3000,
+          "description": "Default port for AsiJS dev server"
+        },
+        "asijs.enableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inline diagnostics for AsiJS files"
+        }
+      }
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -watch -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "package": "vsce package"
   },
   "devDependencies": {

@@ -23,6 +23,7 @@ export default defineConfig({
       {
         text: "Resources",
         items: [
+          { text: "Benchmarks", link: "/benchmarks/" },
           { text: "Migration Guide", link: "/migration/" },
           { text: "GitHub", link: "https://github.com/Baconana-chan/asijs" },
           { text: "npm", link: "https://www.npmjs.com/package/asijs" },
@@ -84,6 +85,7 @@ export default defineConfig({
         text: "Reference",
         items: [
           { text: "API Reference", link: "/api-reference" },
+          { text: "Benchmarks", link: "/benchmarks/" },
         ],
       },
     ],

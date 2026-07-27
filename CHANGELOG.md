@@ -5,6 +5,102 @@ All notable changes to AsiJS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-27
+
+### 🚀 New Features
+
+#### Developer Experience
+- **Hot Reload 2.0** — `HotReloader` with `fs.watch`, 200ms debounce, module-level hot swap (handler/middleware → hot reload, routes/config → full reload). `HMRServer` with WebSocket browser push, typed events, exponential backoff reconnect. 23 теста.
+- **Interactive REPL** — `asi repl`. Создание роутов на лету, тестирование запросов (`GET /path`, `POST /path {"key":"val"}`), просмотр состояния (`.routes`, `.plugins`, `.state`, `.history`). Sandbox с import-line stripping и parameter shadowing. 32 теста.
+- **Web Playground** — `playgroundPlugin()` — полноценная IDE в браузере. Редактор кода, панель Output/Routes, request bar, 5 примеров (Hello World, REST API, JSX SSR, WebSocket Echo, Auth JWT). Rate-limited execution (10 req/min).
+- **CLI v2** — `asi repl`, `asi build --ssg`, `asi build --target <platform>`, `asi plugin search/install/create/list`, `asi integrate <file>`
+
+#### AI & MCP
+- **MCP Server** остаётся стабильным (HTTP transport, 7 built-in tools, 4 resources). MCP v2 с stdio транспортом запланирован на v1.4.0.
+
+#### Static Site Generation
+- **SSG / Static Export** — `buildSSG(app, options)` сканирует GET-маршруты, рендерит через `app.handle()`, сохраняет HTML в dist. Pretty URLs (`/about` → `about/index.html`) + Flat format. JSON export с `--export-api`. CLI: `asi build --ssg`. 11 тестов.
+
+#### WebSocket
+- **WebSocket Pub-Sub** — `RoomManager` с комнатами (`ws.join()`, `ws.leave()`, `ws.rooms()`), broadcast с exclude, presence tracking, typed events. `RedisPubSubBridge` для кросс-инстансной коммуникации. 25 тестов.
+
+#### API Versioning
+- **API Versioning middleware** — URL/Header/Combined strategies, fallback (latest/stable/default/error), deprecation headers (`Sunset`, `Deprecation`, `Deprecation-Migration`), `versionPath()` helper. 23 теста.
+
+#### Resilience & Performance
+- **Circuit Breaker** — `circuitBreaker()` middleware с CLOSED/OPEN/HALF_OPEN, sliding window, timeout, fallback, healthcheck integration. `ctx.circuitBreaker!("name", () => fetch(...))`. Пресеты: apiCircuitBreaker, dbCircuitBreaker, criticalCircuitBreaker. 45 тестов.
+- **Request Dedup & Cache Stampede Protection** — `deduplicate()` middleware, `InflightManager`, XFetch Algorithm (`P(refresh) = beta * (age / ttl)`), `xfetchWrap()`, MemoryCache/Redis интеграция. Пресеты: simple/cached/expensiveQuery. 29 тестов.
+- **Serverless Cold Start Optimisation** — `ServerlessOptimizer.warmUp()`, lazyImport, bundleConfig для 6 платформ (Cloudflare, Lambda@Edge, Deno Deploy, Vercel Edge, Netlify Edge, Bun). CLI: `asi build --target cloudflare`. 37 тестов.
+
+#### Security
+- **Built-in Security Module** — `AsiConfig.security` с autoEscape (XSS), maxBodySize, autoNonce (CSP nonce), strictContentType, OWASP headers. Zero-config sensible defaults. Пресеты: maxSecurity, apiSecurity, devSecurity. 37 тестов.
+
+#### Framework Adapters
+- **`@asijs/next`** — 10 тестов. App Router (`createNextHandler` → GET/POST/..., basePath, 404, params), Pages Router (`createPagesHandler`), Edge Runtime (`createEdgeHandler`)
+- **`@asijs/astro`** — 7 тестов. Astro server endpoints (`createAstroHandler`), method-specific (`createEndpoint`), Astro middleware
+- **`@asijs/remix`** — 8 тестов. Remix resource routes (`createRemixHandler` → loader + action), `createLoader`, `createAction`
+- **`@asijs/sveltekit`** — 8 тестов. SvelteKit handle hook (`createSvelteKitHook`), `createServerHandler`, `createUniversalHandler`
+
+### 🧩 Ecosystem
+
+#### Plugin System
+- **Plugin Dependency Manager** — граф зависимостей, DFS cycle detection (CyclicDependencyError), Kahn's topological sort, lazy init, hooks (onBeforeInit/onAfterInit/onBeforeRoute), `getGraphInfo()`, `toDot()`. 390 строк.
+- **Plugin Registry** — `asi plugin search/install/create/list/remove/awesome`. AWESOME_PLUGINS (40+ curated плагинов, 8 категорий). Scaffold нового плагина. CONTRIBUTING.md + PLUGIN_DEV_GUIDE.md. 18 тестов.
+
+#### Migration
+- **Express/Koa Migration** — `expressPlugin.wrap(mw)`, `koaPlugin.wrap(mw)`, `expressPlugin.handler()`, `koaPlugin.handler()`, EXPRESS_CODEMOD_RULES (22 правила), KOA_CODEMOD_RULES (22 правила). CLI: `asi integrate ./app.js`. 30 тестов.
+
+#### OpenTelemetry
+- **`@asijs/opentelemetry`** — full OTel instrumentation. `TracerManager` (spans, W3C TraceContext, 5 exporters: Console/OTLP/Jaeger/Zipkin), `MetricsManager`, `LogsManager`, `otelPlugin()`. 22 теста.
+
+#### VS Code Extension v0.2.0
+- **Debug Configuration Provider** — 4 конфига (Launch, Launch verbose, Attach, Launch Workspace). Source maps, auto-detection entry file.
+- **Template Explorer** — 9 шаблонов в 4 категориях. Поиск, preview файлов, Create Project.
+- **Create AsiJS Project Wizard** — 4-шаговый GUI wizard.
+- **Inline Diagnostics** — 6 проверок (missing asijs dep, missing app instance, async/await, TODO/FIXME). Code Actions.
+- 38 тестов.
+
+#### API Documentation Portal
+- **`apiDocsPlugin()`** — полноценный портал документации. Sidebar с поиском, code samples (4 языка: curl/Python/JS/Go), try-it-out proxy с SSRF защитой, светлая/тёмная тема.
+- **`ApiChangelog`** — snapshot/diff/toChangelogMarkdown между версиями API.
+- **`exportToMarkdown()` / `exportToHTML()`** — CI/CD экспорт.
+- 25 тестов.
+
+#### Load Testing Suite
+- 4 k6 сценария: auth-flow, CRUD, WebSocket, file-upload.
+- Docker orchestration (`docker run k6`).
+- `extractMetricsFromOutput()` — parsing p50/p90/p95/p99.
+- 28 тестов.
+
+### 📦 New Packages
+- `packages/opentelemetry-asijs/` — OpenTelemetry integration
+- `packages/next-asijs/` — Next.js adapter
+- `packages/astro-asijs/` — Astro adapter
+- `packages/remix-asijs/` — Remix adapter
+- `packages/sveltekit-asijs/` — SvelteKit adapter
+
+### 🧪 Testing & Quality
+
+- **Integration & E2E Tests** — Docker-based (PostgreSQL 5433, Redis 6380, MinIO 9001/9002). `test/integration/auto-api.test.ts` (19 тестов), `test/e2e/full-cycle.test.ts` (17 тестов: auth→register→login→JWT→CRUD→upload→WS), `test/e2e/redis-queue.test.ts` (7 тестов), `test/e2e/node-adapter.test.ts` (8 тестов). 52 теста total.
+- **Total: 1373 tests** (up from 700)
+- **TypeScript: 0 type errors** (`tsc --noEmit`)
+- **Pre-release Security Audit** — Reviewed all v1.3.0 modules. Found and fixed: 3 CRITICAL (sandbox escape, type errors), 2 HIGH (race condition, XSS), 3 MEDIUM (silent catches, rate limiting), 1 LOW. Two accepted trade-offs documented.
+
+### 🔧 Improvements
+
+- **CLI**: `asi build --ssg`, `asi build --target`, `asi plugin`, `asi integrate`, `asi repl`
+- **Framework Adapters**: 4 new `@asijs/*` packages with 33 total tests
+- **Documentation**: VitePress docs updated with all v1.3.0 features
+- **Security**: Built-in `AsiConfig.security` with zero-config defaults
+- **Performance**: SSG, circuit breaker, dedup, serverless optimisation
+
+### 🔬 Benchmark
+
+- **Benchmark Dashboard** — HTML dashboard с Chart.js, bar charts и trend lines. Интегрирован в vitepress docs. GitHub Actions CI pipeline.
+- **Fullstack Benchmark Suite** — AsiJS vs Elysia+plugins vs Hono+plugins
+
+---
+
 ## [1.2.0] - 2026-07-15
 
 ### ⚠️ Breaking Changes

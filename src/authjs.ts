@@ -44,7 +44,7 @@
  * ```
  */
 
-import type { AsiPlugin, PluginHost } from "./plugin";
+import { createPlugin, type AsiPlugin, type PluginHost } from "./plugin";
 import type { Context } from "./context";
 
 // ============================================================================
@@ -276,11 +276,9 @@ export function authjs(options: AuthjsOptions): AsiPlugin {
   const csrfEnabled = options.csrfProtection ?? true;
   const callbacks = options.callbacks ?? {};
 
-  return {
+  return createPlugin({
     name: "authjs",
-    config: {
-      name: "authjs",
-      setup(app: PluginHost) {
+    setup(app: PluginHost) {
         // ===== Session middleware =====
         app.use(async (ctx: Context, next: () => Promise<Response>) => {
           // Get session from token cookie
@@ -419,9 +417,8 @@ export function authjs(options: AuthjsOptions): AsiPlugin {
             type: p.type,
           }));
         });
-      },
     },
-  } as unknown as AsiPlugin;
+  });
 }
 
 // ============================================================================

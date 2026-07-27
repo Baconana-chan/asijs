@@ -1,0 +1,29 @@
+{
+  "name": "@asijs/remix",
+  "version": "0.1.0",
+  "description": "Remix adapter for AsiJS — run AsiJS as Remix loaders, actions, and resource routes",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --external asijs --external @remix-run/node --external @remix-run/react",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "keywords": ["asijs", "remix", "adapter", "loaders", "actions"],
+  "peerDependencies": {
+    "asijs": "latest",
+    "@remix-run/node": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

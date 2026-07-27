@@ -37,7 +37,7 @@ import { mkdirSync, writeFileSync, existsSync, unlinkSync } from "fs";
 import { join, extname } from "path";
 import { randomUUID } from "crypto";
 import type { Context } from "./context";
-import type { AsiPlugin } from "./plugin";
+import { createPlugin, type AsiPlugin } from "./plugin";
 
 // ============================================================================
 // Types
@@ -301,11 +301,9 @@ export function upload(options: UploadOptions): AsiPlugin {
   const allowedTypes = options.allowedTypes;
   const storage = options.storage;
 
-  return {
+  return createPlugin({
     name: "upload",
-    config: {
-      name: "upload",
-      setup(app: any) {
+    setup(app: any) {
         // Store upload options in app state
         app.setState("upload:options", options);
         app.setState("upload:storage", storage);
@@ -365,9 +363,8 @@ export function upload(options: UploadOptions): AsiPlugin {
 
           return next();
         });
-      },
     },
-  } as unknown as AsiPlugin;
+  });
 }
 
 // ============================================================================

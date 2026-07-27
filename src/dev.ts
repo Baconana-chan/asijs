@@ -24,6 +24,8 @@ import { createPlugin, type AsiPlugin } from "./plugin";
 import type { Context } from "./context";
 import type { Middleware } from "./types";
 import { jsx, renderToString, Fragment, type JSXElement } from "./jsx";
+import { HotReloader, type HotReloadOptions, type HotReloadEvent } from "./hot-reload";
+import { HMRServer, type HMRServerOptions, hmrClientScript } from "./hmr";
 
 // ===== Types =====
 
@@ -65,7 +67,23 @@ export interface DevModeOptions {
   stateViewer?: boolean;
 
   /**
-   * Enable live reload via WebSocket
+   * Enable Hot Reload 2.0 (file watcher + module invalidation)
+   * When enabled, the dev server watches src/ for changes and
+   * invalidates the module cache — handlers update without restart.
+   * @default false
+   */
+  hotReload?: boolean | HotReloadOptions;
+
+  /**
+   * Enable HMR (Hot Module Replacement) via WebSocket for browser.
+   * Pushes reload/update events to connected browser tabs.
+   * Requires hotReload to be enabled.
+   * @default false
+   */
+  hmr?: boolean | HMRServerOptions;
+
+  /**
+   * Enable live reload via WebSocket (legacy, use `hmr` instead)
    * @default false
    */
   liveReload?: boolean;
@@ -75,6 +93,12 @@ export interface DevModeOptions {
    * @default 35729
    */
   liveReloadPort?: number;
+
+  /**
+   * Directories to watch for hot reload (relative to rootDir)
+   * @default ["src"]
+   */
+  watchDirs?: string[];
 
   /**
    * Show banner on startup
@@ -530,6 +554,66 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
 
   const inspector = new RequestInspector(maxInspectorRequests);
 
+  // Initialize Hot Reloader if enabled
+  let hotReloader: HotReloader | null = null;
+  let hmrServer: HMRServer | null = null;
+
+  const hotReloadEnabled = options.hotReload === true || typeof options.hotReload === "object";
+  const hmrEnabled = options.hmr === true || typeof options.hmr === "object";
+
+  if (hotReloadEnabled) {
+    const hotReloadOpts: HotReloadOptions =
+      typeof options.hotReload === "object" ? options.hotReload : {};
+
+    hotReloader = new HotReloader({
+      rootDir: process.cwd(),
+      watchDirs: options.watchDirs ?? ["src"],
+      verbose: hotReloadOpts.verbose ?? true,
+      ...hotReloadOpts,
+    });
+
+    // Initialize HMR server if enabled
+    if (hmrEnabled) {
+      const hmrOpts: HMRServerOptions =
+        typeof options.hmr === "object" ? options.hmr : {};
+
+      hmrServer = new HMRServer({
+        port: hmrOpts.port ?? options.liveReloadPort ?? 35729,
+        verbose: hmrOpts.verbose ?? true,
+        ...hmrOpts,
+      });
+
+      hmrServer.start();
+
+      // Forward hot-reload events to HMR clients
+      hotReloader.on("reload", (event) => {
+        hmrServer!.handleReloadEvent(event as HotReloadEvent);
+      });
+    }
+
+    hotReloader.start();
+  }
+
+  // Also handle legacy liveReload option
+  const legacyHmrEnabled = options.liveReload === true && !hmrServer;
+  if (legacyHmrEnabled) {
+    hmrServer = new HMRServer({
+      port: options.liveReloadPort ?? 35729,
+    });
+    hmrServer.start();
+
+    if (!hotReloader) {
+      hotReloader = new HotReloader({
+        watchDirs: options.watchDirs ?? ["src"],
+        verbose: true,
+      });
+      hotReloader.start();
+      hotReloader.on("reload", (event) => {
+        hmrServer!.handleReloadEvent(event as HotReloadEvent);
+      });
+    }
+  }
+
   return createPlugin({
     name: "dev-mode",
 
@@ -539,13 +623,47 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
         console.log(
           `   Dashboard: http://localhost:${(app as any).config?.port ?? 3000}${dashboardPath}`,
         );
+        if (hotReloader?.isWatching) {
+          console.log(`   🔄 Hot Reload: active (${hotReloader.watcherCount} watcher(s))`);
+        }
+        if (hmrServer?.isRunning) {
+          console.log(`   ⚡ HMR: ws://localhost:${hmrServer.port}`);
+        }
         console.log("");
       }
 
-      // Dashboard route
+      // Add HMR client script injection middleware
+      if (hmrServer?.isRunning) {
+        app.use(async (ctx, next) => {
+          const response = await next();
+
+          // Inject HMR script into HTML responses
+          if (response instanceof Response) {
+            const ct = response.headers.get("content-type") || "";
+            if (ct.includes("text/html")) {
+              const text = await response.text();
+              const script = hmrClientScript({
+                port: hmrServer!.port,
+                hostname: "localhost",
+              });
+              const modified = text.replace("</body>", `<script>${script}</script></body>`);
+              return new Response(modified, {
+                status: response.status,
+                headers: {
+                  "content-type": "text/html; charset=utf-8",
+                  "content-length": String(new TextEncoder().encode(modified).length),
+                },
+              });
+            }
+          }
+
+          return response;
+        });
+      }
+
+      // Dashboard route — includes hot-reload status
       if (dashboard) {
         app.get(dashboardPath, async (ctx) => {
-          // Collect route info
           const routes: Array<{ method: string; path: string }> = [];
           const routeMetadata = (app as any).routeMetadata ?? [];
 
@@ -556,7 +674,6 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
             });
           }
 
-          // Collect state
           const state: Record<string, unknown> = {};
           const stateMap = (app as any)._state as Map<string, unknown>;
           if (stateMap) {
@@ -565,7 +682,6 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
             }
           }
 
-          // Generate HTML
           const html = await renderToString(
             generateDashboardHTML(routes, state, inspector.getAll(), {
               port: (app as any).config?.port,
@@ -630,12 +746,26 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
           return { cleared: true };
         });
       }
+
+      // Hot reload status API
+      if (hotReloader) {
+        app.get(`${dashboardPath}/hot-reload`, () => ({
+          isWatching: hotReloader!.isWatching,
+          watcherCount: hotReloader!.watcherCount,
+          pendingCount: hotReloader!.pendingCount,
+          hmrRunning: hmrServer?.isRunning ?? false,
+          hmrClients: hmrServer?.clientCount ?? 0,
+          hmrUrl: hmrServer?.url ?? null,
+        }));
+      }
     },
 
     middleware: enableInspector ? [devMiddleware(inspector, options)] : [],
 
     decorate: {
       devInspector: inspector,
+      hotReloader: hotReloader,
+      hmrServer: hmrServer,
     },
   });
 }

@@ -60,10 +60,25 @@ export {
   decorators,
   sharedState,
   guard,
+  PluginBuilder,
   type AsiPlugin,
   type AsiPluginConfig,
   type PluginHost,
+  type PluginHooks,
 } from "./plugin";
+
+// Plugin Dependency & Ordering System
+export {
+  PluginDependencyManager,
+  CyclicDependencyError,
+  MissingDependencyError,
+  type PluginNode,
+  type PluginStatus,
+  type PluginGraphEdge,
+  type PluginGraphInfo,
+  type PluginInitQueueItem,
+  type PluginMetadata,
+} from "./plugin-deps";
 
 // FormData / Multipart exports
 export {
@@ -275,6 +290,10 @@ export {
 } from "./metrics";
 export { DEFAULT_BUCKETS } from "./metrics";
 
+// Playground / REPL
+export { AsiRepl, type ReplOptions, type ReplResult } from "./repl";
+export { playgroundPlugin, type PlaygroundOptions, type PlaygroundExample } from "./playground";
+
 // Background Tasks / Cron
 export {
   scheduler,
@@ -301,6 +320,25 @@ export {
   type DevModeOptions,
   type InspectedRequest,
 } from "./dev";
+
+// Hot Reload 2.0 — File Watcher + Module Invalidation
+export {
+  HotReloader,
+  reImportModule,
+  type HotReloadOptions,
+  type HotReloadEvent,
+  type FileChange,
+  type ChangeCategory,
+} from "./hot-reload";
+
+// HMR — Hot Module Replacement for Browser
+export {
+  HMRServer,
+  hmrClientScript,
+  type HMRServerOptions,
+  type HMRMessage,
+  type HMRUpdateType,
+} from "./hmr";
 
 // MCP - Model Context Protocol for AI/LLM
 export {
@@ -673,6 +711,104 @@ export {
   RadixTreeRouter,
 } from "./router-perf";
 
+// ===== API Versioning =====
+export {
+  apiVersion,
+  apiVersionPlugin,
+  versionPath,
+  parseVersionFromUrl,
+  type APIVersionOptions,
+  type VersionInfo,
+  type VersionConfig,
+  type VersionStrategy,
+  type FallbackStrategy,
+  type VersionErrorResponse,
+} from "./api-version";
+
+// ===== SSG — Static Site Generation =====
+export {
+  buildSSG,
+  staticPath,
+  type SSGOptions,
+  type SSGPath,
+  type SSGPageResult,
+  type SSGBuildResult,
+} from "./ssg";
+
+// ===== Serverless Cold Start Optimisation =====
+export {
+  ServerlessOptimizer,
+  serverless,
+  lazyImport,
+  serverlessColdStartLogger,
+  estimateBundleSize,
+  SERVERLESS_PLATFORMS,
+  type ServerlessTarget,
+  type ServerlessBundleConfig,
+  type WarmUpOptions,
+  type ServerlessPlatformInfo,
+} from "./serverless";
+
+// ===== WebSocket Pub/Sub — Broadcast, Rooms, Presence =====
+export {
+  RoomManager,
+  createRoomManager,
+  type PubSubWebSocket,
+  type PresenceInfo,
+  type RoomManagerOptions,
+  type PubSubStats,
+  type TypedEventHandler,
+} from "./ws-pubsub";
+export {
+  createRedisPubSub,
+  RedisPubSubBridge,
+  type RedisPubSubOptions,
+} from "./ws-redis";
+
+// ===== Request Deduplication & Cache Stampede Protection =====
+export {
+  deduplicate,
+  simpleDeduplicate,
+  cachedDeduplicate,
+  expensiveQueryDeduplicate,
+  InflightManager,
+  xfetchShouldRefresh,
+  xfetchWrap,
+  type DeduplicateOptions,
+  type DedupCacheStore,
+  type DedupMetrics,
+} from "./deduplicate";
+
+// ===== Circuit Breaker & Resilience =====
+export {
+  CircuitBreaker,
+  CircuitBreakerRegistry,
+  CircuitBreakerError,
+  circuitBreaker,
+  apiCircuitBreaker,
+  dbCircuitBreaker,
+  criticalCircuitBreaker,
+  getCircuitBreakerRegistry,
+  resetCircuitBreakerRegistry,
+  type CircuitBreakerOptions,
+  type CircuitBreakerMetrics,
+  type CircuitState,
+  type CircuitResult,
+} from "./circuit-breaker";
+
+// ===== Built-in Security =====
+export {
+  SecurityManager,
+  parseSize,
+  maxSecurity,
+  apiSecurityCore,
+  devSecurity,
+  type SecurityConfig,
+  type StrictContentTypeMode,
+  type HumanSize,
+  type SizeUnit,
+} from "./security-core";
+
 // ===== Web Infrastructure =====
 export {
   webhooks,
@@ -760,3 +896,45 @@ export {
 } from "./auto-api";
 
 export type { TSchema, Static } from "@sinclair/typebox";
+
+// ===== API Documentation Portal =====
+export {
+  apiDocsPlugin,
+  generatePortalHTML,
+  generateCodeSamples,
+  exportToMarkdown,
+  exportToHTML,
+  ApiChangelog,
+  type ApiDocsOptions,
+  type CodeSample,
+  type ApiEndpoint,
+  type ApiSnapshot,
+  type ApiDiff,
+} from "./api-docs";
+
+// ===== Migration from Express / Koa =====
+export {
+  expressPlugin,
+  type ExpressReq,
+  type ExpressRes,
+  type ExpressHandler,
+  type ExpressErrorHandler,
+} from "./migrate-express";
+export {
+  koaPlugin,
+  type KoaCtx,
+  type KoaMiddleware,
+} from "./migrate-koa";
+
+// ===== Plugin Registry / Community =====
+export {
+  PluginRegistry,
+  type RegistryPlugin,
+  type InstalledPlugin,
+  type PluginScaffoldOptions,
+  installPlugin,
+  uninstallPlugin,
+  listInstalledPlugins,
+  scaffoldPlugin,
+  AWESOME_PLUGINS,
+} from "./plugin-registry";

@@ -15,7 +15,7 @@ import type { BenchmarkSnapshot } from "./results";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RESULTS_DIR = join(__dirname, "results");
-const DASHBOARD_DIR = join(__dirname, "..", "docs", "benchmarks");
+const DASHBOARD_DIR = join(__dirname, "..", "docs", "public", "benchmarks");
 
 // ===== Data Loading =====
 

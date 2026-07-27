@@ -151,9 +151,12 @@ describe("Plugin System", () => {
         },
       });
 
-      // Should throw because base-plugin is not registered
-      await expect(app.plugin(dependentPlugin)).rejects.toThrow(
-        "requires plugin",
+      // Dependencies are validated lazily in initPlugins()
+      // Plugin can be registered, but initPlugins() will throw
+      app.plugin(dependentPlugin);
+
+      await expect(app.initPlugins()).rejects.toThrow(
+        'Plugin "dependent-plugin" depends on "base-plugin"',
       );
     });
 

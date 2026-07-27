@@ -13,6 +13,22 @@ on:
         description: 'Warmup iterations'
         required: false
         default: '1000'
+      run_load_tests:
+        description: 'Run k6 load tests (needs Docker)'
+        required: false
+        default: 'false'
+      load_scenario:
+        description: 'Load test scenario (auth, crud, websocket, upload, or all)'
+        required: false
+        default: 'all'
+      load_vus:
+        description: 'Load test VUs'
+        required: false
+        default: '50'
+      load_duration:
+        description: 'Load test duration'
+        required: false
+        default: '1m'
 
 # Allow one concurrent deployment
 concurrency:
@@ -60,7 +76,7 @@ jobs:
           echo ""
           echo "   Exit code: $EXIT_CODE"
           
-          # Debug: check what's in results dir
+          # Debug: show results
           echo "   Results dir contents:"
           ls -la bench/results/ 2>&1 || echo "   (no results dir)"
           
@@ -79,7 +95,9 @@ jobs:
           BENCH_ITERATIONS: ${{ github.event.inputs.iterations || '10000' }}
           BENCH_WARMUP: ${{ github.event.inputs.warmup || '1000' }}
         run: |
+          # Generate the HTML dashboard into docs/public/benchmarks/
           bun run bench:dashboard
+          echo "   ✅ Dashboard generated in docs/public/benchmarks/"
 
       - name: Upload benchmark artifacts
         if: steps.collect.outputs.has_results == 'true'
@@ -88,49 +106,49 @@ jobs:
           name: benchmark-results
           path: |
             bench/results/
-            docs/benchmarks/
+            docs/public/benchmarks/
           retention-days: 90
 
-  deploy:
-    name: Deploy Dashboard
-    needs: benchmark
-    if: needs.benchmark.outputs.has_results == 'true' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
+      - name: Verify dashboard output
+        if: steps.collect.outputs.has_results == 'true'
+        run: |
+          if [ -f docs/public/benchmarks/index.html ]; then
+            echo "   📊 Dashboard file: $(wc -c < docs/public/benchmarks/index.html) bytes"
+            echo "   ✅ Dashboard ready for vitepress deployment"
+          else
+            echo "   ⚠️  Dashboard HTML not found"
+          fi
 
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      - name: Run load tests (k6 via Docker)
+        if: github.event.inputs.run_load_tests == 'true'
+        run: |
+          echo "🏋️  Running k6 load tests..."
+          echo "   SCENARIO=${{ github.event.inputs.load_scenario || 'all' }}"
+          echo "   K6_VUS=${{ github.event.inputs.load_vus || '50' }}"
+          echo "   K6_DURATION=${{ github.event.inputs.load_duration || '1m' }}"
+          
+          SCENARIO_FLAG="${{ github.event.inputs.load_scenario }}"
+          K6_VUS="${{ github.event.inputs.load_vus || '50' }}"
+          K6_DURATION="${{ github.event.inputs.load_duration || '1m' }}"
+          
+          if [ -z "$SCENARIO_FLAG" ] || [ "$SCENARIO_FLAG" = "all" ]; then
+            K6_VUS=$K6_VUS K6_DURATION=$K6_DURATION bun run bench:load
+          else
+            SCENARIO=$SCENARIO_FLAG K6_VUS=$K6_VUS K6_DURATION=$K6_DURATION bun run bench:load
+          fi
+          echo "   ✅ k6 load tests complete"
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download benchmark artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: benchmark-results
-          path: ./
-
-      - name: Setup Pages
-        id: pages
-        uses: actions/configure-pages@v5
-        continue-on-error: true
-
-      - name: Upload Pages artifact
-        if: steps.pages.conclusion == 'success'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/benchmarks/
-
-      - name: Deploy to GitHub Pages
-        if: steps.pages.conclusion == 'success'
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-      - name: Skip deploy notice
-        if: steps.pages.conclusion != 'success'
-        run: echo "⚠️  GitHub Pages not enabled for this repo — skipping deploy. Enable it in repo Settings > Pages."
+      - name: Summary
+        if: steps.collect.outputs.has_results == 'true'
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  📈 Benchmark Dashboard Summary"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Dashboard will be available at:"
+          echo "    https://baconana-chan.github.io/asijs/benchmarks/"
+          echo "  (after vitepress docs deploy completes)"
+          echo ""
+          echo "  The dashboard is integrated into the vitepress"
+          echo "  docs site via docs/public/benchmarks/"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

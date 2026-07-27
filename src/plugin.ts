@@ -155,6 +155,131 @@ export interface AsiPlugin<
   ): Promise<void>;
 }
 
+// ============================================================================
+// Plugin Hooks
+// ============================================================================
+
+/**
+ * Plugin lifecycle hooks.
+ *
+ * Hooks let plugins tap into the app lifecycle without blocking
+ * the plugin's own setup/apply flow:
+ *
+ * - `onBeforeInit(app)` — fired just before the plugin's apply() is called
+ * - `onAfterInit(app)` — fired right after the plugin's apply() succeeds
+ * - `onBeforeRoute(app)` — fired once, before ANY route is registered
+ *
+ * Hooks can be declared in `createPlugin({ hooks: {...} })`
+ * or added dynamically via `app.plugin(p).dependsOn(...).withHooks({...})`.
+ */
+export interface PluginHooks {
+  /** Called before the plugin is initialized (dependencies are ready) */
+  onBeforeInit?: (app: PluginHost) => void | Promise<void>;
+  /** Called after the plugin is successfully initialized */
+  onAfterInit?: (app: PluginHost) => void | Promise<void>;
+  /** Called once before any route is registered */
+  onBeforeRoute?: (app: PluginHost) => void | Promise<void>;
+}
+
+// ============================================================================
+// PluginBuilder — chainable API for app.plugin()
+// ============================================================================
+
+/**
+ * Chainable builder returned by `app.plugin(plugin)`.
+ *
+ * @example
+ * ```ts
+ * app.plugin(authPlugin)
+ *   .dependsOn(["sessions", "cors"])
+ *   .withHooks({
+ *     onAfterInit: (app) => console.log("auth initialized"),
+ *   });
+ * ```
+ */
+export class PluginBuilder {
+  private _dependencies: string[] = [];
+  private _hooks: PluginHooks = {};
+  private _lazy = false;
+
+  constructor(
+    private readonly plugin: AsiPlugin,
+    private readonly register: (
+      plugin: AsiPlugin,
+      deps: string[],
+      hooks: PluginHooks,
+      lazy: boolean,
+    ) => Promise<void>,
+  ) {
+    // Inherit dependencies from plugin config (if plugin has config)
+    if (typeof plugin !== 'function' && plugin.config?.dependencies) {
+      this._dependencies = [...plugin.config.dependencies];
+    }
+  }
+
+  /**
+   * Declare plugin dependencies by name.
+   * The framework guarantees that dependencies are initialized
+   * before this plugin's apply() is called.
+   */
+  dependsOn(names: string[]): this {
+    this._dependencies = names;
+    return this;
+  }
+
+  /**
+   * Register lifecycle hooks for this plugin.
+   *
+   * @example
+   * ```ts
+   * .withHooks({
+   *   onAfterInit: (app) => console.log("ready"),
+   *   onBeforeRoute: (app) => app.use(authGuard),
+   * })
+   * ```
+   */
+  withHooks(hooks: Partial<PluginHooks>): this {
+    if (hooks.onBeforeInit) this._hooks.onBeforeInit = hooks.onBeforeInit;
+    if (hooks.onAfterInit) this._hooks.onAfterInit = hooks.onAfterInit;
+    if (hooks.onBeforeRoute) this._hooks.onBeforeRoute = hooks.onBeforeRoute;
+    return this;
+  }
+
+  /**
+   * Mark this plugin as lazy — its apply() will be deferred
+   * until all dependencies are ready.
+   */
+  lazy(): this {
+    this._lazy = true;
+    return this;
+  }
+
+  /** @internal — called by Asi to finalise registration */
+  async _register(): Promise<void> {
+    await this.register(this.plugin, this._dependencies, this._hooks, this._lazy);
+  }
+
+  /** Get the plugin this builder wraps */
+  getPlugin(): AsiPlugin {
+    return this.plugin;
+  }
+
+  /** Get declared dependencies */
+  getDependencies(): string[] {
+    return [...this._dependencies];
+  }
+
+  /** Get registered hooks */
+  getHooks(): PluginHooks {
+    return { ...this._hooks };
+  }
+
+  /** Check if lazy init is requested */
+  isLazy(): boolean {
+    return this._lazy;
+  }
+}
+
 /**
  * Create a new plugin
  *

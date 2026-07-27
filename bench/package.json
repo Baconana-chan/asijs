@@ -8,7 +8,12 @@
     "fullstack": "bun run fullstack.ts",
     "rpc": "bun run rpc-bench.ts",
     "collect": "bun run collect.ts",
-    "generate-dashboard": "bun run generate-dashboard.ts"
+    "generate-dashboard": "bun run generate-dashboard.ts",
+    "load": "bun run load/index.ts",
+    "load:auth": "SCENARIO=auth bun run load/index.ts",
+    "load:crud": "SCENARIO=crud bun run load/index.ts",
+    "load:ws": "SCENARIO=websocket bun run load/index.ts",
+    "load:upload": "SCENARIO=upload bun run load/index.ts"
   },
   "dependencies": {
     "@elysiajs/bearer": "^1.4.3",

@@ -37,6 +37,12 @@ import {
   type SourceFramework,
 } from "./codemod";
 
+// Serverless platform info for build targets
+import { SERVERLESS_PLATFORMS } from "./serverless";
+
+// Plugin Registry
+import { PluginRegistry, installPlugin, scaffoldPlugin, listInstalledPlugins, uninstallPlugin } from "./plugin-registry";
+
 // ===== Colors =====
 const colors = {
   reset: "\x1b[0m",
@@ -1515,6 +1521,24 @@ async function main() {
     return;
   }
 
+  // Handle `asijs integrate <path> [options]` — auto-detect & migrate
+  if (command === "integrate") {
+    await handleIntegrate(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs repl` — interactive REPL
+  if (command === "repl") {
+    await startRepl(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs plugin <action> [name]` — plugin registry
+  if (command === "plugin") {
+    await handlePlugin(args.slice(1));
+    return;
+  }
+
   // Parse arguments for create
   if (command === "create" || command === "init" || command === "new") {
     projectName = args[1];
@@ -1932,10 +1956,16 @@ function printPlugins(result: InspectResult) {
   }
 
   if (result.plugins.length > 0) {
+    // Try to detect dependency relationships from source
+    const deps = parsePluginDepsFromSource();
+
     for (const plugin of result.plugins) {
-      // Try to detect the plugin type by name
       const pluginType = detectPluginType(plugin);
-      console.log(`    ${c.green("■")} ${c.bold(plugin)}${pluginType ? c.dim(" — " + pluginType) : ""}`);
+      const depChain = deps[plugin];
+      const depStr = depChain && depChain.length > 0
+        ? c.dim(" depends on: " + depChain.join(", "))
+        : "";
+      console.log(`    ${c.green("■")} ${c.bold(plugin)}${pluginType ? c.dim(" — " + pluginType) : ""}${depStr}`);
     }
   }
 
@@ -1946,6 +1976,37 @@ function printPlugins(result: InspectResult) {
     `    ${c.dim("Path-based middleware:")} ${result.pathMiddleware}`,
   );
   console.log();
+}
+
+function parsePluginDepsFromSource(): Record<string, string[]> {
+  const cwd = process.cwd();
+  const deps: Record<string, string[]> = {};
+
+  // Try to read the entry file and find .dependsOn() calls
+  const entryFile = findStandaloneEntry(cwd);
+  if (!entryFile) return deps;
+
+  try {
+    const source = readFileSync(entryFile, "utf-8");
+    // Match patterns like: .dependsOn(["sessions", "cors"])
+    // Find the plugin name before .dependsOn
+    const depPattern = /(\.plugin\(\s*([a-zA-Z_$][\w]*)\s*\)\s*\.\s*dependsOn\s*\(\s*\[([^\]]*)\]\s*\))|(\.dependsOn\s*\(\s*\[([^\]]*)\]\s*\))/g;
+    let match: RegExpExecArray | null;
+    while ((match = depPattern.exec(source)) !== null) {
+      const pluginName = match[2];
+      const depList = (match[3] || match[5] || "");
+      const parsedDeps = depList.split(",")
+        .map(s => s.trim().replace(/["'`]/g, ""))
+        .filter(Boolean);
+      if (pluginName && parsedDeps.length > 0) {
+        deps[pluginName] = parsedDeps;
+      }
+    }
+  } catch {
+    // Silently ignore — inspection should not crash
+  }
+
+  return deps;
 }
 
 function detectPluginType(name: string): string | null {
@@ -2074,6 +2135,10 @@ async function handleBuild(args: string[]) {
   var serverEntry = "src/index.ts";
   var outDir = "dist";
   var noMinify = false;
+  var ssgMode = false;
+  var exportApi = false;
+  var ssgFormat = "pretty";
+  var target: string | null = null;
 
   for (var i = 0; i < args.length; i++) {
     if (args[i] === "--client") {
@@ -2084,9 +2149,17 @@ async function handleBuild(args: string[]) {
       outDir = args[++i];
     } else if (args[i] === "--no-minify") {
       noMinify = true;
+    } else if (args[i] === "--ssg") {
+      ssgMode = true;
+    } else if (args[i] === "--export-api") {
+      exportApi = true;
+    } else if (args[i] === "--flat") {
+      ssgFormat = "flat";
+    } else if (args[i] === "--target" || args[i] === "-t") {
+      target = args[++i];
     } else if (args[i] === "--help" || args[i] === "-h") {
       console.log(`
-${c.bold("AsiJS Build")} — Production build for SPA/SSR apps
+${c.bold("AsiJS Build")} — Production build
 
 ${c.bold("Usage:")}
   asi build [options]
@@ -2096,43 +2169,153 @@ ${c.bold("Options:")}
   --server <path>      Server entry point (default: src/index.ts)
   --outdir <path>      Output directory (default: dist)
   --no-minify          Skip minification
+  --target, -t <name>  Serverless target: cloudflare, lambda-edge, deno-deploy,
+                       vercel-edge, netlify-edge, bun (default: bun)
   -h, --help           Show this help
+
+${c.bold("SSG Options:")}
+  --ssg                Enable Static Site Generation
+  --flat               Flat file output (/about -> about.html)
+  --export-api         Export JSON API responses
 
 ${c.bold("Examples:")}
   asi build
-  asi build --client src/client.tsx --server src/index.ts
-  asi build --outdir build
+  asi build --target cloudflare
+  asi build --target lambda-edge --outdir build
+  asi build --ssg
+  asi build --ssg --outdir build --flat
+  asi build --ssg --export-api
 `);
       return;
     }
+  }
+
+  // If a serverless target is specified, use serverless build command
+  if (target && target !== "bun") {
+    console.log(c.bold("🏗️  AsiJS Serverless Build"));
+    console.log();
+
+    var validTargets = ["cloudflare", "lambda-edge", "deno-deploy", "vercel-edge", "netlify-edge"];
+    if (!validTargets.includes(target)) {
+      console.log(c.red("Error: Unknown target " + target));
+      console.log("  Valid targets: " + validTargets.join(", "));
+      console.log();
+      return;
+    }
+
+    var { serverless } = await import("./serverless");
+    var serverlessConfig = serverless.bundleConfig(target as any, serverEntry, { outDir });
+    var buildArgs = ["build", serverlessConfig.entry, "--outdir", serverlessConfig.outDir];
+    if (serverlessConfig.minify) buildArgs.push("--minify");
+    if (serverlessConfig.sourcemap) buildArgs.push("--sourcemap");
+    if (serverlessConfig.treeshake) buildArgs.push("--treeshaking");
+    for (var ext of serverlessConfig.externals) {
+      buildArgs.push("--external", ext);
+    }
+    for (var flag of serverlessConfig.flags) {
+      buildArgs.push(flag);
+    }
+
+    console.log(c.dim("  Target: ") + c.cyan(target));
+    console.log(c.dim("  Entry:  ") + c.cyan(serverlessConfig.entry));
+    console.log(c.dim("  Out:    ") + c.cyan(serverlessConfig.outDir));
+    console.log();
+    console.log(c.dim("  Running: bun " + buildArgs.join(" ")));
+    console.log();
+
+    try {
+      var bunPath = process.argv[0];
+      var serverlessResult = Bun.spawnSync([bunPath, ...buildArgs], {
+        cwd: process.cwd(),
+        stdio: ["inherit", "inherit", "pipe"],
+      });
+
+      if (!serverlessResult.success) {
+        console.log(c.red("Build failed."));
+        console.log(serverlessResult.stderr.toString());
+      } else {
+        console.log(c.green("✓ Build complete!"));
+        console.log();
+        var platform = SERVERLESS_PLATFORMS[target as keyof typeof SERVERLESS_PLATFORMS];
+        if (platform) {
+          console.log(c.dim("  Next steps for " + platform.name + ":"));
+          for (var bp of platform.bestPractices.slice(0, 3)) {
+            console.log(c.dim("  • " + bp));
+          }
+          console.log();
+        }
+      }
+    } catch (buildErr: any) {
+      console.log(c.red("Build error: " + buildErr.message));
+      console.log();
+    }
+    return;
   }
 
   console.log(c.bold("🏗️  AsiJS Build"));
   console.log();
 
   try {
-    var { buildProject } = await import("./spa");
+    if (ssgMode) {
+      console.log(c.dim("Mode: Static Site Generation"));
+      console.log();
 
-    var result = await buildProject({
-      clientEntry,
-      serverEntry,
-      outDir,
-      minify: !noMinify,
-      silent: false,
-    });
+      var { buildSSG } = await import("./ssg");
+      var { Asi } = await import("./asi");        var entryPath = resolve(process.cwd(), serverEntry);
+        var userModule;
+        try {
+          userModule = await import(entryPath);
+        } catch (importErr: any) {
+          console.log(c.yellow("Could not import entry file: " + importErr.message));
+        console.log(c.dim("Make sure your entry file exports `app` (the Asi instance)."));
+        console.log();
+        return;
+      }
 
-    console.log();
-    console.log(c.green("✓ Build complete!"));
-    console.log(`  ${c.dim("Client:")} ${c.cyan(result.clientBundle)}`);
-    console.log(`  ${c.dim("Server:")} ${c.cyan(result.serverBundle)}`);
-    console.log(`  ${c.dim("Duration:")} ${result.durationMs}ms`);
-    console.log();
+      var userApp = userModule.app || userModule.default?.app;
+      if (!userApp) {
+        console.log(c.yellow("Entry file does not export `app`. Using fresh Asi instance."));
+        userApp = new Asi();
+      }
 
-    console.log(c.dim("Next steps:"));
-    console.log(`  ${c.cyan("bun run dist/server/index.js")}  # Start production server`);
-    console.log();
+      var ssgResult = await buildSSG(userApp, {
+        outDir,
+        format: ssgFormat as "pretty" | "flat",
+        exportApi,
+        verbose: true,
+      });
+
+      console.log();
+      if (ssgResult.failedPages > 0) {
+        console.log(c.yellow("SSG complete: " + ssgResult.successPages + " pages, " + ssgResult.failedPages + " failed, " + ssgResult.durationMs + "ms"));
+      } else {
+        console.log(c.green("SSG complete: " + ssgResult.successPages + " pages in " + ssgResult.durationMs + "ms"));
+      }
+      console.log(c.dim("Output: ") + c.cyan(ssgResult.outDir));
+    } else {
+      var { buildProject } = await import("./spa");
+
+      var result = await buildProject({
+        clientEntry,
+        serverEntry,
+        outDir,
+        minify: !noMinify,
+        silent: false,
+      });
+
+      console.log();
+      console.log(c.green("Build complete!"));
+      console.log(c.dim("Client: ") + c.cyan(result.clientBundle));
+      console.log(c.dim("Server: ") + c.cyan(result.serverBundle));
+      console.log(c.dim("Duration: ") + result.durationMs + "ms");
+      console.log();
+
+      console.log(c.dim("Next steps:"));
+      console.log(c.cyan("bun run dist/server/index.js") + c.dim("  # Start production server"));
+      console.log();
+    }
   } catch (error) {
-    console.error(c.red("✗ Build failed:"), (error as Error).message);
+    console.error(c.red("Build failed:"), (error as Error).message);
     process.exit(1);
   }
 }
@@ -2288,6 +2471,290 @@ async function handleMigrate(args: string[]) {
   }
 }
 
+/**
+ * `asi integrate <path>` — auto-detect framework and migrate to AsiJS.
+ * Uses the codemod engine to transform Express/Koa/Elysia/Hono/Fastify code.
+ */
+async function handleIntegrate(args: string[]) {
+  let targetPath = ".";
+  let dryRun = false;
+  let verbose = false;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--dry-run") {
+      dryRun = true;
+    } else if (args[i] === "--verbose" || args[i] === "-v") {
+      verbose = true;
+    } else if (!args[i].startsWith("-")) {
+      targetPath = args[i];
+    }
+  }
+
+  console.log(c.bold("🔄 AsiJS Integrate — Auto-Detect & Migrate"));
+  console.log();
+
+  console.log(c.dim("  Detecting source framework..."));
+  const detected = detectProjectFramework(resolve(targetPath));
+  
+  if (!detected) {
+    console.error(c.red("✗ Could not detect source framework."));
+    console.log();
+    console.log(c.dim("  No Elysia, Hono, Fastify, Express, or Koa code found."));
+    console.log(c.dim("  Use the explicit command if you know the framework:"));
+    console.log(c.dim("    bunx asijs migrate ./src --from express"));
+    console.log(c.dim("    bunx asijs migrate ./src --from koa"));
+    process.exit(1);
+  }
+
+  console.log(`  ${c.green("✓")} Detected: ${c.cyan(detected)}`);
+  console.log();
+  console.log(`  ${c.dim("Target:")}   ${resolve(targetPath)}`);
+  console.log(`  ${c.dim("From:")}     ${c.cyan(detected)}`);
+  console.log(`  ${c.dim("Mode:")}     ${dryRun ? c.yellow("Dry Run") : c.green("Write")}`);
+  console.log();
+
+  // Print framework-specific advice
+  console.log(c.dim("  Migration advice:"));
+  switch (detected) {
+    case "express":
+      console.log(c.dim("    • For gradual migration, wrap Express middleware with expressPlugin.wrap()"));
+      console.log(c.dim("      import { expressPlugin } from 'asijs/migrate-express'"));
+      console.log(c.dim("    • The codemod will transform app.get/post/put/delete to AsiJS syntax"));
+      break;
+    case "koa":
+      console.log(c.dim("    • For gradual migration, wrap Koa middleware with koaPlugin.wrap()"));
+      console.log(c.dim("      import { koaPlugin } from 'asijs/migrate-koa'"));
+      console.log(c.dim("    • The codemod will transform ctx.body, ctx.status, ctx.throw to AsiJS"));
+      break;
+    case "elysia":
+      console.log(c.dim("    • Most Elysia syntax maps directly to AsiJS"));
+      break;
+    case "hono":
+      console.log(c.dim("    • c.json() → return object, c.text() → return string"));
+      break;
+    case "fastify":
+      console.log(c.dim("    • reply.send() → return, app.listen({ port }) → app.listen(port)"));
+      break;
+  }
+  console.log();
+
+  try {
+    const result = runCodemod(targetPath, {
+      from: detected,
+      dryRun,
+      verbose,
+    });
+
+    printSummary(result, dryRun);
+  } catch (error) {
+    console.error(c.red("\n✗ Migration failed:"), error);
+    process.exit(1);
+  }
+}
+
+async function handlePlugin(args: string[]) {
+  const action = args[0];
+  const name = args[1];
+
+  if (!action || action === "--help" || action === "-h") {
+    console.log(`
+${c.bold("Plugin Registry")} — Search, install, and create AsiJS plugins
+
+${c.bold("Usage:")}
+  asi plugin search [query]   Search plugins in the registry
+  asi plugin install <name>   Install a plugin from npm
+  asi plugin remove <name>    Remove a plugin
+  asi plugin list             List installed plugins
+  asi plugin create <name>    Scaffold a new plugin project
+  asi plugin awesome          Show all available plugins
+  asi plugin --help           Show this help
+
+${c.bold("Examples:")}
+  asi plugin search cors
+  asi plugin install cors
+  asi plugin create my-plugin --with-tests
+`);
+    return;
+  }
+
+  switch (action) {
+    case "search": {
+      const registry = new PluginRegistry();
+      const query = name || "";
+      const results = registry.search(query);
+
+      console.log(c.bold(`\n🔍 Plugin search: ${query || "all"}`));
+      console.log(c.dim(`   ${results.length} plugin(s) found\n`));
+
+      if (results.length === 0) {
+        console.log(`   ${c.yellow("No plugins found for query:")} "${query}"`);
+        console.log();
+        return;
+      }
+
+      // Group by category
+      const grouped = new Map<string, typeof results>();
+      for (const p of results) {
+        const cat = p.category || "other";
+        if (!grouped.has(cat)) grouped.set(cat, []);
+        grouped.get(cat)!.push(p);
+      }
+
+      for (const [cat, plugins] of grouped) {
+        console.log(`  ${c.bold(c.cyan(cat.charAt(0).toUpperCase() + cat.slice(1)))}`);
+        for (const p of plugins) {
+          const tags = (p.tags || []).map((t) => c.dim(t)).join(", ");
+          console.log(`    ${c.green("■")} ${c.bold(p.name.padEnd(20))} ${p.description}`);
+          console.log(`     ${c.dim("npm:")} ${c.cyan(p.npmPackage)}${p.version ? ` ${c.dim("v" + p.version)}` : ""} ${tags}`);
+        }
+        console.log();
+      }
+      break;
+    }
+
+    case "install": {
+      if (!name) {
+        console.error(c.red("Error: Plugin name is required"));
+        console.log(`  ${c.dim("Usage: asi plugin install <name>")}`);
+        return;
+      }
+
+      console.log(c.bold(`\n📦 Installing plugin: ${name}\n`));
+
+      const result = await installPlugin(name);
+
+      if (result.success) {
+        console.log(`  ${c.green("✓")} ${result.message}`);
+      } else {
+        console.log(`  ${c.red("✗")} ${result.message}`);
+      }
+      console.log();
+      break;
+    }
+
+    case "remove":
+    case "uninstall": {
+      if (!name) {
+        console.error(c.red("Error: Plugin name is required"));
+        console.log(`  ${c.dim("Usage: asi plugin remove <name>")}`);
+        return;
+      }
+
+      console.log(c.bold(`\n🗑️  Removing plugin: ${name}\n`));
+
+      const result = await uninstallPlugin(name);
+
+      if (result.success) {
+        console.log(`  ${c.green("✓")} ${result.message}`);
+      } else {
+        console.log(`  ${c.red("✗")} ${result.message}`);
+      }
+      console.log();
+      break;
+    }
+
+    case "list": {
+      console.log(c.bold("\n📋 Installed Plugins\n"));
+
+      const installed = listInstalledPlugins();
+
+      if (installed.length === 0) {
+        console.log(`  ${c.dim("No AsiJS-related plugins found in package.json")}`);
+        console.log();
+        return;
+      }
+
+      for (const p of installed) {
+        const type = p.isLocal ? c.yellow("local") : c.green("npm");
+        console.log(`  ${c.green("■")} ${c.bold(p.name.padEnd(25))} ${type} ${c.dim("v" + p.version)}`);
+      }
+      console.log();
+      break;
+    }
+
+    case "create": {
+      if (!name) {
+        console.error(c.red("Error: Plugin name is required"));
+        console.log(`  ${c.dim("Usage: asi plugin create <name>")}`);
+        return;
+      }
+
+      const withTests = args.includes("--with-tests") || args.includes("-t");
+      const descIndex = args.indexOf("--desc");
+      const description = descIndex >= 0 ? args[descIndex + 1] : undefined;
+
+      console.log(c.bold(`\n🛠️  Scaffolding plugin: ${name}\n`));
+
+      const result = scaffoldPlugin({
+        name,
+        description,
+        withTests,
+        withExample: true,
+      });
+
+      if (result.success) {
+        console.log(`  ${c.green("✓")} ${result.message}`);
+        console.log();
+        console.log(`  ${c.dim("Next steps:")}`);
+        console.log(`    ${c.cyan("cd")} ${name}`);
+        console.log(`    ${c.cyan("bun install")}`);
+        console.log(`    ${c.cyan("bun run dev")}`);
+      } else {
+        console.log(`  ${c.red("✗")} ${result.message}`);
+      }
+      console.log();
+      break;
+    }
+
+    case "awesome": {
+      const registry = new PluginRegistry();
+      console.log(c.bold("\n🌟 Awesome AsiJS Plugins\n"));
+      console.log(registry.generateAwesomeMarkdown());
+      console.log();
+      break;
+    }
+
+    default:
+      console.error(c.red(`Unknown plugin action: "${action}"`));
+      console.log(`  ${c.dim("Available: search, install, remove, list, create, awesome")}`);
+  }
+}
+
+/**
+ * Start the AsiJS interactive REPL.
+ */
+async function startRepl(args: string[]) {
+  let port = 3001;
+  let silent = false;
+  const preload: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--port" || args[i] === "-p") {
+      port = parseInt(args[i + 1]!, 10) || 3001;
+      i++;
+    } else if (args[i] === "--silent" || args[i] === "-s") {
+      silent = true;
+    } else if (args[i] === "--preload" || args[i] === "-l") {
+      preload.push(args[i + 1]!);
+      i++;
+    }
+  }
+
+  const { AsiRepl } = await import("./repl");
+  const repl = new AsiRepl({ port, silent, preload });
+
+  process.on("SIGINT", () => {
+    repl.stop();
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    repl.stop();
+    process.exit(0);
+  });
+
+  await repl.start();
+}
+
 function printHelp() {
   console.log(`
 ${c.bold("AsiJS CLI")} — Create & migrate AsiJS projects
@@ -2297,6 +2764,8 @@ ${c.bold("Usage:")}
   bun create asijs <project-name> [options]
   bunx asijs migrate <path> [options]
   bunx asijs build [options]
+  bunx asijs plugin <action> [name] [options]
+  bunx asijs repl [options]
 
 ${c.bold("Commands:")}
   create   Create a new AsiJS project
@@ -2304,6 +2773,21 @@ ${c.bold("Commands:")}
   migrate  Migrate existing project from Elysia / Hono / Fastify
   dev      Start workspace dev mode with hot-reload
   inspect  Inspect project: routes, plugins, middleware, bundle size
+  plugin   Manage plugins: search, install, create, list
+  repl     Interactive REPL — create routes, test requests, inspect state
+
+${c.bold("Plugin Actions:")}
+  search [query]   Search plugins in the official registry
+  install <name>   Install a plugin from npm
+  remove <name>    Remove a plugin
+  list             List installed plugins
+  create <name>    Scaffold a new plugin project
+  awesome          Show all available plugins
+
+${c.bold("REPL Options:")}
+  -p, --port <port>      Start test server on port (default: 3001)
+  -s, --silent           Less verbose output
+  -l, --preload <file>   Preload a source file
 
 ${c.bold("Build Options:")}
   --client <path>      Client entry point (default: src/client.tsx)
@@ -2327,6 +2811,10 @@ ${c.bold("Create Options:")}
   -h, --help              Show this help message
   -v, --version           Show version
 
+${c.bold("Plugin Create Options:")}
+  --with-tests, -t        Include test file template
+  --desc <text>           Plugin description
+
 ${c.bold("Templates:")}
 ${Object.entries(TEMPLATES)
   .map(([key, val]) => `  ${c.cyan(key.padEnd(12))} ${val.description}`)
@@ -2344,6 +2832,13 @@ ${c.bold("Examples:")}
   bunx asijs migrate ./src --from elysia
   bunx asijs migrate ./app.ts --from hono --dry-run -v
   bunx asijs migrate . --from fastify
+  bunx asijs repl
+  bunx asijs repl --port 8080
+  bunx asijs plugin search cors
+  bunx asijs plugin install cors
+  bunx asijs plugin create my-plugin --with-tests
+  bunx asijs plugin list
+  bunx asijs plugin awesome
 `);
 }
 

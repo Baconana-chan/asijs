@@ -1,5 +1,6 @@
 import type { Server, ServerWebSocket } from "bun";
 import type { ServerAdapter, ServerHandle } from "./runtime/types";
+import type { RoomManager, PubSubWebSocket } from "./ws-pubsub";
 import type { TSchema, Static } from "@sinclair/typebox";
 import { Context, type TypedContext } from "./context";
 import { Router } from "./router";
@@ -47,6 +48,15 @@ import type {
   RouteOptions,
   InferSchema,
 } from "./types";
+import type { SecurityConfig } from "./security-core";
+import { SecurityManager } from "./security-core";
+import {
+  PluginDependencyManager,
+  type PluginGraphInfo,
+  CyclicDependencyError,
+  MissingDependencyError,
+} from "./plugin-deps";
+import { PluginBuilder, type PluginHooks } from "./plugin";
 
 /** WebSocket event handlers */
 export interface WebSocketHandlers<T = unknown> {
@@ -221,6 +231,38 @@ export interface AsiConfig {
    * @default false (uses simple Map)
    */
   lruSchemaCache?: boolean | number;
+
+  /**
+   * Built-in security protections.
+   *
+   * When `true`, enables all protections with sensible defaults:
+   * - Auto-escape HTML in string responses (XSS protection)
+   * - Request body size limit (1 MB)
+   * - CSP nonce auto-generation
+   * - Strict Content-Type enforcement (JSON only)
+   * - OWASP security headers
+   * - Dev-mode vulnerability warnings
+   *
+   * Pass an object for fine-grained control:
+   *
+   * @example
+   * ```ts
+   * // Zero-config: all protections
+   * const app = new Asi({ security: true });
+   *
+   * // Fine-grained config
+   * const app = new Asi({
+   *   security: {
+   *     autoEscape: true,
+   *     maxBodySize: "10mb",
+   *     autoNonce: false,
+   *     strictContentType: "json-only",
+   *     headers: true,
+   *   },
+   * });
+   * ```
+   */
+  security?: SecurityConfig | boolean;
 }
 
 /** Route info for public inspection (used by MCP, dev dashboard, etc.) */
@@ -419,6 +461,12 @@ export class Asi {
   private _state: Map<string, unknown> = new Map();
   private _decorators: Map<string, unknown> = new Map();
   private _plugins: Set<string> = new Set();
+  private _pluginDeps: PluginDependencyManager = new PluginDependencyManager();
+  private _pluginBuilders: Map<string, PluginBuilder> = new Map();
+  private _initialized = false;
+
+  // Built-in security
+  private _securityManager: SecurityManager | null = null;
 
   constructor(config: AsiConfig = {}) {
     // Environment detection
@@ -463,6 +511,26 @@ export class Asi {
           ? this.config.lruSchemaCache
           : 10000;
       enableLRUSchemaCache(maxSize);
+    }
+
+    // Built-in security — auto-register middleware chain
+    if (this.config.security !== undefined && this.config.security !== false) {
+      this._initSecurity();
+    }
+  }
+
+  /**
+   * Initialize the built-in security module.
+   * Registers security middleware chain in the correct order.
+   */
+  private _initSecurity(): void {
+    this._securityManager = new SecurityManager(this.config.security!);
+    const securityMw = this._securityManager.buildMiddleware({
+      development: this.config.development,
+    });
+    // Add to global middlewares in order (security runs before user middleware)
+    for (const mw of securityMw) {
+      this.globalMiddlewares.push(mw);
     }
   }
 
@@ -649,6 +717,11 @@ export class Asi {
     handler: Handler,
     options?: RouteOptions<any, any, any, any, any>,
   ): this {
+    // Fire onBeforeRoute hooks before the first route registration
+    if (!this._initialized && this._plugins.size > 0) {
+      this._fireBeforeRouteHooks();
+    }
+
     const wrappedHandler = this.wrapHandler(handler, options);
     const middlewares = [...this.globalMiddlewares];
     this.router.add(method, path, wrappedHandler, middlewares);
@@ -874,7 +947,7 @@ export class Asi {
    *   close(ws) {
    *     console.log("Client disconnected");
    *   },
-   * });
+   * }, { roomManager: rooms });
    *
    * // С данными пользователя
    * app.ws<{ userId: string }>("/user", {
@@ -892,6 +965,8 @@ export class Asi {
     handlers: WebSocketHandlers<T>,
     options?: {
       beforeUpgrade?: (request: Request) => boolean | Promise<boolean>;
+      /** Room Manager for pub/sub (broadcast, rooms, presence) */
+      roomManager?: RoomManager;
     },
   ): this {
     this.wsRoutes.set(path, {
@@ -899,13 +974,21 @@ export class Asi {
       handlers,
       beforeUpgrade: options?.beforeUpgrade,
     });
+
+    // Store roomManager reference for use in server websocket handlers
+    if (options?.roomManager) {
+      this._state.set("roomManager:" + path, options.roomManager);
+    }
+
     return this;
   }
 
   // ===== Plugin System =====
 
   /**
-   * Register a plugin
+   * Register a plugin.
+   *
+   * Returns a PluginBuilder for chaining `.dependsOn()`, `.withHooks()`, `.lazy()`.
    *
    * @example
    * ```ts
@@ -918,30 +1001,133 @@ export class Asi {
    *   }
    * });
    *
+   * // Basic usage
    * app.plugin(myPlugin);
+   *
+   * // With dependencies and hooks
+   * app.plugin(authPlugin)
+   *   .dependsOn(["sessions", "cors"])
+   *   .withHooks({
+   *     onAfterInit: (app) => console.log("auth ready"),
+   *   });
    * ```
    */
-  async plugin(plugin: import("./plugin").AsiPlugin): Promise<this> {
-    // Check if already registered
+  plugin(plugin: import("./plugin").AsiPlugin): PluginBuilder {
+    // If already registered, return existing builder
     if (this._plugins.has(plugin.name)) {
-      return this;
+      const existing = this._pluginBuilders.get(plugin.name);
+      if (existing) return existing;
     }
 
-    // Check dependencies
-    if (plugin.config.dependencies) {
-      for (const dep of plugin.config.dependencies) {
-        if (!this._plugins.has(dep)) {
-          throw new Error(
-            `Plugin "${plugin.name}" requires plugin "${dep}" to be registered first`,
-          );
-        }
-      }
-    }
+    const builder = new PluginBuilder(plugin, async (p, deps, hooks, lazy) => {
+      await this._registerPlugin(p, deps, hooks, lazy);
+    });
+
+    this._pluginBuilders.set(plugin.name, builder);
+
+    // Register in dependency manager immediately
+    this._pluginDeps.addPlugin(
+      plugin.name,
+      builder.getDependencies(),
+      plugin as any,
+      builder.getHooks(),
+      {
+        version: plugin.config.version,
+        lazy: builder.isLazy(),
+      },
+    );
 
     // Mark as registered
     this._plugins.add(plugin.name);
 
+    // Initialize immediately or defer based on dependencies/lazy flag
+    if (builder.isLazy()) {
+      this._pluginDeps.setStatus(plugin.name, "pending");
+    } else if (this._pluginDeps.areDependenciesReady(plugin.name)) {
+      // Fire and forget — plugin init is async but the builder API is sync
+      this._initPlugin(plugin, builder.getHooks());
+    } else {
+      this._pluginDeps.setStatus(plugin.name, "pending");
+    }
+
+    return builder;
+  }
+
+  /**
+   * @internal — Internal plugin registration with dependency management.
+   */
+  private async _registerPlugin(
+    plugin: import("./plugin").AsiPlugin,
+    dependencies: string[],
+    hooks: PluginHooks,
+    lazy: boolean,
+  ): Promise<void> {
+    if (this._plugins.has(plugin.name)) return;
+
+    // Register in dependency manager
+    this._pluginDeps.addPlugin(
+      plugin.name,
+      dependencies,
+      plugin as any,
+      hooks,
+      {
+        version: plugin.config.version,
+        lazy,
+      },
+    );
+
+    // Mark as registered
+    this._plugins.add(plugin.name);
+
+    // If lazy, defer initialization
+    if (lazy) {
+      this._pluginDeps.setStatus(plugin.name, "pending");
+      return;
+    }
+
+    // Initialize immediately if dependencies are ready
+    if (this._pluginDeps.areDependenciesReady(plugin.name)) {
+      await this._initPlugin(plugin, hooks);
+    } else {
+      this._pluginDeps.setStatus(plugin.name, "pending");
+    }
+  }
+
+  /**
+   * @internal — Initialize a single plugin.
+   */
+  private async _initPlugin(
+    plugin: import("./plugin").AsiPlugin,
+    hooks: PluginHooks,
+  ): Promise<void> {
+    this._pluginDeps.setStatus(plugin.name, "initializing");
+
+    // Fire onBeforeInit hook
+    if (hooks.onBeforeInit) {
+      await hooks.onBeforeInit(this._createPluginHost());
+    }
+
     // Create PluginHost adapter
+    const host = this._createPluginHost();
+
+    // Apply plugin
+    await plugin.apply(host, this._state, this._decorators);
+
+    this._pluginDeps.setStatus(plugin.name, "initialized");
+
+    // Fire onAfterInit hook
+    if (hooks.onAfterInit) {
+      await hooks.onAfterInit(host);
+    }
+
+    // Check for pending plugins that now have their dependencies ready
+    await this._flushPendingPlugins();
+  }
+
+  /**
+   * @internal — Create a PluginHost adapter bound to this Asi instance.
+   */
+  private _createPluginHost(): import("./plugin").PluginHost {
     const host: import("./plugin").PluginHost = {
       get: (path, handler, options) => {
         this.get(path, handler as any, options as any);
@@ -990,11 +1176,84 @@ export class Asi {
       getDecorator: <T>(key: string) =>
         this._decorators.get(key) as T | undefined,
     };
+    return host;
+  }
 
-    // Apply plugin
-    await plugin.apply(host, this._state, this._decorators);
+  /**
+   * @internal — Initialize any pending plugins whose dependencies are now ready.
+   */
+  private async _flushPendingPlugins(): Promise<void> {
+    const ready = this._pluginDeps.getReadyPlugins();
+
+    for (const node of ready) {
+      if (node.plugin) {
+        const builder = this._pluginBuilders.get(node.name);
+        const hooks = builder?.getHooks() || node.hooks;
+        await this._initPlugin(node.plugin, hooks);
+      }
+    }
+  }
+
+  /**
+   * Finalise plugin initialisation.
+   * Initializes all registered plugins that haven't been initialized yet.
+   * Respects dependency order via topological sort.
+   *
+   * Automatically called by `listen()` and `handle()` if not yet done.
+   *
+   * @example
+   * ```ts
+   * const app = new Asi();
+   * app.plugin(corsPlugin);
+   * app.plugin(authPlugin).dependsOn(["cors"]);
+   * await app.initPlugins();
+   * app.get("/", () => "Hello");
+   * ```
+   */
+  async initPlugins(): Promise<this> {
+    if (this._initialized) return this;
+    this._initialized = true;
+
+    // Check for cyclic dependencies
+    const cycle = this._pluginDeps.detectCycle();
+    if (cycle) {
+      throw new CyclicDependencyError(cycle);
+    }
+
+    // Resolve init order
+    const order = this._pluginDeps.resolveOrder();
+
+    for (const name of order) {
+      const node = this._pluginDeps.getPlugin(name);
+      if (node && node.plugin && node.status !== "initialized") {
+        const builder = this._pluginBuilders.get(name);
+        const hooks = builder?.getHooks() || node.hooks;
+        await this._initPlugin(node.plugin, hooks);
+      }
+    }
 
     return this;
+  }
+
+  /**
+   * @internal — Fire onBeforeRoute hooks for all registered plugins.
+   * Called once when the first route is registered.
+   */
+  private _firedBeforeRoute = false;
+  private _fireBeforeRouteHooks(): void {
+    if (this._firedBeforeRoute) return;
+    this._firedBeforeRoute = true;
+
+    for (const [name, builder] of this._pluginBuilders) {
+      const hooks = builder.getHooks();
+      if (hooks.onBeforeRoute) {
+        try {
+          hooks.onBeforeRoute(this._createPluginHost());
+        } catch (error) {
+          console.error(`[Asi] Error in onBeforeRoute hook for plugin "${name}":`, error);
+        }
+      }
+    }
   }
 
   /**
@@ -1074,6 +1333,28 @@ export class Asi {
    */
   getPlugins(): string[] {
     return Array.from(this._plugins);
+  }
+
+  /**
+   * Get rich plugin info with dependency graph, status, and initialization order.
+   * Useful for debugging and the `asi inspect --plugins` command.
+   *
+   * @example
+   * ```ts
+   * const info = app.pluginInfo();
+   * console.log(info.initOrder); // ["cors", "sessions", "auth"]
+   * console.log(info.hasCycle);  // false
+   * ```
+   */
+  pluginInfo(): PluginGraphInfo {
+    return this._pluginDeps.getGraphInfo();
+  }
+
+  /**
+   * Get the dependency manager DOT graph for debugging.
+   */
+  pluginDepGraph(): string {
+    return this._pluginDeps.toDot();
   }
 
   /**
@@ -1641,15 +1922,19 @@ export class Asi {
       return new Response(JSON.stringify(result), { status, headers });
     }
 
-    // String → text/plain
+    // String → text/plain (with optional auto-escape for XSS protection)
     if (type === "string") {
+      let body = result as string;
+      if (this._securityManager?.getConfig().autoEscape) {
+        body = this._securityManager.escapeResponseBody(body) as string;
+      }
       const headers = new Headers({
         "Content-Type": "text/plain; charset=utf-8",
       });
       for (const cookie of setCookies) {
         headers.append("Set-Cookie", cookie);
       }
-      return new Response(result as string, { status, headers });
+      return new Response(body, { status, headers });
     }
 
     // undefined → 204 No Content
@@ -1657,14 +1942,18 @@ export class Asi {
       return new Response(null, { status: 204 });
     }
 
-    // Number, boolean, etc → string
+    // Number, boolean, etc → string (with optional auto-escape)
+    let body = String(result);
+    if (this._securityManager?.getConfig().autoEscape) {
+      body = this._securityManager.escapeResponseBody(body) as string;
+    }
     const headers = new Headers({
       "Content-Type": "text/plain; charset=utf-8",
     });
     for (const cookie of setCookies) {
       headers.append("Set-Cookie", cookie);
     }
-    return new Response(String(result), { status, headers });
+    return new Response(body, { status, headers });
   }
 
   private async notFound(ctx: Context): Promise<Response> {

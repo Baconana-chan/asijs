@@ -1,76 +1,128 @@
 # AsiJS
 
 <div align="center">
-  <h3>⚡ Bun-first Web Framework — Fast, Type-safe, Simple</h3>
-  <p>A high-performance web framework built exclusively for Bun runtime</p>
+  <h3>⚡ Bun-first Web Framework — Fast, Type-safe, Production-ready</h3>
+  <p>A high-performance web framework for Bun, Node.js, and Edge runtimes</p>
 
   [![CI](https://github.com/user/asijs/actions/workflows/ci.yml/badge.svg)](https://github.com/user/asijs/actions/workflows/ci.yml)
   [![npm version](https://badge.fury.io/js/asijs.svg)](https://badge.fury.io/js/asijs)
   [![JSR](https://jsr.io/badges/@baconana/asijs)](https://jsr.io/@baconana/asijs)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Tests](https://img.shields.io/badge/tests-1373%20passing-brightgreen)](https://github.com/user/asijs/actions/workflows/ci.yml)
 </div>
 
 ---
 
 ## ✨ Features
 
-- 🚀 **Blazing Fast** — Built on Bun.serve() with optimized routing
-- 🔒 **Type-safe** — Full TypeScript support with TypeBox validation
+### Core
+- 🚀 **Blazing Fast** — Trie + Radix tree router, route compilation, static router, schema cache LRU
+- 🎯 **Type-safe** — Full TypeScript with TypeBox validation, phantom types, type inference
+- 🔌 **Pluggable** — Rich plugin ecosystem with dependency ordering, lazy init, lifecycle hooks
 - 📦 **Zero Config** — Sensible defaults, works out of the box
-- 🔌 **Pluggable** — Rich plugin ecosystem (CORS, static files, auth, etc.)
-- 📄 **OpenAPI/Swagger** — Auto-generated API documentation
-- 🌐 **WebSocket** — First-class WebSocket support
-- ⚡ **JSX** — Built-in JSX for server-side rendering
-- 🤖 **MCP Ready** — Model Context Protocol for AI/LLM integration
-- 🎯 **Developer Experience** — Auto-port, detailed errors, startup diagnostics
+- 🖥️ **Multi-runtime** — Bun, Node.js (HTTP/HTTPS+WebSocket), Edge (Cloudflare, Deno, Vercel, Lambda@Edge)
+
+### Developer Experience
+- 🔥 **Hot Reload 2.0** — `fs.watch` with 200ms debounce, module-level hot swap, HMR browser push via WebSocket
+- 💬 **Interactive REPL** — `asi repl`: create routes on the fly, test requests, inspect state
+- 🌐 **Web Playground** — Browser-based IDE: code editor, output panel, request bar, 5 built-in examples
+- 🛠️ **CLI v2** — `asi create/dev/inspect/build/plugin/repl/generate/integrate`
+- 📊 **Benchmark Dashboard** — Chart.js dashboard with trend lines, CI pipeline
+
+### Resilience & Performance
+- ⚡ **Circuit Breaker** — CLOSED/OPEN/HALF_OPEN with sliding window, timeout, fallback, healthcheck integration
+- 🔁 **Request Deduplication** — Inflight manager, XFetch cache stampede protection, MemoryCache/Redis
+- ❄️ **Serverless Optimisation** — Warm start emulation, lazy imports, bundle config for 6 platforms
+- 🗺️ **Radix Tree Router** — Up to 2× faster for 1M+ routes
+- 💾 **Schema Cache LRU** — Bounded memory for TypeBox compiled validators
+
+### API & Documentation
+- 📄 **OpenAPI / Swagger** — Auto-generated OpenAPI 3.0/3.1, Swagger UI, security schemes
+- 📖 **API Docs Portal** — Full documentation portal: sidebar search, code samples (curl/Python/JS/Go), try-it-out proxy, dark/light theme
+- 🔄 **API Versioning** — URL/Header/Combined strategies, fallback, deprecation headers (`Sunset`, `Deprecation`)
+- 📝 **API Changelog** — Snapshot/diff between API versions, Markdown/HTML export for CI/CD
+
+### WebSocket
+- 🔌 **WebSocket** — First-class `app.ws()` with typed data, lifecycle hooks
+- 📡 **Pub-Sub** — Rooms (`ws.join()`, `ws.leave()`), broadcast, presence tracking, typed events
+- 🔄 **Redis Bridge** — Cross-instance pub-sub via Redis for horizontal scaling
+- 💤 **Graceful Shutdown** — Drain active connections with 1001 close frames
+
+### Security
+- 🛡️ **Built-in Security Module** — `AsiConfig.security` with zero-config sensible defaults:
+  - `autoEscape` — Automatic XSS prevention in HTML responses
+  - `maxBodySize` — Request body size limiting (configurable per unit)
+  - `autoNonce` — CSP nonce generation for inline scripts
+  - `strictContentType` — Content-Type enforcement with error/sanitize/off modes
+  - **OWASP Headers** — CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
+- 🔐 **Security Presets** — `maxSecurity`, `apiSecurity`, `devSecurity`
+- 🔑 **JWT** — Sign/verify/decode, bearer auth middleware, CSRF protection
+- 🔒 **Rate Limiting** — Sliding window + token bucket, IP/API Key/User presets, per-tenant isolation
+
+### Static Site Generation
+- 📄 **SSG** — `asi build --ssg`: scan GET routes, render HTML, pretty URLs (`/about/index.html`) or flat format
+- 📦 **JSON Export** — `--export-api` for static API data
+- ⚡ **Edge-ready** — SPA + Hybrid rendering with islands architecture
+
+### Observability
+- 📊 **Metrics** — Prometheus + OTLP exporters, request metrics collector, histograms
+- 🕵️ **Tracing** — W3C Trace Context, Server-Timing headers, request IDs, span events
+- 📋 **Structured Logging** — JSON log middleware for ELK/Datadog/Splunk, multi-level (debug/info/warn/error)
+- 🐛 **Sentry** — Fetch-based error tracking (no SDK required), breadcrumbs, envelopes
+- 🔬 **OpenTelemetry** — Full OTel instrumentation: spans, metrics, logs. W3C TraceContext propagation. Exporters: Console, OTLP, Jaeger, Zipkin
+
+### Ecosystem
+- 🤖 **MCP Ready** — Model Context Protocol server for AI/LLM integration (7 built-in tools, 4 resources)
+- 📦 **Plugin Registry** — `asi plugin search/install/create/list`. 40+ curated plugins in 8 categories
+- 🧩 **@asijs/next** — Next.js App Router, Pages Router, Edge Runtime adapter
+- 🧩 **@asijs/astro** — Astro server endpoints, method-specific endpoints, middleware
+- 🧩 **@asijs/remix** — Remix resource routes, loaders, actions
+- 🧩 **@asijs/sveltekit** — SvelteKit handle hook, server handler, universal handler
+- 🧩 **@asijs/opentelemetry** — OpenTelemetry automatic instrumentation
+- 📋 **ESLint Plugin** — `eslint-plugin-asijs` with 4 rules: no-duplicate-route, no-missing-handler, validate-schema, no-unused-route
+- 🎨 **VS Code Extension** — Snippets, route explorer, hover provider, debug config, template explorer, create wizard
+
+### Migration
+- 🔄 **Express → AsiJS** — `expressPlugin.wrap(mw)`, codemod with 22 rules, CLI: `asi integrate ./app.js`
+- 🔄 **Koa → AsiJS** — `koaPlugin.wrap(mw)`, codemod with 22 rules
+- 🔄 **Elysia/Hono/Fastify → AsiJS** — `asi migrate` with automatic transformation
 
 ## 📦 Installation
-
-**npm:**
-```bash
-npm install asijs
-```
 
 **Bun:**
 ```bash
 bun add asijs
 ```
 
-**JSR (Deno/Bun):**
+**npm:**
 ```bash
-# Deno
-deno add @baconana/asijs
+npm install asijs
+```
 
-# Bun
+**JSR:**
+```bash
 bunx jsr add @baconana/asijs
 ```
 
-### Quick Start with CLI
+### Node.js Adapter
 
-Create a new project instantly:
-
+For Node.js HTTP(S) + WebSocket support:
 ```bash
-# Create with default template
-bunx asijs create my-app
-
-# Choose a template
-bunx asijs create my-api -t api
-bunx asijs create my-blog -t fullstack
-bunx asijs create my-auth -t auth
-bunx asijs create my-chat -t realtime
+bun add asijs  # same package, use asijs/node
 ```
 
-**Templates:**
-- `minimal` — Basic setup (default)
-- `api` — REST API with OpenAPI docs
-- `fullstack` — API + JSX rendering
-- `auth` — JWT authentication
-- `realtime` — WebSocket chat
+```typescript
+import { Asi } from "asijs";
+import { nodeAdapter } from "asijs/node";
+
+const app = new Asi({ serverAdapter: nodeAdapter() });
+app.listen(3000);
+```
 
 ## 🚀 Quick Start
 
 ```typescript
-import { Asi, Type } from "asijs";
+import { Asi } from "asijs";
 
 const app = new Asi();
 
@@ -92,6 +144,53 @@ app.post("/users", async (ctx) => {
 app.listen(3000);
 ```
 
+## 🛠️ CLI
+
+```bash
+# Create a new project
+bunx asijs create my-app
+
+# Development server (with hot reload)
+bunx asijs dev
+
+# Inspect routes/plugins/size
+bunx asijs inspect --routes --verbose
+bunx asijs inspect --plugins
+bunx asijs inspect --size
+
+# Build for production
+bunx asijs build                  # SPA/SSR build
+bunx asijs build --ssg            # Static site generation
+bunx asijs build --target cloudflare  # Serverless build
+
+# Interactive REPL
+bunx asijs repl
+
+# Plugin management
+bunx asijs plugin search auth
+bunx asijs plugin install @asijs/auth
+bunx asijs plugin create my-plugin
+bunx asijs plugin list
+
+# Migrate from other frameworks
+bunx asijs integrate ./app.js
+
+# Generate scaffold
+bunx asijs generate route users
+bunx asijs generate plugin auth
+```
+
+### Templates
+
+| Template | Description |
+|----------|-------------|
+| `minimal` | Basic setup with routing |
+| `api` | REST API with validation, CORS, OpenAPI |
+| `fullstack` | API + JSX rendering |
+| `auth` | JWT authentication + protected routes |
+| `realtime` | WebSocket chat |
+| `workspace` | Monorepo with multiple sub-apps |
+
 ## 📚 Examples
 
 ### REST API with Validation
@@ -100,14 +199,7 @@ app.listen(3000);
 import { Asi, Type } from "asijs";
 
 const app = new Asi();
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
-}
-
-const users: User[] = [];
+const users: { id: number; name: string; email: string }[] = [];
 
 app.get("/users", () => users);
 
@@ -134,132 +226,399 @@ app.post("/users", async (ctx) => {
 app.listen(3000);
 ```
 
-### JWT Authentication
+### Circuit Breaker
 
 ```typescript
-import { Asi, jwt, bearer, hashPassword, verifyPassword } from "asijs";
+import { Asi, circuitBreaker, apiCircuitBreaker } from "asijs";
 
 const app = new Asi();
 
-// Setup JWT
-const jwtHelper = jwt({ secret: "your-secret-key" });
-
-// Login
-app.post("/login", async (ctx) => {
-  const { email, password } = await ctx.body();
-  // Verify user...
-  const token = await jwtHelper.sign({ userId: 1, email });
-  return { token };
-});
-
-// Protected route
-app.get("/profile", bearer({ jwt: jwtHelper }), (ctx) => {
-  return { user: ctx.user };
-});
-
-app.listen(3000);
-```
-
-### OpenAPI / Swagger
-
-```typescript
-import { Asi, openapi, Type } from "asijs";
-
-const app = new Asi();
-
-app.plugin(openapi({
-  info: {
-    title: "My API",
-    version: "1.0.0",
-  },
+// Global: protect against external API failures
+app.plugin(circuitBreaker({
+  threshold: 5,           // 5 failures → OPEN
+  window: 30000,          // 30 second sliding window
+  recoveryTimeout: 10000, // 10s recovery
+  fallback: () => ({ cached: true, data: [] }),
 }));
 
-app.get("/pets", () => [{ id: 1, name: "Dog" }], {
-  response: Type.Array(Type.Object({
-    id: Type.Number(),
-    name: Type.String(),
-  })),
-  tags: ["pets"],
-  summary: "List all pets",
+// Per-route with presets
+app.get("/api/external", apiCircuitBreaker(), async (ctx) => {
+  const data = await ctx.circuitBreaker!("stripe-api", () =>
+    fetch("https://api.stripe.com/v1/charges")
+  );
+  return data;
 });
 
-// Swagger UI available at /docs
 app.listen(3000);
 ```
 
-### WebSocket
+### WebSocket Pub-Sub
+
+```typescript
+import { Asi, createRoomManager } from "asijs";
+
+const app = new Asi();
+const rooms = createRoomManager({ maxRoomsPerConnection: 10 });
+
+// Create a chat room
+app.ws("/chat", {
+  open(ws) {
+    ws.data = { joinedAt: Date.now() };
+  },
+  message(ws, message) {
+    const msg = typeof message === "string" ? message : JSON.stringify(message);
+    rooms.broadcast(msg, { rooms: ["lobby"] });
+  },
+  close(ws) {
+    rooms.cleanup(ws);
+  },
+}, { roomManager: rooms });
+
+app.listen(3000);
+```
+
+### SSG — Static Site Generation
+
+```typescript
+import { Asi, buildSSG, staticPath } from "asijs";
+
+const app = new Asi();
+
+app.get("/", () => "<h1>Home</h1>");
+app.get("/about", () => "<h1>About</h1>");
+
+// Dynamic routes: define static paths
+const paths = [
+  staticPath("/blog/:slug", { slug: "hello-world" }),
+  staticPath("/blog/:slug", { slug: "second-post" }),
+];
+
+// CLI: bunx asijs build --ssg
+// Or programmatically:
+const result = await buildSSG(app, {
+  staticPaths: paths,
+  outDir: "./dist",
+  pretty: true,  // /about → about/index.html
+});
+// result: { total: 4, success: 4, failed: 0, duration: 12 }
+```
+
+### API Versioning
+
+```typescript
+import { Asi, apiVersion, versionPath } from "asijs";
+
+const app = new Asi();
+
+app.plugin(apiVersion({
+  defaultVersion: "2.0",
+  supportedVersions: ["1.0", "2.0"],
+  strategy: "url",       // URL-based: /v1/users, /v2/users
+  fallback: "latest",    // Unsupported version → latest
+  deprecation: true,     // Add Sunset/Deprecation headers
+}));
+
+// v1 users endpoint
+app.get(versionPath("/users", "1.0"), () =>
+  users.map(u => ({ id: u.id, name: u.name }))
+);
+
+// v2 users endpoint (richer response)
+app.get(versionPath("/users", "2.0"), () => users);
+
+app.listen(3000);
+```
+
+### Built-in Security
 
 ```typescript
 import { Asi } from "asijs";
 
-const app = new Asi();
-
-app.ws("/chat", {
-  open(ws) {
-    console.log("Client connected");
-  },
-  message(ws, message) {
-    ws.send(`Echo: ${message}`);
-  },
-  close(ws) {
-    console.log("Client disconnected");
+// Zero-config: OWASP headers, XSS escape, body limits, CSP nonce
+const app = new Asi({
+  security: {
+    autoEscape: true,
+    maxBodySize: "1mb",
+    strictContentType: "sanitize",
+    headers: {
+      contentSecurityPolicy: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+      },
+      hsts: { maxAge: 31536000, includeSubDomains: true },
+      xFrameOptions: "DENY",
+    },
   },
 });
+
+// Presets
+import { maxSecurity, apiSecurityCore, devSecurity } from "asijs";
+
+app.get("/admin", maxSecurity(), () => "Secure admin page");
 
 app.listen(3000);
 ```
 
-### File Upload
+### Serverless / Edge
 
 ```typescript
-import { Asi, FormDataSchema, FileSchema, Type } from "asijs";
+import { Asi, ServerlessOptimizer } from "asijs";
 
 const app = new Asi();
 
-app.post("/upload", async (ctx) => {
-  const formData = await ctx.formData();
-  const file = formData.get("file") as File;
-  
-  await Bun.write(`./uploads/${file.name}`, file);
-  
-  return { 
-    filename: file.name,
-    size: file.size,
-  };
-}, {
-  body: FormDataSchema({
-    file: FileSchema({ 
-      maxSize: 10 * 1024 * 1024, // 10MB
-      accept: ["image/*"],
-    }),
-  }),
-});
+// Warm start emulation
+await ServerlessOptimizer.warmUp(app);
 
-app.listen(3000);
+// Routes...
+app.get("/api/hello", () => ({ message: "Hello from edge!" }));
+
+// Build for target
+// CLI: bunx asijs build --target cloudflare
+// CLI: bunx asijs build --target lambda-edge
+// CLI: bunx asijs build --target vercel-edge
 ```
 
-### Rate Limiting
+### Framework Adapter — Next.js
 
 ```typescript
-import { Asi, rateLimit, apiLimit } from "asijs";
+// app/api/[[...asi]]/route.ts
+import { createNextHandler } from "@asijs/next";
+import { Asi } from "asijs";
 
 const app = new Asi();
+app.get("/api/hello", () => ({ message: "Hello from AsiJS in Next.js!" }));
 
-// Global rate limit
-app.plugin(rateLimit({
-  limit: 100,
-  window: 60000, // 1 minute
-}));
-
-// Or per-route
-app.get("/api/data", apiLimit(1000), (ctx) => {
-  return { data: "..." };
-});
-
-app.listen(3000);
+export const { GET, POST, PUT, DELETE } = createNextHandler(app);
 ```
 
-### MCP Server (AI/LLM Integration)
+## 🔌 Plugins
+
+### Built-in Plugins
+
+| Plugin | Description | Since |
+|--------|-------------|-------|
+| `cors()` | Cross-Origin Resource Sharing (advanced: dynamic origin, wildcard, PNA) | v1.0 |
+| `staticFiles()` | Static file serving with ETag, cache, range requests | v1.0 |
+| `openapi()` | OpenAPI/Swagger documentation | v1.0 |
+| `rateLimit()` | Rate limiting with sliding window + token bucket | v1.0 |
+| `security()` | Security headers (CSP, HSTS, XFO, etc.) | v1.0 |
+| `cache()` | Response caching with ETags | v1.0 |
+| `trace()` | Request tracing & metrics | v1.0 |
+| `lifecycle()` | Graceful shutdown with drain | v1.0 |
+| `devMode()` | Development tools (chaos, delay, debug) | v1.0 |
+| `mcp()` | Model Context Protocol for AI/LLM | v1.0 |
+| `sessions()` | Session middleware (Memory, Cookie, Redis stores) | v1.2 |
+| `requestLogger()` | Coloured request logging (4 formats) | v1.2 |
+| `compression()` | gzip/brotli response compression | v1.2 |
+| `negotiateResponse()` | Content negotiation (JSON/HTML/XML) | v1.2 |
+| `healthCheck()` | `/health`, `/ready`, `/live` endpoints | v1.2 |
+| `sse()` | Server-Sent Events | v1.2 |
+| `graphql()` | GraphQL (Yoga/Helix adapter) | v1.2 |
+| `sentry()` | Sentry error tracking | v1.2 |
+| `structuredLogger()` | JSON structured logging | v1.2 |
+| `circuitBreaker()` | Circuit breaker with 3 states, presets | v1.3 |
+| `deduplicate()` | Request dedup + cache stampede protection | v1.3 |
+| `playgroundPlugin()` | Browser-based IDE with code editor | v1.3 |
+| `apiDocsPlugin()` | Full API documentation portal | v1.3 |
+| `apiVersion()` | API versioning (URL/Header/Combined) | v1.3 |
+| `authjs()` | Auth.js integration (GitHub, Google, Credentials) | v1.3 |
+| `upload()` | File upload (Local, S3, R2) | v1.3 |
+| `autoAPI()` | PostgREST-like auto CRUD from database | v1.3 |
+| `expressPlugin()` / `koaPlugin()` | Express/Koa middleware wrapper | v1.3 |
+| `otelPlugin()` | OpenTelemetry instrumentation | v1.3 |
+| `webhooks()` | Stripe/GitHub/Svix signature verification | v1.2 |
+| `trustProxy()` | Real IP extraction from X-Forwarded-For | v1.2 |
+| `domainRouting()` | Subdomain-based routing | v1.2 |
+| `serverPush()` | Link preload headers | v1.2 |
+
+### Plugin Ordering & Dependencies
+
+```typescript
+import { createPlugin } from "asijs";
+
+// Plugins can declare dependencies
+const authPlugin = createPlugin({
+  name: "auth",
+  dependencies: ["sessions", "cors"],
+  setup(app) {
+    app.before(async (ctx) => {
+      ctx.user = await authenticate(ctx);
+    });
+  },
+});
+
+app.plugin(authPlugin());  // Auto-ordered: sessions → cors → auth
+app.pluginInfo();           // Visualize dependency graph
+```
+
+## 📦 Ecosystem Packages
+
+| Package | Description | Tests |
+|---------|-------------|-------|
+| `@asijs/next` | Next.js App Router / Pages Router / Edge adapter | 10 ✅ |
+| `@asijs/astro` | Astro server endpoints + middleware | 7 ✅ |
+| `@asijs/remix` | Remix resource routes + loader/action | 8 ✅ |
+| `@asijs/sveltekit` | SvelteKit handle hook + server/universal handlers | 8 ✅ |
+| `@asijs/opentelemetry` | Full OTel: spans, metrics, logs. 5 exporters | 22 ✅ |
+| `eslint-plugin-asijs` | 4 ESLint rules for AsiJS projects | ✅ |
+
+### VS Code Extension — `asijs-code`
+
+- 15 code snippets (GET/POST, WebSocket, CORS, JWT, OpenAPI, etc.)
+- Route Explorer webview with colour-coded method badges
+- Hover provider showing method + path on `app.get()/post()`
+- Debug Configuration Provider (Launch, Attach, Workspace)
+- Template Explorer (9 templates, 4 categories, search, preview)
+- Create Project Wizard (4-step GUI)
+- Inline Diagnostics (6 checks: missing dep, missing app, async/await, TODO/FIXME)
+
+## 🛡️ Security (Built-in)
+
+AsiJS includes a **zero-config security module** as part of `AsiConfig`:
+
+```typescript
+const app = new Asi({
+  security: {
+    autoEscape: true,              // Auto-escape HTML in responses (XSS)
+    maxBodySize: "1mb",            // Limit request body size
+    autoNonce: true,               // Auto-generate CSP nonces
+    strictContentType: "sanitize", // Sanitize Content-Type headers
+    headers: {
+      contentSecurityPolicy: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+      },
+      hsts: { maxAge: 31536000, includeSubDomains: true },
+      xFrameOptions: "DENY",
+      xContentTypeOptions: "nosniff",
+      referrerPolicy: "strict-origin-when-cross-origin",
+    },
+  },
+});
+```
+
+**Presets:**
+- `maxSecurity()` — Maximum security for web apps (strict CSP, strict HSTS)
+- `apiSecurityCore()` — Minimal overhead for API-only services
+- `devSecurity()` — Relaxed for development (inline scripts allowed)
+
+Includes **OWASP-recommended headers** by default: CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy.
+
+## 📊 Benchmarks
+
+AsiJS is built for performance. Full benchmark dashboard available at `/benchmarks/`.
+
+### Production Benchmarks (v1.3.0)
+
+| Scenario | Requests/sec | vs Elysia | vs Hono |
+|----------|-------------|-----------|---------|
+| GET / (compiled) | ~92,000 | ~82% | ~108% |
+| POST /users + validation | ~44,000 | ~100% | ~120% |
+| Complex validation (nested) | ~107,000 | ~103% | — |
+| JSX rendering (100-row table) | ~54,900 | — | ~280% |
+| Blog API GET /posts | ~152,000 | ~100% | ~122% |
+| Blog API POST /posts (auth+val) | ~161,000 | ~118% | — |
+| Middleware chain (5 mw) | ~189,000 | ~46% | ~165% |
+
+Run benchmarks yourself:
+```bash
+bun run bench:production
+```
+
+### Benchmark Dashboard
+
+AsiJS includes an automated benchmark dashboard:
+- `bun run bench:collect` — run all benchmarks
+- `bun run bench:dashboard` — generate Chart.js HTML dashboard
+- Integrated into vitepress docs at `/benchmarks/`
+- CI pipeline auto-generates on every push to main
+
+## 📁 Project Structure
+
+```
+asijs/
+├── src/
+│   ├── asi.ts                  # Core framework
+│   ├── router.ts               # Trie router
+│   ├── router-perf.ts          # Radix tree + middleware flattener
+│   ├── context.ts              # Request context
+│   ├── validation.ts           # TypeBox validation
+│   ├── compiler.ts             # Route compiler
+│   ├── security-core.ts        # Built-in security module
+│   ├── circuit-breaker.ts      # Circuit breaker resilience
+│   ├── deduplicate.ts          # Request dedup + cache stampede
+│   ├── ws-pubsub.ts            # WebSocket pub/sub rooms
+│   ├── ws-redis.ts             # Redis pub-sub bridge
+│   ├── api-version.ts          # API versioning
+│   ├── ssg.ts                  # Static site generation
+│   ├── serverless.ts           # Serverless optimisation
+│   ├── api-docs.ts             # API documentation portal
+│   ├── hot-reload.ts           # Hot reload 2.0
+│   ├── hmr.ts                  # HMR browser push
+│   ├── repl.ts                 # Interactive REPL
+│   ├── playground.ts           # Web playground
+│   ├── plugin-deps.ts          # Plugin dependency manager
+│   ├── plugin-registry.ts      # Plugin registry
+│   ├── migrate-express.ts      # Express migration
+│   ├── migrate-koa.ts          # Koa migration
+│   ├── authjs.ts               # Auth.js integration
+│   ├── upload.ts               # File upload provider
+│   ├── auto-api.ts             # PostgREST-like auto API
+│   ├── codegen.ts              # OpenAPI client codegen
+│   └── plugins/
+│       ├── cors.ts             # CORS plugin
+│       └── static.ts           # Static files plugin
+├── packages/
+│   ├── vscode-asijs/           # VS Code extension
+│   ├── eslint-plugin-asijs/    # ESLint rules
+│   ├── next-asijs/             # Next.js adapter
+│   ├── astro-asijs/            # Astro adapter
+│   ├── remix-asijs/            # Remix adapter
+│   ├── sveltekit-asijs/        # SvelteKit adapter
+│   └── opentelemetry-asijs/    # OpenTelemetry integration
+├── examples/                   # Example apps
+├── test/                       # 1373 tests
+│   ├── integration/            # Docker-based integration tests
+│   ├── e2e/                    # End-to-end tests
+│   └── k6/                     # k6 load testing scripts
+├── bench/                      # Benchmarks + dashboard
+└── docs/                       # VitePress documentation site
+```
+
+## 🧪 Testing
+
+```bash
+# Run all tests (1373 tests)
+bun test
+
+# With coverage
+bun test --coverage
+
+# Integration tests (requires Docker)
+bun test test/integration/
+
+# E2E tests
+bun test test/e2e/
+
+# Load testing with k6
+bun run test:k6
+
+# TypeScript check
+bun run typecheck
+```
+
+### Test Quality
+
+- **1373 tests** — all passing, 0 failures
+- **Integration tests** — Docker-based PostgreSQL, Redis, MinIO
+- **E2E tests** — Full cycle: auth → upload → CRUD → WebSocket
+- **Load tests** — k6 scenarios: auth flow, CRUD, WebSocket, file upload
+- **0 TypeScript errors** (`tsc --noEmit`)
+- **Pre-release security audit** — All v1.3 modules reviewed: 3 CRITICAL fixes, 2 HIGH fixes, 3 MEDIUM fixes
+
+## 🤖 MCP — AI/LLM Integration
+
+AsiJS supports the **Model Context Protocol** for AI assistant integration:
 
 ```typescript
 import { Asi, mcp, createMCPServer } from "asijs";
@@ -268,7 +627,6 @@ const app = new Asi();
 
 // Add routes...
 app.get("/users", () => users);
-app.post("/users", async (ctx) => { /* ... */ });
 
 // Add MCP plugin for AI assistants
 app.plugin(mcp({
@@ -279,219 +637,40 @@ app.plugin(mcp({
       name: "list_users",
       description: "List all users",
       inputSchema: { type: "object", properties: {} },
-      handler: async () => ({ 
+      handler: async () => ({
         content: [{ type: "text", text: JSON.stringify(users) }]
       }),
     },
   ],
 }));
 
-// Run as MCP server
+// Run as MCP server for Claude Desktop, Cursor, etc.
 const mcpServer = createMCPServer(app);
 await mcpServer.start();
 ```
 
-## 🔌 Plugins
+## 📘 Documentation
 
-### Built-in Plugins
+Full documentation available at the [VitePress docs site](https://baconana-chan.github.io/asijs/):
 
-| Plugin | Description |
-|--------|-------------|
-| `cors()` | Cross-Origin Resource Sharing |
-| `staticFiles()` | Serve static files |
-| `openapi()` | OpenAPI/Swagger documentation |
-| `rateLimit()` | Rate limiting |
-| `security()` | Security headers (CSP, HSTS, etc.) |
-| `cache()` | Response caching with ETags |
-| `lifecycle()` | Graceful shutdown |
-| `trace()` | Request tracing & metrics |
-| `devMode()` | Development tools |
-| `mcp()` | Model Context Protocol |
-
-### Using Plugins
-
-```typescript
-import { 
-  Asi, 
-  cors, 
-  security, 
-  rateLimit,
-  openapi,
-  lifecycle,
-} from "asijs";
-
-const app = new Asi();
-
-app.plugin(cors({ origin: "*" }));
-app.plugin(security());
-app.plugin(rateLimit({ limit: 100, window: 60000 }));
-app.plugin(openapi({ info: { title: "My API", version: "1.0.0" } }));
-app.plugin(lifecycle({ verbose: true }));
-
-app.listen(3000);
-```
-
-## 🛠️ Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3000` |
-| `NODE_ENV` | Environment | `development` |
-
-### App Configuration
-
-```typescript
-const app = new Asi({
-  development: true,          // Enable development mode
-  basePath: "/api/v1",        // Base path for all routes
-  strictMode: false,          // Strict routing (trailing slashes)
-});
-
-// Auto port selection
-app.listen(0); // Random available port
-
-// Port from environment
-app.listen(); // Uses PORT env or 3000
-```
-
-## 📊 Benchmarks
-
-AsiJS is built for performance. Benchmarks below are **averages from 4 production runs** (`bun run bench/production.ts`).
-
-### Middleware Overhead (5 middleware chain)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| Elysia (5 derive) | ~414,824 | 0.0025ms | 100% |
-| **AsiJS (5 middleware)** | ~188,980 | 0.0054ms | 45.6% |
-| Hono (5 middleware) | ~114,589 | 0.0088ms | 27.6% |
-
-### Complex Validation (4-level nested object)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| **AsiJS (complex validation)** | ~107,069 | 0.0094ms | **100%** |
-| Elysia (complex validation) | ~104,290 | 0.0096ms | 97.4% |
-
-### File Upload (1MB multipart)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| Elysia (1MB) | ~4,890 | 0.2046ms | 100% |
-| Hono (1MB) | ~4,682 | 0.2140ms | 95.8% |
-| **AsiJS (1MB)** | ~4,651 | 0.2152ms | 95.1% |
-
-### File Upload (5MB multipart)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| Elysia (5MB) | ~964 | 1.0412ms | 100% |
-| Hono (5MB) | ~954 | 1.0533ms | 99.0% |
-| **AsiJS (5MB)** | ~822 | 1.2239ms | 85.2% |
-
-### Static File Serving (small file)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| Hono (small) | ~157,329 | 0.0064ms | 100% |
-| **AsiJS (small)** | ~101,996 | 0.0099ms | 64.8% |
-
-### Static File Serving (2MB file)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| Hono (2MB) | ~157,367 | 0.0065ms | 100% |
-| **AsiJS (2MB)** | ~136,043 | 0.0074ms | 86.5% |
-
-### JSX / HTML Rendering (100-row table)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| **AsiJS (JSX + renderToString)** | ~54,878 | 0.0183ms | **100%** |
-| AsiJS (string template) | ~31,811 | 0.0315ms | 58.0% |
-| Hono (string template) | ~19,582 | 0.0512ms | 35.7% |
-
-### Blog API - GET /posts (list + pagination)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| Elysia (GET /posts) | ~152,197 | 0.0066ms | 100% |
-| **AsiJS (GET /posts)** | ~151,805 | 0.0066ms | 99.7% |
-| Hono (GET /posts) | ~124,925 | 0.0081ms | 82.1% |
-
-### Blog API - GET /posts/:id (single post)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| Elysia (GET /posts/:id) | ~320,098 | 0.0032ms | 100% |
-| **AsiJS (GET /posts/:id)** | ~273,989 | 0.0038ms | 85.6% |
-| Hono (GET /posts/:id) | ~195,105 | 0.0052ms | 61.0% |
-
-### Blog API - POST /posts (auth + validation)
-
-| Framework | Requests/sec | Latency | Relative |
-|-----------|-------------|---------|----------|
-| **AsiJS (POST /posts)** | ~161,090 | 0.0063ms | **100%** |
-| Elysia (POST /posts) | ~137,068 | 0.0074ms | 85.1% |
-| Hono (POST /posts) | ~109,381 | 0.0092ms | 67.9% |
-
-### Key Takeaways
-
-- 🚀 **Middleware chains** land at ~46% of Elysia while staying ahead of Hono
-- ✅ **Complex validation** is effectively on par with Elysia in production
-- 📦 **Static files** reach ~65% (small) and ~86% (2MB) of Hono
-- ⚡ **JSX rendering** leads the field; string templates stay competitive
-- 🧪 **Blog API** shows AsiJS leading on POST and near-parity on GET list
-
-Run benchmarks yourself:
-```bash
-bun run bench:production
-```
-
-### Benchmark Notes
-
-- All frameworks use explicit `request.json()` parsing for fair comparison
-- Request factories used instead of `clone()` to avoid ReadableStream overhead
-- 10,000 iterations per test with 1,000 warmup iterations
-- Response status validated during warmup and benchmark
-
-## 🧪 Testing
-
-```bash
-# Run tests
-bun test
-
-# With coverage
-bun test --coverage
-```
-
-## 📁 Project Structure
-
-```
-asijs/
-├── src/
-│   ├── asi.ts          # Core framework
-│   ├── router.ts       # Router implementation
-│   ├── context.ts      # Request context
-│   ├── validation.ts   # TypeBox validation
-│   ├── compiler.ts     # Route compiler
-│   ├── jsx.ts          # JSX runtime
-│   ├── auth.ts         # JWT & authentication
-│   ├── openapi.ts      # OpenAPI generator
-│   ├── ratelimit.ts    # Rate limiting
-│   ├── security.ts     # Security headers
-│   ├── cache.ts        # Response caching
-│   ├── trace.ts        # Tracing & metrics
-│   ├── scheduler.ts    # Background tasks
-│   ├── lifecycle.ts    # Graceful shutdown
-│   ├── mcp.ts          # MCP server
-│   └── plugins/        # Built-in plugins
-├── examples/           # Example applications
-├── test/               # Test files
-└── bench/              # Benchmarks
-```
+- [Getting Started](docs/getting-started.md)
+- [Routing](docs/routing.md)
+- [Validation](docs/validation.md)
+- [Context](docs/context.md)
+- [Plugins](docs/plugins.md)
+- [Auth](docs/features/auth.md)
+- [OpenAPI](docs/features/openapi.md)
+- [WebSocket](docs/features/websocket.md)
+- [Rate Limiting](docs/features/rate-limiting.md)
+- [Caching](docs/features/caching.md)
+- [Security](docs/features/security.md)
+- [SSG](docs/features/ssg.md)
+- [MCP](docs/features/mcp.md)
+- [API Versioning](docs/features/api-versioning.md)
+- [Circuit Breaker](docs/features/circuit-breaker.md)
+- [Framework Adapters](docs/features/adapters.md)
+- [Benchmarks](docs/benchmarks/)
+- [Migration Guide](docs/migration/)
 
 ## 🤝 Contributing
 
@@ -503,18 +682,9 @@ Contributions are welcome! Please read our contributing guidelines before submit
 4. Push to the branch (`git push origin feature/amazing`)
 5. Open a Pull Request
 
-## � Migrating from Elysia/Hono
+## 📝 License
 
-Coming from another framework? Check out our **[Migration Guide](MIGRATION.md)** with:
-
-- 📋 Side-by-side API comparison tables
-- 🔀 Code conversion examples
-- ✅ Step-by-step migration checklist
-- 🗺️ Feature mapping reference
-
-## �📝 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE) file for details.
 
 ## 🙏 Credits
 

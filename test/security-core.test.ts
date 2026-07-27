@@ -1,0 +1,430 @@
+import { describe, test, expect } from "bun:test";
+import { Asi } from "../src/asi";
+import {
+  SecurityManager,
+  parseSize,
+  maxSecurity,
+  apiSecurityCore,
+  devSecurity,
+  type SecurityConfig,
+} from "../src/security-core";
+
+// ============================================================================
+// parseSize
+// ============================================================================
+
+describe("parseSize()", () => {
+  test("parses bytes", () => {
+    expect(parseSize("500b")).toBe(500);
+    expect(parseSize("0b")).toBe(0);
+  });
+
+  test("parses kilobytes", () => {
+    expect(parseSize("1kb")).toBe(1024);
+    expect(parseSize("256kb")).toBe(262144);
+  });
+
+  test("parses megabytes", () => {
+    expect(parseSize("1mb")).toBe(1048576);
+    expect(parseSize("10mb")).toBe(10485760);
+  });
+
+  test("parses gigabytes", () => {
+    expect(parseSize("1gb")).toBe(1073741824);
+  });
+
+  test("handles numeric input", () => {
+    expect(parseSize(5000)).toBe(5000);
+    expect(parseSize(0)).toBe(0);
+  });
+
+  test("returns 0 for false (disabled)", () => {
+    expect(parseSize(false)).toBe(0);
+  });
+
+  test("returns 0 for invalid strings", () => {
+    expect(parseSize("invalid")).toBe(0);
+    expect(parseSize("10xyz")).toBe(0);
+  });
+
+  test("is case-insensitive", () => {
+    expect(parseSize("1MB")).toBe(1048576);
+    expect(parseSize("10KB")).toBe(10240);
+  });
+});
+
+// ============================================================================
+// SecurityManager — constructor and getters
+// ============================================================================
+
+describe("SecurityManager", () => {
+  test("applies defaults when config is true", () => {
+    const mgr = new SecurityManager(true);
+    const cfg = mgr.getConfig();
+
+    expect(cfg.autoEscape).toBe(true);
+    expect(cfg.maxBodySize).toBe("1mb");
+    expect(cfg.autoNonce).toBe(true);
+    expect(cfg.strictContentType).toBe("json-only");
+    expect(cfg.headers).toBe(true);
+    expect(cfg.warnInDev).toBe(true);
+    expect(cfg.xssScan).toBe(true);
+    expect(Array.isArray(cfg.skipPaths)).toBe(true);
+  });
+
+  test("merges custom config with defaults", () => {
+    const mgr = new SecurityManager({ autoEscape: false, maxBodySize: "10mb" });
+    const cfg = mgr.getConfig();
+
+    expect(cfg.autoEscape).toBe(false);
+    expect(cfg.maxBodySize).toBe("10mb");
+    expect(cfg.autoNonce).toBe(true); // Default
+    expect(cfg.strictContentType).toBe("json-only"); // Default
+  });
+
+  test("getMaxBodySize returns bytes", () => {
+    const mgr = new SecurityManager({ maxBodySize: "2mb" });
+    expect(mgr.getMaxBodySize()).toBe(2097152);
+  });
+
+  test("getMaxBodySize returns 0 when disabled", () => {
+    const mgr = new SecurityManager({ maxBodySize: false });
+    expect(mgr.getMaxBodySize()).toBe(0);
+  });
+
+  test("shouldSkip matches paths correctly", () => {
+    const mgr = new SecurityManager({ skipPaths: ["/webhooks", "/health"] });
+
+    expect(mgr.shouldSkip("/webhooks/stripe")).toBe(true);
+    expect(mgr.shouldSkip("/health")).toBe(true);
+    expect(mgr.shouldSkip("/api/users")).toBe(false);
+    expect(mgr.shouldSkip("/")).toBe(false);
+  });
+
+  test("buildMiddleware returns middleware array", () => {
+    const mgr = new SecurityManager(true);
+    const mw = mgr.buildMiddleware({ development: true });
+
+    expect(Array.isArray(mw)).toBe(true);
+    expect(mw.length).toBeGreaterThanOrEqual(3); // At least body size, contentType, nonce, headers
+  });
+
+  test("buildMiddleware returns fewer middleware when features disabled", () => {
+    const mgr = new SecurityManager({
+      autoEscape: false,
+      maxBodySize: false,
+      autoNonce: false,
+      strictContentType: false,
+      headers: false,
+      warnInDev: false,
+      xssScan: false,
+    });
+    const mw = mgr.buildMiddleware();
+
+    // Only skip wrapper (which is NOOP) remains
+    expect(mw.length).toBe(1);
+  });
+});
+
+// ============================================================================
+// Presets
+// ============================================================================
+
+describe("Security presets", () => {
+  test("maxSecurity has strictest settings", () => {
+    expect(maxSecurity.autoEscape).toBe(true);
+    expect(maxSecurity.maxBodySize).toBe("256kb");
+    expect(maxSecurity.autoNonce).toBe(true);
+    expect(maxSecurity.strictContentType).toBe("strict");
+    expect(maxSecurity.xssScan).toBe(true);
+  });
+
+  test("apiSecurityCore is optimized for APIs", () => {
+    expect(apiSecurityCore.autoEscape).toBe(true);
+    expect(apiSecurityCore.maxBodySize).toBe("10mb");
+    expect(apiSecurityCore.autoNonce).toBe(false);
+    expect(apiSecurityCore.strictContentType).toBe("json-only");
+    expect(apiSecurityCore.xssScan).toBe(false);
+  });
+
+  test("devSecurity is relaxed", () => {
+    expect(devSecurity.autoEscape).toBe(true);
+    expect(devSecurity.maxBodySize).toBe("100mb");
+    expect(devSecurity.autoNonce).toBe(false);
+    expect(devSecurity.strictContentType).toBe("loose");
+    expect(devSecurity.headers).toBe(false);
+  });
+});
+
+// ============================================================================
+// Integration with AsiConfig
+// ============================================================================
+
+describe("Integration with AsiConfig", () => {
+  test("creates app with security: true", () => {
+    const app = new Asi({ silent: true, security: true });
+    app.get("/", () => "hello");
+    expect(app).toBeDefined();
+  });
+
+  test("creates app with security config object", () => {
+    const app = new Asi({
+      silent: true,
+      security: {
+        autoEscape: true,
+        maxBodySize: "5mb",
+        autoNonce: false,
+        strictContentType: "json-only",
+      },
+    });
+    app.get("/test", () => "ok");
+    expect(app).toBeDefined();
+  });
+
+  test("creates app with security: false (no security)", () => {
+    const app = new Asi({ silent: true, security: false });
+    app.get("/", () => "hello");
+    expect(app).toBeDefined();
+  });
+
+  test("auto-escape escapes HTML in string responses when security is true", async () => {
+    const app = new Asi({ silent: true, security: { autoEscape: true, maxBodySize: false, autoNonce: false, strictContentType: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.get("/xss", () => '<script>alert("xss")</script>');
+
+    const res = await app.handle(new Request("http://localhost/xss"));
+    const body = await res.text();
+
+    expect(body).not.toContain("<script>");
+    expect(body).toContain("&lt;script&gt;");
+    expect(body).toContain("&quot;xss&quot;");
+  });
+
+  test("auto-escape escapes HTML in string responses with numbers/booleans", async () => {
+    const app = new Asi({ silent: true, security: { autoEscape: true, maxBodySize: false, autoNonce: false, strictContentType: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.get("/number", () => 123 as unknown as string);
+    app.get("/bool", () => true as unknown as string);
+
+    const numRes = await app.handle(new Request("http://localhost/number"));
+    expect(await numRes.text()).toBe("123");
+
+    const boolRes = await app.handle(new Request("http://localhost/bool"));
+    expect(await boolRes.text()).toBe("true");
+  });
+
+  test("auto-escape does not affect JSON responses", async () => {
+    const app = new Asi({ silent: true, security: { autoEscape: true, maxBodySize: false, autoNonce: false, strictContentType: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.get("/json", () => ({ message: "<script>alert(1)</script>" }));
+
+    const res = await app.handle(new Request("http://localhost/json"));
+    const body = await res.json();
+
+    // JSON should NOT be escaped
+    expect(body.message).toBe("<script>alert(1)</script>");
+  });
+
+  test("auto-escape does not affect Response objects", async () => {
+    const app = new Asi({ silent: true, security: { autoEscape: true, maxBodySize: false, autoNonce: false, strictContentType: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.get("/response", () => new Response("<b>bold</b>", {
+      headers: { "Content-Type": "text/html" },
+    }));
+
+    const res = await app.handle(new Request("http://localhost/response"));
+    const body = await res.text();
+
+    // Response objects should not be escaped (they may be intentional HTML)
+    expect(body).toBe("<b>bold</b>");
+  });
+
+  test("body size limit rejects large requests", async () => {
+    const app = new Asi({ silent: true, security: { maxBodySize: "100b", autoEscape: false, autoNonce: false, strictContentType: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.post("/submit", async (ctx) => {
+      const body = await ctx.json();
+      return { received: true };
+    });
+
+    // Request with large body (Content-Length exceeds limit)
+    const res = await app.handle(
+      new Request("http://localhost/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": "500" },
+        body: JSON.stringify({ data: "x".repeat(500) }),
+      }),
+    );
+
+    expect(res.status).toBe(413);
+    const json = await res.json();
+    expect(json.error).toBe("Request Entity Too Large");
+  });
+
+  test("body size limit allows valid requests", async () => {
+    const app = new Asi({ silent: true, security: { maxBodySize: "10mb", autoEscape: false, autoNonce: false, strictContentType: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.post("/submit", async (ctx) => {
+      const body = await ctx.json();
+      return { received: body.name };
+    });
+
+    const res = await app.handle(
+      new Request("http://localhost/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "test" }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.received).toBe("test");
+  });
+
+  test("strictContentType rejects non-JSON on mutating methods", async () => {
+    const app = new Asi({ silent: true, security: { strictContentType: "json-only", autoEscape: false, maxBodySize: false, autoNonce: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.post("/data", async (ctx) => ({ ok: true }));
+
+    const res = await app.handle(
+      new Request("http://localhost/data", {
+        method: "POST",
+        headers: { "Content-Type": "text/html" },
+        body: "<html></html>",
+      }),
+    );
+
+    expect(res.status).toBe(415);
+    const json = await res.json();
+    expect(json.error).toBe("Unsupported Media Type");
+  });
+
+  test("strictContentType allows GET/HEAD/DELETE without checking", async () => {
+    const app = new Asi({ silent: true, security: { strictContentType: "json-only", autoEscape: false, maxBodySize: false, autoNonce: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.get("/items", () => [{ id: 1 }]);
+    app.delete("/items/1", () => ({ deleted: true }));
+
+    const getRes = await app.handle(
+      new Request("http://localhost/items", {
+        headers: { "Content-Type": "text/plain" },
+      }),
+    );
+    expect(getRes.status).toBe(200);
+
+    const delRes = await app.handle(
+      new Request("http://localhost/items/1", {
+        method: "DELETE",
+        headers: { "Content-Type": "text/plain" },
+      }),
+    );
+    expect(delRes.status).toBe(200);
+  });
+
+  test("strictContentType allows form data", async () => {
+    const app = new Asi({ silent: true, security: { strictContentType: "json-only", autoEscape: false, maxBodySize: false, autoNonce: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.post("/form", async (ctx) => {
+      const fd = await ctx.formData();
+      return { name: fd.get("name") };
+    });
+
+    const formData = new FormData();
+    formData.append("name", "test");
+
+    const res = await app.handle(
+      new Request("http://localhost/form", {
+        method: "POST",
+        body: formData,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.name).toBe("test");
+  });
+
+  test("security headers are applied when headers: true", async () => {
+    const app = new Asi({ silent: true, security: { headers: true, autoEscape: false, maxBodySize: false, autoNonce: false, strictContentType: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.get("/", () => "hello");
+
+    const res = await app.handle(new Request("http://localhost/"));
+    const headers = res.headers;
+
+    expect(headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(headers.get("X-Frame-Options")).toBe("DENY");
+    expect(headers.get("X-XSS-Protection")).toBe("0");
+    expect(headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(headers.get("Content-Security-Policy")).toBeTruthy();
+  });
+
+  test("autoNonce adds cspNonce to ctx.store", async () => {
+    const app = new Asi({ silent: true, security: { autoNonce: true, autoEscape: false, maxBodySize: false, strictContentType: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.get("/nonce", (ctx) => {
+      return { nonce: (ctx.store as any).cspNonce };
+    });
+
+    const res = await app.handle(new Request("http://localhost/nonce"));
+    const json = await res.json();
+
+    expect(json.nonce).toBeTruthy();
+    expect(typeof json.nonce).toBe("string");
+    expect(json.nonce.length).toBeGreaterThan(10);
+  });
+
+  test("skipPaths bypasses security middleware", async () => {
+    const app = new Asi({ silent: true, security: { strictContentType: "json-only", skipPaths: ["/webhooks"], autoEscape: false, maxBodySize: false, autoNonce: false, headers: false, warnInDev: false, xssScan: false } });
+    app.post("/webhooks/stripe", async (ctx) => {
+      return { received: true };
+    });
+
+    // Should NOT be rejected even though it's a POST without JSON content type
+    const res = await app.handle(
+      new Request("http://localhost/webhooks/stripe", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "raw data",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  test("security: false disables all protections", async () => {
+    const app = new Asi({ silent: true, security: false });
+    app.get("/", () => "<script>alert(1)</script>");
+
+    const res = await app.handle(new Request("http://localhost/"));
+    const body = await res.text();
+
+    // No auto-escape
+    expect(body).toContain("<script>");
+  });
+});
+
+// ============================================================================
+// Edge Cases
+// ============================================================================
+
+describe("Edge cases", () => {
+  test("presets are valid SecurityConfig objects", () => {
+    const presets: SecurityConfig[] = [maxSecurity, apiSecurityCore, devSecurity];
+    for (const preset of presets) {
+      expect(preset).toBeDefined();
+      expect(typeof preset).toBe("object");
+    }
+  });
+
+  test("SecurityManager handles boolean true correctly", () => {
+    const mgr = new SecurityManager(true);
+    expect(mgr.getConfig().autoEscape).toBe(true);
+    expect(mgr.getConfig().maxBodySize).toBe("1mb");
+  });
+
+  test("body size limit accepts requests without Content-Length", async () => {
+    const app = new Asi({ silent: true, security: { maxBodySize: "1mb", autoEscape: false, autoNonce: false, strictContentType: false, headers: false, warnInDev: false, xssScan: false, skipPaths: [] } });
+    app.get("/no-length", () => "ok");
+
+    const res = await app.handle(new Request("http://localhost/no-length"));
+    expect(res.status).toBe(200);
+  });
+
+  test("works with compiled routes", () => {
+    const app = new Asi({ silent: true, security: true });
+    app.get("/", () => "hello");
+    app.compile();
+    expect(app).toBeDefined();
+  });
+});
