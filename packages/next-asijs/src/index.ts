@@ -1,5 +1,5 @@
 /**
- * @asijs/next — Next.js API Route adapter for AsiJS
+ * asijs-next — Next.js API Route adapter for AsiJS
  *
  * Allows running an AsiJS application as Next.js API routes.
  * Supports App Router (route.ts) and Pages Router (pages/api/*.ts).
@@ -8,7 +8,7 @@
  * ```ts
  * // app/api/[[...asi]]/route.ts (App Router)
  * import { Asi } from "asijs";
- * import { createNextHandler } from "@asijs/next";
+ * import { createNextHandler } from "asijs-next";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => ({ message: "Hello from AsiJS!" }));
@@ -22,7 +22,7 @@
  * ```ts
  * // pages/api/[[...asi]].ts (Pages Router)
  * import { Asi } from "asijs";
- * import { createPagesHandler } from "@asijs/next";
+ * import { createPagesHandler } from "asijs-next";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => ({ message: "Hello from AsiJS!" }));
@@ -68,7 +68,7 @@ type NextResponse = Response;
  * ```ts
  * // app/api/[[...asi]]/route.ts
  * import { Asi } from "asijs";
- * import { createNextHandler } from "@asijs/next";
+ * import { createNextHandler } from "asijs-next";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello!");
@@ -132,7 +132,7 @@ type NextApiResponse = {
  * ```ts
  * // pages/api/[[...asi]].ts
  * import { Asi } from "asijs";
- * import { createPagesHandler } from "@asijs/next";
+ * import { createPagesHandler } from "asijs-next";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello!");
@@ -198,7 +198,7 @@ export function createPagesHandler(
         const body = await errResponse.text();
         res.send(body || "");
       } else {
-        console.error("[@asijs/next] Error:", error);
+        console.error("[asijs-next] Error:", error);
         res.status(500).json({ error: "Internal Server Error" });
       }
     }
@@ -226,14 +226,14 @@ function createHandler(app: Asi, options: NextAdapterOptions = {}) {
       }
 
       if (verbose) {
-        console.log(`[@asijs/next] ${req.method} ${new URL(req.url).pathname}`);
+        console.log(`[asijs-next] ${req.method} ${new URL(req.url).pathname}`);
       }
 
       // Handle via AsiJS
       return await app.handle(req);
     } catch (error) {
       if (verbose) {
-        console.error(`[@asijs/next] Error:`, error);
+        console.error(`[asijs-next] Error:`, error);
       }
 
       if (options.onError) {

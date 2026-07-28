@@ -1,6 +1,6 @@
 {
-  "name": "@asijs/next",
-  "version": "0.1.0",
+  "name": "asijs-next",
+  "version": "1.0.0",
   "description": "Next.js adapter for AsiJS — run AsiJS as API routes in Next.js",
   "type": "module",
   "main": "./dist/index.js",

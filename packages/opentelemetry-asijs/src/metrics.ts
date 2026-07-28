@@ -9,7 +9,7 @@
  *
  * @example
  * ```ts
- * import { otelPlugin, metricsManager } from "@asijs/opentelemetry";
+ * import { otelPlugin, metricsManager } from "asijs-opentelemetry";
  *
  * // Via plugin
  * app.plugin(otelPlugin({
@@ -177,7 +177,7 @@ class MetricsManager {
       metricsSDK = await import("@opentelemetry/sdk-metrics");
     } catch {
       console.warn(
-        "[@asijs/opentelemetry] @opentelemetry/sdk-metrics not found — metrics disabled",
+        "[asijs-opentelemetry] @opentelemetry/sdk-metrics not found — metrics disabled",
       );
       return;
     }
@@ -325,13 +325,13 @@ class MetricsManager {
 
         default:
           console.warn(
-            `[@asijs/opentelemetry] Unknown metric exporter: ${type}`,
+            `[asijs-opentelemetry] Unknown metric exporter: ${type}`,
           );
           return null;
       }
     } catch (error) {
       console.warn(
-        `[@asijs/opentelemetry] Failed to load metric exporter "${type}":`,
+        `[asijs-opentelemetry] Failed to load metric exporter "${type}":`,
         error instanceof Error ? error.message : error,
       );
       return null;

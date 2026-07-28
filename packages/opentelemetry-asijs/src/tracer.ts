@@ -10,7 +10,7 @@
  *
  * @example
  * ```ts
- * import { tracerManager } from "@asijs/opentelemetry";
+ * import { tracerManager } from "asijs-opentelemetry";
  *
  * await tracerManager.configure({
  *   serviceName: "my-api",
@@ -112,7 +112,7 @@ class TracerManager {
     const otelApi = await this._loadOTelAPI();
     if (!otelApi) {
       console.warn(
-        "[@asijs/opentelemetry] @opentelemetry/api not found — tracing disabled",
+        "[asijs-opentelemetry] @opentelemetry/api not found — tracing disabled",
       );
       return;
     }
@@ -122,7 +122,7 @@ class TracerManager {
     const sdk = await this._loadSDK();
     if (!sdk?.BasicTracerProvider) {
       console.warn(
-        "[@asijs/opentelemetry] @opentelemetry/sdk-trace-base not found — tracing disabled",
+        "[asijs-opentelemetry] @opentelemetry/sdk-trace-base not found — tracing disabled",
       );
       return;
     }
@@ -145,8 +145,8 @@ class TracerManager {
 
     // Register as global
     const registerResult = provider.register();
-    if (registerResult && typeof registerResult === "object") {
-      // Some OTel versions return a disposable
+    // Some OTel versions return void, others return a disposable object
+    if (typeof registerResult !== "undefined") {
       this._disposeRegistration = registerResult;
     }
 
@@ -420,13 +420,13 @@ class TracerManager {
 
         default:
           console.warn(
-            `[@asijs/opentelemetry] Unknown trace exporter: ${type}`,
+            `[asijs-opentelemetry] Unknown trace exporter: ${type}`,
           );
           return null;
       }
     } catch (error) {
       console.warn(
-        `[@asijs/opentelemetry] Failed to load exporter "${type}":`,
+        `[asijs-opentelemetry] Failed to load exporter "${type}":`,
         error instanceof Error ? error.message : error,
       );
       return null;

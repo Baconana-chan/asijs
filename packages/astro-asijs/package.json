@@ -1,6 +1,6 @@
 {
-  "name": "@asijs/astro",
-  "version": "0.1.0",
+  "name": "asijs-astro",
+  "version": "1.0.0",
   "description": "Astro adapter for AsiJS — run AsiJS as Astro server endpoints and API routes",
   "type": "module",
   "main": "./dist/index.js",

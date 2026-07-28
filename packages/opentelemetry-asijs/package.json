@@ -1,6 +1,6 @@
 {
-  "name": "@asijs/opentelemetry",
-  "version": "0.1.0",
+  "name": "asijs-opentelemetry",
+  "version": "1.0.0",
   "description": "OpenTelemetry integration for AsiJS — auto-instrumentation, traces, metrics, and logs via OTel SDK",
   "keywords": [
     "asijs",
@@ -26,7 +26,7 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "asijs": "workspace:*",
+    "asijs": "^1.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/sdk-trace-base": "^1.30.0",
     "@opentelemetry/sdk-metrics": "^1.30.0",
@@ -36,8 +36,10 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
     "@opentelemetry/exporter-metrics-otlp-grpc": "^0.57.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.57.0",
-    "@opentelemetry/exporter-jaeger": "^0.57.0",
-    "@opentelemetry/exporter-zipkin": "^0.57.0",
+    "@opentelemetry/exporter-logs-otlp-grpc": "^0.57.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
+    "@opentelemetry/exporter-jaeger": "^2.0.0",
+    "@opentelemetry/exporter-zipkin": "^2.0.0",
     "@opentelemetry/semantic-conventions": "^1.30.0",
     "@opentelemetry/context-zone-peer-dep": "^1.30.0"
   },
@@ -65,6 +67,12 @@
     },
     "@opentelemetry/api-logs": {
       "optional": true
+    },
+    "@opentelemetry/exporter-logs-otlp-grpc": {
+      "optional": true
+    },
+    "@opentelemetry/exporter-logs-otlp-http": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -77,13 +85,12 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
     "@opentelemetry/exporter-metrics-otlp-grpc": "^0.57.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.57.0",
-    "@opentelemetry/exporter-jaeger": "^0.57.0",
-    "@opentelemetry/exporter-zipkin": "^0.57.0",
+    "@opentelemetry/exporter-logs-otlp-grpc": "^0.57.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
+    "@opentelemetry/exporter-jaeger": "^2.0.0",
+    "@opentelemetry/exporter-zipkin": "^2.0.0",
     "@opentelemetry/semantic-conventions": "^1.30.0",
-    "asijs": "workspace:*",
+    "asijs": "file:../..",
     "typescript": "^5.0.0"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

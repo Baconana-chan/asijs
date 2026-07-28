@@ -1,11 +1,11 @@
-# @asijs/remix — Remix adapter for AsiJS
+# asijs-remix — Remix adapter for AsiJS
 
 Run your AsiJS application as [Remix](https://remix.run) loaders, actions, and resource routes.
 
 ## Installation
 
 ```bash
-bun add @asijs/remix
+bun add asijs-remix
 ```
 
 > Requires `asijs` and `@remix-run/node` as peer dependencies.
@@ -17,7 +17,7 @@ bun add @asijs/remix
 ```ts
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { Asi } from "asijs";
-import { createRemixHandler } from "@asijs/remix";
+import { createRemixHandler } from "asijs-remix";
 
 const app = new Asi();
 app.get("/api/hello", () => ({ message: "Hello from AsiJS + Remix!" }));
@@ -33,7 +33,7 @@ export const { loader, action } = createRemixHandler(app);
 ### Separate loader/action
 
 ```ts
-import { createLoader, createAction } from "@asijs/remix";
+import { createLoader, createAction } from "asijs-remix";
 
 // Only handles GET — other methods return 405
 export const loader = createLoader(app);

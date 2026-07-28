@@ -1,5 +1,5 @@
 /**
- * @asijs/astro — Astro adapter for AsiJS
+ * asijs-astro — Astro adapter for AsiJS
  *
  * Allows running an AsiJS application as Astro server endpoints and API routes.
  *
@@ -7,7 +7,7 @@
  * ```ts
  * // src/pages/api/[...asi].ts (Astro pages router)
  * import { Asi } from "asijs";
- * import { createAstroHandler } from "@asijs/astro";
+ * import { createAstroHandler } from "asijs-astro";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => ({ message: "Hello from AsiJS!" }));
@@ -19,7 +19,7 @@
  * ```ts
  * // src/pages/api/hello.ts (single endpoint)
  * import { Asi } from "asijs";
- * import { createEndpoint } from "@asijs/astro";
+ * import { createEndpoint } from "asijs-astro";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello!");
@@ -72,7 +72,7 @@ type AstroEndpoint = (context: AstroAPIContext) => Promise<Response>;
  * ```ts
  * // src/pages/api/[...asi].ts
  * import { Asi } from "asijs";
- * import { createAstroHandler } from "@asijs/astro";
+ * import { createAstroHandler } from "asijs-astro";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello!");
@@ -104,7 +104,7 @@ export function createAstroHandler(
       enrichedReq._astroContext = context;
 
       if (verbose) {
-        console.log(`[@asijs/astro] ${request.method} ${url.pathname}`);
+        console.log(`[asijs-astro] ${request.method} ${url.pathname}`);
       }
 
       const response = await app.handle(enrichedReq);
@@ -112,7 +112,7 @@ export function createAstroHandler(
       return response;
     } catch (error) {
       if (verbose) {
-        console.error(`[@asijs/astro] Error:`, error);
+        console.error(`[asijs-astro] Error:`, error);
       }
 
       if (options.onError) {
@@ -137,7 +137,7 @@ export function createAstroHandler(
  * ```ts
  * // src/pages/api/hello.ts
  * import { Asi } from "asijs";
- * import { createEndpoint } from "@asijs/astro";
+ * import { createEndpoint } from "asijs-astro";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello!");
@@ -170,7 +170,7 @@ export function createEndpoint(
  * ```ts
  * // src/middleware.ts
  * import { Asi } from "asijs";
- * import { createAstroMiddleware } from "@asijs/astro";
+ * import { createAstroMiddleware } from "asijs-astro";
  *
  * const app = new Asi();
  * app.get("/api/*", (ctx) => ctx.json({ message: "Hello!" }));

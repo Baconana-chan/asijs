@@ -1,11 +1,11 @@
-# @asijs/sveltekit — SvelteKit adapter for AsiJS
+# asijs-sveltekit — SvelteKit adapter for AsiJS
 
 Run your AsiJS application as [SvelteKit](https://kit.svelte.dev) server hooks and API endpoints.
 
 ## Installation
 
 ```bash
-bun add @asijs/sveltekit
+bun add asijs-sveltekit
 ```
 
 > Requires `asijs` and `@sveltejs/kit` as peer dependencies.
@@ -18,7 +18,7 @@ Intercept all requests and route matching paths through AsiJS:
 
 ```ts
 import { Asi } from "asijs";
-import { createSvelteKitHook } from "@asijs/sveltekit";
+import { createSvelteKitHook } from "asijs-sveltekit";
 
 const app = new Asi();
 app.get("/api/hello", () => ({ message: "Hello from AsiJS + SvelteKit!" }));
@@ -35,7 +35,7 @@ export const handle = createSvelteKitHook(app, { basePath: "/api" });
 
 ```ts
 import { Asi } from "asijs";
-import { createUniversalHandler } from "@asijs/sveltekit";
+import { createUniversalHandler } from "asijs-sveltekit";
 
 const app = new Asi();
 app.get("/api/hello", () => "Hello!");
@@ -47,7 +47,7 @@ export const POST = createUniversalHandler(app);
 ### Method-specific endpoint
 
 ```ts
-import { createServerHandler } from "@asijs/sveltekit";
+import { createServerHandler } from "asijs-sveltekit";
 
 export const GET = createServerHandler(app, "GET");  // Only GET — 405 for others
 export const POST = createServerHandler(app, "POST");

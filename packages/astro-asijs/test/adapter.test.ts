@@ -1,5 +1,5 @@
 /**
- * Tests for @asijs/astro — Astro adapter
+ * Tests for asijs-astro — Astro adapter
  */
 
 import { describe, test, expect } from "bun:test";
@@ -40,7 +40,7 @@ function mockAstroContext(path: string, options: { method?: string; body?: any }
 // Tests
 // ============================================================================
 
-describe("@asijs/astro", () => {
+describe("asijs-astro", () => {
   test("createAstroHandler returns endpoint function", () => {
     const app = new Asi({ development: false, silent: true });
     app.get("/api/hello", () => ({ message: "Hello!" }));

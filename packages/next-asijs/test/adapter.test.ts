@@ -1,5 +1,5 @@
 /**
- * Tests for @asijs/next — Next.js adapter
+ * Tests for asijs-next — Next.js adapter
  */
 
 import { describe, test, expect } from "bun:test";
@@ -59,7 +59,7 @@ function mockPagesRequest(path: string, options: { method?: string; body?: any }
 // Tests
 // ============================================================================
 
-describe("@asijs/next — App Router", () => {
+describe("asijs-next — App Router", () => {
   test("createNextHandler returns method handlers", () => {
     const app = new Asi({ development: false, silent: true });
     app.get("/api/hello", () => ({ message: "Hello!" }));
@@ -134,7 +134,7 @@ describe("@asijs/next — App Router", () => {
   });
 });
 
-describe("@asijs/next — Pages Router", () => {
+describe("asijs-next — Pages Router", () => {
   test("createPagesHandler returns handler function", () => {
     const app = new Asi({ development: false, silent: true });
     app.get("/api/hello", () => ({ message: "Hello!" }));

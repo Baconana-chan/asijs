@@ -7,7 +7,7 @@
  *
  * @example
  * ```ts
- * import { otelPlugin, logsManager } from "@asijs/opentelemetry";
+ * import { otelPlugin, logsManager } from "asijs-opentelemetry";
  *
  * // Via plugin
  * app.plugin(otelPlugin({
@@ -136,7 +136,7 @@ class LogsManager {
       apiLogs = await import("@opentelemetry/api-logs");
     } catch {
       console.warn(
-        "[@asijs/opentelemetry] @opentelemetry/sdk-logs or @opentelemetry/api-logs not found — logs disabled",
+        "[asijs-opentelemetry] @opentelemetry/sdk-logs or @opentelemetry/api-logs not found — logs disabled",
       );
       return;
     }
@@ -366,7 +366,7 @@ class LogsManager {
             .catch(() => null);
           if (!mod) {
             console.warn(
-              "[@asijs/opentelemetry] @opentelemetry/exporter-logs-otlp-grpc not available",
+              "[asijs-opentelemetry] @opentelemetry/exporter-logs-otlp-grpc not available",
             );
             return null;
           }
@@ -381,7 +381,7 @@ class LogsManager {
             .catch(() => null);
           if (!mod) {
             console.warn(
-              "[@asijs/opentelemetry] @opentelemetry/exporter-logs-otlp-http not available",
+              "[asijs-opentelemetry] @opentelemetry/exporter-logs-otlp-http not available",
             );
             return null;
           }
@@ -393,13 +393,13 @@ class LogsManager {
 
         default:
           console.warn(
-            `[@asijs/opentelemetry] Unknown log exporter: ${type}`,
+            `[asijs-opentelemetry] Unknown log exporter: ${type}`,
           );
           return null;
       }
     } catch (error) {
       console.warn(
-        `[@asijs/opentelemetry] Failed to load log exporter "${type}":`,
+        `[asijs-opentelemetry] Failed to load log exporter "${type}":`,
         error instanceof Error ? error.message : error,
       );
       return null;

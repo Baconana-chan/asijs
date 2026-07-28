@@ -12,7 +12,7 @@
  *
  * @example
  * ```ts
- * import { otelPlugin } from "@asijs/opentelemetry";
+ * import { otelPlugin } from "asijs-opentelemetry";
  *
  * app.plugin(otelPlugin({
  *   instrument: {

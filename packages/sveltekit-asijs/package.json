@@ -1,6 +1,6 @@
 {
-  "name": "@asijs/sveltekit",
-  "version": "0.1.0",
+  "name": "asijs-sveltekit",
+  "version": "1.0.0",
   "description": "SvelteKit adapter for AsiJS — run AsiJS as SvelteKit server hooks and API endpoints",
   "type": "module",
   "main": "./dist/index.js",

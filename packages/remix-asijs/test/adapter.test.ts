@@ -1,5 +1,5 @@
 /**
- * Tests for @asijs/remix — Remix adapter
+ * Tests for asijs-remix — Remix adapter
  */
 
 import { describe, test, expect } from "bun:test";
@@ -28,7 +28,7 @@ function mockRemixArgs(path: string, options: { method?: string; body?: any } = 
 // Tests
 // ============================================================================
 
-describe("@asijs/remix", () => {
+describe("asijs-remix", () => {
   test("createRemixHandler returns loader and action", () => {
     const app = new Asi({ development: false, silent: true });
     app.get("/api/hello", () => ({ message: "Hello!" }));

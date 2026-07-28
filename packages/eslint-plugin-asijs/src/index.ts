@@ -28,7 +28,7 @@ const noUnusedRoute: Rule.RuleModule = {
     },
     schema: [],
   },
-  create(context) {
+  create(context: Rule.RuleContext) {
     const routes: Array<{ method: string; path: string; node: any }> = [];
 
     return {
@@ -86,7 +86,7 @@ const noMissingHandler: Rule.RuleModule = {
     },
     schema: [],
   },
-  create(context) {
+  create(context: Rule.RuleContext) {
     return {
       CallExpression(node: any) {
         const callee = node.callee;
@@ -132,7 +132,7 @@ const noDuplicateRoute: Rule.RuleModule = {
     },
     schema: [],
   },
-  create(context) {
+  create(context: Rule.RuleContext) {
     const routeMap = new Map<string, { line: number; node: any }>();
 
     return {
@@ -157,7 +157,7 @@ const noDuplicateRoute: Rule.RuleModule = {
                 context.report({
                   node,
                   messageId: "duplicateRoute",
-                  data: { method: method.toUpperCase(), path: pathArg.value, firstLine: existing.line },
+                  data: { method: method.toUpperCase(), path: pathArg.value, firstLine: String(existing.line) },
                 });
               } else {
                 routeMap.set(key, { line, node });

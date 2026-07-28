@@ -138,7 +138,9 @@
     "docs:preview": "vitepress preview docs",
     "check": "bun run typecheck && bun test",
     "prepublishOnly": "bun run check && bun run build",
-    "publish:jsr": "bunx jsr publish"
+    "publish:jsr": "bunx jsr publish",
+    "publish:packages": "bash scripts/publish-packages.sh",
+    "publish:packages:dry": "bash scripts/publish-packages.sh --dry-run"
   },
   "keywords": [
     "bun",

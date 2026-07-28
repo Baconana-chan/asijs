@@ -1,5 +1,5 @@
 /**
- * Tests for @asijs/opentelemetry package
+ * Tests for asijs-opentelemetry package
  *
  * These tests verify:
  * - TracerManager configuration and lifecycle
@@ -263,9 +263,9 @@ describe("otelPlugin", () => {
       tracer: { serviceName: "test" },
     });
 
-    expect(plugin.name).toBe("@asijs/opentelemetry");
+    expect(plugin.name).toBe("asijs-opentelemetry");
     expect(plugin.config).toBeDefined();
-    expect(plugin.config.name).toBe("@asijs/opentelemetry");
+    expect(plugin.config.name).toBe("asijs-opentelemetry");
     expect(typeof plugin.config.setup).toBe("function");
   });
 

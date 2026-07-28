@@ -1,5 +1,5 @@
 /**
- * @asijs/opentelemetry — OpenTelemetry SDK Integration for AsiJS
+ * asijs-opentelemetry — OpenTelemetry SDK Integration for AsiJS
  *
  * Automatic instrumentation, traces, metrics, and logs via the
  * OpenTelemetry JavaScript SDK. All OTel dependencies are optional
@@ -9,7 +9,7 @@
  *
  * ```ts
  * import { Asi } from "asijs";
- * import { otelPlugin } from "@asijs/opentelemetry";
+ * import { otelPlugin } from "asijs-opentelemetry";
  *
  * const app = new Asi();
  *
@@ -37,7 +37,7 @@
  * # Standalone (without the plugin)
  *
  * ```ts
- * import { initTracing, initMetrics, tracerManager } from "@asijs/opentelemetry";
+ * import { initTracing, initMetrics, tracerManager } from "asijs-opentelemetry";
  *
  * await initTracing({
  *   serviceName: "my-service",

@@ -1,11 +1,11 @@
-# @asijs/astro — Astro adapter for AsiJS
+# asijs-astro — Astro adapter for AsiJS
 
 Run your AsiJS application as [Astro](https://astro.build) server endpoints and API routes.
 
 ## Installation
 
 ```bash
-bun add @asijs/astro
+bun add asijs-astro
 ```
 
 > Requires `asijs` and `astro` as peer dependencies.
@@ -17,7 +17,7 @@ bun add @asijs/astro
 ```ts
 import type { APIRoute } from "astro";
 import { Asi } from "asijs";
-import { createAstroHandler } from "@asijs/astro";
+import { createAstroHandler } from "asijs-astro";
 
 const app = new Asi();
 app.get("/api/hello", () => ({ message: "Hello from AsiJS + Astro!" }));
@@ -33,7 +33,7 @@ export const POST: APIRoute = createAstroHandler(app);
 ### Method-specific endpoint
 
 ```ts
-import { createEndpoint } from "@asijs/astro";
+import { createEndpoint } from "asijs-astro";
 
 // Only handle GET requests — returns 405 for other methods
 export const GET = createEndpoint(app, "GET");
@@ -42,7 +42,7 @@ export const GET = createEndpoint(app, "GET");
 ### Middleware (`src/middleware.ts`)
 
 ```ts
-import { createAstroMiddleware } from "@asijs/astro";
+import { createAstroMiddleware } from "asijs-astro";
 import { Asi } from "asijs";
 
 const app = new Asi();

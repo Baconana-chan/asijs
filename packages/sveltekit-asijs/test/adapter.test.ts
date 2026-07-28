@@ -1,5 +1,5 @@
 /**
- * Tests for @asijs/sveltekit — SvelteKit adapter
+ * Tests for asijs-sveltekit — SvelteKit adapter
  */
 
 import { describe, test, expect } from "bun:test";
@@ -40,7 +40,7 @@ function mockSvelteKitEvent(path: string, options: { method?: string; body?: any
 // Tests
 // ============================================================================
 
-describe("@asijs/sveltekit", () => {
+describe("asijs-sveltekit", () => {
   test("createSvelteKitHook returns handle function", () => {
     const app = new Asi({ development: false, silent: true });
     app.get("/api/hello", () => ({ message: "Hello!" }));

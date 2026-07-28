@@ -7,7 +7,7 @@
  * @example
  * ```ts
  * import { Asi } from "asijs";
- * import { otelPlugin } from "@asijs/opentelemetry";
+ * import { otelPlugin } from "asijs-opentelemetry";
  *
  * const app = new Asi();
  *
@@ -53,9 +53,9 @@ import { logsManager, initLogs } from "./logs";
  */
 export function otelPlugin(options: OpenTelemetryOptions = {}): AsiPlugin {
   return {
-    name: "@asijs/opentelemetry",
+    name: "asijs-opentelemetry",
     config: {
-      name: "@asijs/opentelemetry",
+      name: "asijs-opentelemetry",
       dependencies: [],
 
       async setup(app: PluginHost) {

@@ -1,11 +1,11 @@
-# @asijs/next — Next.js adapter for AsiJS
+# asijs-next — Next.js adapter for AsiJS
 
 Run your AsiJS application as [Next.js](https://nextjs.org) API routes — supports both App Router (`route.ts`) and Pages Router (`pages/api`).
 
 ## Installation
 
 ```bash
-bun add @asijs/next
+bun add asijs-next
 ```
 
 > Requires `asijs` and `next` as peer dependencies.
@@ -16,7 +16,7 @@ bun add @asijs/next
 
 ```ts
 import { Asi } from "asijs";
-import { createNextHandler } from "@asijs/next";
+import { createNextHandler } from "asijs-next";
 
 const app = new Asi();
 app.get("/api/hello", () => ({ message: "Hello from AsiJS + Next.js!" }));
@@ -33,7 +33,7 @@ export const { GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS } = createNextHandle
 
 ```ts
 import { Asi } from "asijs";
-import { createPagesHandler } from "@asijs/next";
+import { createPagesHandler } from "asijs-next";
 
 const app = new Asi();
 app.get("/api/hello", () => ({ message: "Hello!" }));
@@ -44,7 +44,7 @@ export default createPagesHandler(app);
 ### Edge Runtime
 
 ```ts
-import { createEdgeHandler } from "@asijs/next";
+import { createEdgeHandler } from "asijs-next";
 // Works with Next.js Edge Runtime (runtime: 'edge')
 export const runtime = "edge";
 export const GET = createEdgeHandler(app, "GET");

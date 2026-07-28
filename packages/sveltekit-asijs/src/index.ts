@@ -1,5 +1,5 @@
 /**
- * @asijs/sveltekit — SvelteKit adapter for AsiJS
+ * asijs-sveltekit — SvelteKit adapter for AsiJS
  *
  * Allows running an AsiJS application as SvelteKit server hooks and API endpoints.
  *
@@ -7,7 +7,7 @@
  * ```ts
  * // src/hooks.server.ts (global server hooks)
  * import { Asi } from "asijs";
- * import { createSvelteKitHook } from "@asijs/sveltekit";
+ * import { createSvelteKitHook } from "asijs-sveltekit";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => ({ message: "Hello from AsiJS!" }));
@@ -19,7 +19,7 @@
  * ```ts
  * // src/routes/api/[...asi]/+server.ts (catch-all API route)
  * import { Asi } from "asijs";
- * import { createServerHandler } from "@asijs/sveltekit";
+ * import { createServerHandler } from "asijs-sveltekit";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello!");
@@ -79,7 +79,7 @@ type ServerHook = (
  * ```ts
  * // src/hooks.server.ts
  * import { Asi } from "asijs";
- * import { createSvelteKitHook } from "@asijs/sveltekit";
+ * import { createSvelteKitHook } from "asijs-sveltekit";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello from AsiJS + SvelteKit!");
@@ -108,7 +108,7 @@ export function createSvelteKitHook(
       const { createRequest, toResponse } = convertSvelteKitRequest(event, basePath);
 
       if (verbose) {
-        console.log(`[@asijs/sveltekit] ${event.request.method} ${path}`);
+        console.log(`[asijs-sveltekit] ${event.request.method} ${path}`);
       }
 
       const response = await app.handle(createRequest());
@@ -120,7 +120,7 @@ export function createSvelteKitHook(
 
       return response;
     } catch (error) {
-      if (verbose) console.error(`[@asijs/sveltekit] Error:`, error);
+      if (verbose) console.error(`[asijs-sveltekit] Error:`, error);
 
       if (options.onError) {
         return options.onError(error instanceof Error ? error : new Error(String(error)));
@@ -143,7 +143,7 @@ export function createSvelteKitHook(
  * ```ts
  * // src/routes/api/[...asi]/+server.ts
  * import { Asi } from "asijs";
- * import { createServerHandler } from "@asijs/sveltekit";
+ * import { createServerHandler } from "asijs-sveltekit";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => ({ message: "Hello!" }));
@@ -189,7 +189,7 @@ export function createServerHandler(
  * ```ts
  * // src/routes/api/[...asi]/+server.ts
  * import { Asi } from "asijs";
- * import { createUniversalHandler } from "@asijs/sveltekit";
+ * import { createUniversalHandler } from "asijs-sveltekit";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => ({ message: "Hello!" }));

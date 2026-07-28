@@ -1,5 +1,5 @@
 /**
- * @asijs/remix — Remix adapter for AsiJS
+ * asijs-remix — Remix adapter for AsiJS
  *
  * Allows running an AsiJS application as Remix loaders, actions, and resource routes.
  *
@@ -7,7 +7,7 @@
  * ```ts
  * // app/routes/api.$.tsx (catch-all resource route)
  * import { Asi } from "asijs";
- * import { createRemixHandler } from "@asijs/remix";
+ * import { createRemixHandler } from "asijs-remix";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => ({ message: "Hello from AsiJS!" }));
@@ -21,7 +21,7 @@
  * ```ts
  * // app/routes/api.hello.ts (single endpoint)
  * import { Asi } from "asijs";
- * import { createLoader, createAction } from "@asijs/remix";
+ * import { createLoader, createAction } from "asijs-remix";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello!");
@@ -77,7 +77,7 @@ type ActionFunction = (args: ActionFunctionArgs) => Promise<Response>;
  * ```ts
  * // app/routes/api.$.tsx
  * import { Asi } from "asijs";
- * import { createRemixHandler } from "@asijs/remix";
+ * import { createRemixHandler } from "asijs-remix";
  *
  * const app = new Asi();
  * app.get("/api/hello", () => "Hello!");
@@ -107,12 +107,12 @@ export function createRemixHandler(
       }
 
       if (verbose) {
-        console.log(`[@asijs/remix] ${req.method} ${new URL(req.url).pathname}`);
+        console.log(`[asijs-remix] ${req.method} ${new URL(req.url).pathname}`);
       }
 
       return await app.handle(req);
     } catch (error) {
-      if (verbose) console.error(`[@asijs/remix] Error:`, error);
+      if (verbose) console.error(`[asijs-remix] Error:`, error);
 
       if (options.onError) {
         return options.onError(error instanceof Error ? error : new Error(String(error)));
@@ -138,7 +138,7 @@ export function createRemixHandler(
  * ```ts
  * // app/routes/users.tsx
  * import { Asi } from "asijs";
- * import { createLoader } from "@asijs/remix";
+ * import { createLoader } from "asijs-remix";
  *
  * const app = new Asi();
  * app.get("/api/users", () => [{ id: 1, name: "Alice" }]);
@@ -162,7 +162,7 @@ export function createLoader(
  * ```ts
  * // app/routes/users.tsx
  * import { Asi } from "asijs";
- * import { createAction } from "@asijs/remix";
+ * import { createAction } from "asijs-remix";
  *
  * const app = new Asi();
  * app.post("/api/users", async (ctx) => {
@@ -191,7 +191,7 @@ export function createAction(
  * ```ts
  * // app/routes/auth.login.ts
  * import { Asi } from "asijs";
- * import { createSessionHandler } from "@asijs/remix";
+ * import { createSessionHandler } from "asijs-remix";
  *
  * const app = new Asi();
  * app.post("/auth/login", async (ctx) => {

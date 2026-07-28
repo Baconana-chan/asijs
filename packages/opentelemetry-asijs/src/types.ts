@@ -1,5 +1,5 @@
 /**
- * Type definitions for @asijs/opentelemetry
+ * Type definitions for asijs-opentelemetry
  *
  * These types wrap and extend OpenTelemetry SDK types for use in AsiJS.
  * Actual OTel SDK types are re-exported when the optional peer deps are installed.
@@ -194,7 +194,7 @@ export interface OTelAPI {
   propagation: typeof import("@opentelemetry/api").propagation;
   SpanStatusCode: typeof import("@opentelemetry/api").SpanStatusCode;
   Span: import("@opentelemetry/api").Span;
-  ROOT_CONTEXT: import("@opentelemetry/api").ROOT_CONTEXT;
+  ROOT_CONTEXT: typeof import("@opentelemetry/api").ROOT_CONTEXT;
 }
 
 /** Lazy-loaded OTel SDK modules */
