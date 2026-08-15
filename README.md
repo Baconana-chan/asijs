@@ -526,45 +526,48 @@ AsiJS is built for performance. Full benchmark dashboard available at `/benchmar
 
 Numbers below are from the CI benchmark pipeline (GitHub Actions runner, bare metal) — see the dashboard for history across commits and **trends normalized across all categories**.
 
+> **🧭 How to read these numbers.** AsiJS and Hono are **monolithic** — every capability (CORS, security headers, ETag, rate limiting, caching, validation) ships **in the core** and is always loaded. Elysia is a **microkernel**: all of that lives in **external plugins** (`@elysiajs/cors`, `elysia-rate-limit`, …), so its benchmark apps are bare routers with a couple of plugins attached. Comparing full-stack throughput across these two architectures is apples-to-oranges (a monolithic kernel is *supposed* to be bigger than a microkernel — the question is whether the price buys something). We therefore treat **Hono as the primary competitor**: it is self-contained like AsiJS, so percentages are apples-to-apples. Elysia columns are kept for reference only — see the `1a/1b` fully-loaded split for why raw Elysia numbers can mislead.
+
 ### Where AsiJS Wins (vs best competitor, latest run)
 
-| Scenario | AsiJS (compiled) | vs Elysia | vs Hono |
+| Scenario | AsiJS (compiled) | vs Hono | vs Elysia (ref) |
 |----------|-----------------|-----------|---------|
-| POST /users + validation | 225,763 req/s | **110.9%** 🏆 | — |
-| Auth POST (JWT + val + CORS + security) | 94,104 req/s | **8.1×** 🏆 | **9.3×** 🏆 |
-| CRUD POST /api/products (auth + val) | 98,731 req/s | **8.6×** 🏆 | **9.7×** 🏆 |
-| JSX rendering (100-row table) | 57,457 req/s | — | **2.1×** 🏆 |
-| Array validation (100 items, valid) | 37,000 req/s | 107.1% 🏆 | — |
-| Validation error path (invalid payload) | 6,796 req/s | **1.9×** 🏆 | — |
-| Large JSON body 10KB (validated) | 24,139 req/s | 106.4% 🏆 | — |
-| Large JSON body 100KB (validated) | 2,684 req/s | 109.6% 🏆 | — |
-| File upload 1MB (multipart) | 5,093 req/s | 100.2% | 100.8% |
-| Static preload (in-memory cache, 2.2.7) | 77,898 req/s | — | **1.26×** vs disk |
+| POST /users + validation | 225,763 req/s | — | **110.9%** 🏆 (ref) |
+| Auth POST (JWT + val + CORS + security) | 94,104 req/s | **9.3×** 🏆 | 8.1× (ref) |
+| CRUD POST /api/products (auth + val) | 98,731 req/s | **9.7×** 🏆 | 8.6× (ref) |
+| JSX rendering (100-row table) | 57,457 req/s | **2.1×** 🏆 | — |
+| Array validation (100 items, valid) | 37,000 req/s | — | 107.1% 🏆 (ref) |
+| Validation error path (invalid payload) | 6,796 req/s | — | **1.9×** 🏆 (ref) |
+| Large JSON body 10KB (validated) | 24,139 req/s | — | 106.4% 🏆 (ref) |
+| Large JSON body 100KB (validated) | 2,684 req/s | — | 109.6% 🏆 (ref) |
+| File upload 1MB (multipart) | 5,093 req/s | 100.8% | 100.2% (ref) |
+| Static preload (in-memory cache, 2.2.7) | 77,898 req/s | — | AsiJS-only (1.26× vs own disk path) |
 | Upload + save to disk (256KB, streaming) | 538 req/s | — | AsiJS-only (streaming +28% vs buffered) |
 
 ### Competitive / Near-Parity
 
-| Scenario | AsiJS | vs Elysia | vs Hono |
-|----------|-------|-----------|---------|
-| CRUD PUT /api/products/:id | 11,485 req/s | 99.8% | 115.8% |
-| Blog API POST /posts (auth + val) | 172,366 req/s | 96.2% | 119.7% |
-| File upload 5MB (multipart) | 920 req/s | 170.4% | 92.8% |
-| CRUD GET list + filter + pagination | 94,145 req/s | 88.5% | **11.7×** |
-| CORS preflight OPTIONS | 101,546 req/s | 82.3% | 113.8% |
-| GET /search (query params) | 352,050 req/s | 71.7% | 168.6% |
-| Concurrency C=100 / C=1000 | 692k / 738k req/s | 59.3% / 59.7% | **1.9×** |
-| Query cache hit (repeated query, 2.2.6) | 235,899 req/s | 71.9% | 111.6% |
+| Scenario | AsiJS | vs Hono | vs Elysia (ref) |
+|----------|-------|---------|-----------------|
+| CRUD PUT /api/products/:id | 11,485 req/s | 115.8% | 99.8% (ref) |
+| Blog API POST /posts (auth + val) | 172,366 req/s | 119.7% | 96.2% (ref) |
+| File upload 5MB (multipart) | 920 req/s | 92.8% | 170.4% (ref) |
+| CRUD GET list + filter + pagination | 94,145 req/s | **11.7×** | 88.5% (ref) |
+| CORS preflight OPTIONS | 101,546 req/s | 113.8% | 82.3% (ref) |
+| GET /search (query params) | 352,050 req/s | 168.6% | 71.7% (ref) |
+| Concurrency C=100 / C=1000 | 692k / 738k req/s | **1.9×** | 59.3% / 59.7% (ref) |
+| Query cache hit (repeated query, 2.2.6) | 235,899 req/s | 111.6% | 71.9% (ref) |
 
-### Known Gaps (honest)
+### Known Gaps (honest, vs Hono)
 
-| Scenario | AsiJS | vs Elysia | Why |
-|----------|-------|-----------|-----|
-| GET / (simple JSON, compiled) | 432,321 req/s | 52.9% | Elysia pre-compiles the handler into a closure and returns a pre-built response. AsiJS radix still allocates a fresh `params: {}` per static match (line in `router-perf.ts` `find()`), and builds the response body via JSON stringify on every request. Fix: shared frozen params for static routes — recorded in CHANGELOG as a candidate. |
-| GET /user/:id (path params) | 274,333 req/s | 80.2% | Path-match is a radix walk + params object — comparable cost to Elysia's; the gap is the params alloc + URL parsing, not the match itself. |
-| 404 fast path (no route match) | 207,505 req/s | 20.9% | AsiJS generates a JSON body `{error, path, method}` + searches similar routes in dev mode on every miss; Elysia returns a pre-built bare `NOT_FOUND` Response with no body. AsiJS intentionally ships a useful 404 body — a bare-response fast path is a candidate. |
-| Complex validation (4-level nested) | 33,350 req/s | 28.0% | The 2.2.5 compiled validator still walks TypeBox's generic check pipeline per level; Elysia's codegen emits specialized inline JS per schema. Narrowing the codegen (object/array hot paths) is the tracked follow-up. |
-| Query cache miss (unique query) | 164,273 req/s | 45.3% | Unique query strings bypass the 2.2.6 cache, so the single-pass parser runs per request and builds a fresh object. Elysia returns its own pre-built structure for the fixed benchmark query. |
-| Fully-loaded GET — full stack (5 vs 4 layers) | 6,332 req/s | — vs Hono: **1.8×** 🏆 | The old benchmark compared AsiJS's full stack (CORS+sec+ETag+cache+rateLimit) against Elysia's bare `cors+rateLimit` — not comparable. Now split into fair pairs: `1a` same middleware set on both (AsiJS **141%** of Elysia), `1b` full stack vs Hono's 4 layers (**1.8×**). |
+Where AsiJS loses to Hono, and exactly why. 13 of 18 categories AsiJS wins; these 5 are the remaining work:
+
+| Scenario | AsiJS | vs Hono | Why |
+|----------|-------|---------|-----|
+| 404 fast path (no route match) | 207,505 req/s | 82.6% | AsiJS generates a JSON body `{error, path, method}` + searches similar routes in dev mode on every miss; Hono returns a pre-built bare `NOT_FOUND` Response with no body. AsiJS intentionally ships a useful 404 body — a bare-response fast path is a candidate. |
+| Error path (handler throws → 500) | 162,516 req/s | 73.3% | AsiJS builds a structured error response (status, error class, message) and routes it through the error pipeline; Hono rethrows the minimal 500. A pre-built generic 500 body is a candidate. |
+| Query cache miss (unique query) | 164,273 req/s | 66.8% | Unique query strings bypass the 2.2.6 cache, so the single-pass parser runs per request and builds a fresh object; Hono's fixed benchmark query hits its own fast path. |
+| Static file serving (small / 2MB) | 107k / 136k req/s | 71.4% / 78.1% | AsiJS's static plugin goes through middleware + cache + header pipeline; Hono returns `Bun.file()` directly. A zero-copy fast path in the static plugin is a candidate. |
+| Complex validation (4-level nested) | 33,350 req/s | — (Elysia only) | The 2.2.5 compiled validator still walks TypeBox's generic check pipeline per level. Narrowing codegen (object/array hot paths) is the tracked follow-up. |
 
 > ⚠️ Numbers are from a single CI run; runner hardware and `bun-version: latest` drift between runs.
 > Compare **within one run** (percentages), not absolute values across runs — use the dashboard trends

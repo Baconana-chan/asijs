@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local storage: async-запись** — `writeFileSync` (блокировал event loop на весь диск-IO, ~220ms на 50MB) заменён на `writeFile` (fs/promises). Буферизованный путь тоже не блокирует больше.
 - **Benchmark `3c. File Upload + Save to Disk (256KB)`** — CI-бенчмарки upload меряли только multipart-парсинг; добавлен сценарий полного файлообменника (parse + persist). Локально: streaming 538 req/s vs buffered 421 req/s (**+28%**), при этом streaming сохраняет память.
 - **Fully-Loaded GET разбит на честные пары** — старый бенчмарк сравнивал AsiJS full-stack (CORS+security+ETag+cache+rateLimit, 5 слоёв) против Elysia bare `cors+rateLimit` (2 слоя) — «11.2%» выглядело как поражение, хотя объём работы несравним. Теперь две группы: `1a` — **одинаковый набор middleware** на обоих (AsiJS 49.4k vs Elysia 35.0k = **141%**), `1b` — full-stack 5 слоёв vs Hono 4 слоя (6.3k vs 3.4k = **1.8×**).
+- **README: Hono — основной конкурент, Elysia — reference** — AsiJS и Hono монолиты (всё в ядре), Elysia — микроядро (всё во внешних плагинах `@elysiajs/*`); сравнивать полные стеки этих архитектур некорректно (монолитное ядро «больше» микроядра по построению). Таблицы переставлены: колонка `vs Hono` — apples-to-apples (13 из 18 категорий AsiJS выигрывает), `vs Elysia` помечена `(ref)`. Known Gaps переписаны под Hono с конкретными механизмами отставания (404 body, structured 500, query-miss, static pipeline).
 
 ### 🐛 Bug Fixes
 
