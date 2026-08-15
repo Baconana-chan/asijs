@@ -517,28 +517,68 @@ Includes **OWASP-recommended headers** by default: CSP, HSTS, X-Frame-Options, X
 
 AsiJS is built for performance. Full benchmark dashboard available at `/benchmarks/`.
 
-### Production Benchmarks (v1.4.1)
+Numbers below are from the CI benchmark pipeline (GitHub Actions runner, bare metal) — see the dashboard for history across commits and **trends normalized across all categories**.
 
-| Scenario | Requests/sec | vs Elysia | vs Hono |
-|----------|-------------|-----------|---------|
-| GET / (compiled) | ~92,000 | ~82% | ~108% |
-| POST /users + validation | ~44,000 | ~100% | ~120% |
-| Complex validation (nested) | ~107,000 | ~103% | — |
-| JSX rendering (100-row table) | ~54,900 | — | ~280% |
-| Blog API GET /posts | ~152,000 | ~100% | ~122% |
-| Blog API POST /posts (auth+val) | ~161,000 | ~118% | — |
-| Middleware chain (5 mw) | ~189,000 | ~46% | ~165% |
+### Where AsiJS Wins (vs best competitor, latest run)
 
-Run benchmarks yourself:
-```bash
-bun run bench:production
-```
+| Scenario | AsiJS (compiled) | vs Elysia | vs Hono |
+|----------|-----------------|-----------|---------|
+| POST /users + validation | 225,763 req/s | **110.9%** 🏆 | — |
+| Auth POST (JWT + val + CORS + security) | 94,104 req/s | **8.1×** 🏆 | **9.3×** 🏆 |
+| CRUD POST /api/products (auth + val) | 98,731 req/s | **8.6×** 🏆 | **9.7×** 🏆 |
+| JSX rendering (100-row table) | 57,457 req/s | — | **2.1×** 🏆 |
+| Array validation (100 items, valid) | 37,000 req/s | 107.1% 🏆 | — |
+| Validation error path (invalid payload) | 6,796 req/s | **1.9×** 🏆 | — |
+| Large JSON body 10KB (validated) | 24,139 req/s | 106.4% 🏆 | — |
+| Large JSON body 100KB (validated) | 2,684 req/s | 109.6% 🏆 | — |
+| File upload 1MB (multipart) | 5,093 req/s | 100.2% | 100.8% |
+| Static preload (in-memory cache, 2.2.7) | 77,898 req/s | — | **1.26×** vs disk |
+
+### Competitive / Near-Parity
+
+| Scenario | AsiJS | vs Elysia | vs Hono |
+|----------|-------|-----------|---------|
+| CRUD PUT /api/products/:id | 11,485 req/s | 99.8% | 115.8% |
+| Blog API POST /posts (auth + val) | 172,366 req/s | 96.2% | 119.7% |
+| File upload 5MB (multipart) | 920 req/s | 170.4% | 92.8% |
+| CRUD GET list + filter + pagination | 94,145 req/s | 88.5% | **11.7×** |
+| CORS preflight OPTIONS | 101,546 req/s | 82.3% | 113.8% |
+| GET /search (query params) | 352,050 req/s | 71.7% | 168.6% |
+| Concurrency C=100 / C=1000 | 692k / 738k req/s | 59.3% / 59.7% | **1.9×** |
+| Query cache hit (repeated query, 2.2.6) | 235,899 req/s | 71.9% | 111.6% |
+
+### Known Gaps (honest)
+
+| Scenario | AsiJS | vs Elysia | Note |
+|----------|-------|-----------|------|
+| GET / (simple JSON, compiled) | 432,321 req/s | 52.9% | Elysia's static-route fast path; radix fresh-params alloc (candidate, in CHANGELOG) |
+| GET /user/:id (path params) | 274,333 req/s | 80.2% | 123.1% |
+| 404 fast path (no route match) | 207,505 req/s | 20.9% | Elysia returns bare 404; candidate for optimization |
+| Complex validation (4-level nested) | 33,350 req/s | 28.0% | compiled validator needs work (2.2.5) |
+| Query cache miss (unique query) | 164,273 req/s | 45.3% | single-pass parser is linear in query length |
+| Fully-loaded GET (all middleware) | 13,335 req/s | 11.2% | ⚠️ different stack — AsiJS runs 7 middleware layers, Elysia only cors+rateLimit |
+
+> ⚠️ Numbers are from a single CI run; runner hardware and `bun-version: latest` drift between runs.
+> Compare **within one run** (percentages), not absolute values across runs — use the dashboard trends
+> (normalized avg % of best across all categories) for commit-to-commit comparisons.
+
+### Benchmark Suites
+
+| Suite | Command | Covers |
+|-------|---------|--------|
+| Core | `bun run bench` | GET/params/query/POST, validation, compiled mode |
+| Production | `bun run bench:production` | middleware chain, upload, static, JSX, blog API |
+| Fullstack | `bun run bench:fullstack` | auth, gateway, CRUD, preflight, security headers |
+| P0 Hot-Path | `bun run bench:p0` | concurrency, route scaling, static preload, array validation |
+| P1 API-Case | `bun run bench:p1` | query cache, 404, error path, large bodies |
+| P2 Features | `bun run bench:p2` | WebSocket pub/sub, cache layer, DB layer, allocations |
 
 ### Benchmark Dashboard
 
 AsiJS includes an automated benchmark dashboard:
-- `bun run bench:collect` — run all benchmarks
+- `bun run bench:collect` — run all benchmark suites (above)
 - `bun run bench:dashboard` — generate Chart.js HTML dashboard
+- **Historical trends**: normalized avg score vs best across **all categories** (with lower-is-better groups inverted) + per-category RPS picker
 - Integrated into vitepress docs at `/benchmarks/`
 - CI pipeline auto-generates on every push to main
 
