@@ -33,7 +33,11 @@ export interface CompileOptions {
 }
 
 // Кэш скомпилированных TypeBox схем — использует LRU cache по умолчанию
-import { getDefaultSchemaCache, type SchemaCacheLRU } from "./router-perf";
+import {
+  createInlineFlatChain,
+  getDefaultSchemaCache,
+  type SchemaCacheLRU,
+} from "./router-perf";
 
 let validatorCache: Map<TSchema, TypeCheck<TSchema>> | SchemaCacheLRU = new Map();
 let useLRUCache = false;
@@ -138,46 +142,39 @@ export function compileHandler(
     };
   }
 
-  // Flat middleware (без next) — последовательное выполнение без chain
+  // Flat middleware (без next) — inline execution без runtime loop
   if (flatMiddlewares) {
+    // Pre-built inline chain: middleware calls written out directly, handler last
+    const chain = createInlineFlatChain(middlewares, handler);
+
+    // Без валидации — вернуть inline chain как есть (самый быстрый путь)
+    if (!validators) return chain;
+
     return async (ctx: Context): Promise<Response> => {
       // Валидация сначала
-      if (validators) {
-        if (validators.params && !validators.params.Check(ctx.params)) {
-          return validationError(
-            "params",
-            validators.params.Errors(ctx.params),
-          );
-        }
+      if (validators.params && !validators.params.Check(ctx.params)) {
+        return validationError(
+          "params",
+          validators.params.Errors(ctx.params),
+        );
+      }
 
-        if (validators.query) {
-          const query = ctx.query;
-          if (!validators.query.Check(query)) {
-            return validationError("query", validators.query.Errors(query));
-          }
-        }
-
-        if (validators.body) {
-          const body = await ctx.json();
-          if (!validators.body.Check(body)) {
-            return validationError("body", validators.body.Errors(body));
-          }
-          (ctx as any).body = body;
+      if (validators.query) {
+        const query = ctx.query;
+        if (!validators.query.Check(query)) {
+          return validationError("query", validators.query.Errors(query));
         }
       }
 
-      for (let i = 0; i < middlewareCount; i++) {
-        const result = await (
-          middlewares[i] as (
-            ctx: Context,
-          ) => Response | Promise<Response> | void
-        )(ctx);
-        if (result instanceof Response) return result;
-        if (result !== undefined) return toResponseFast(result, ctx);
+      if (validators.body) {
+        const body = await ctx.json();
+        if (!validators.body.Check(body)) {
+          return validationError("body", validators.body.Errors(body));
+        }
+        (ctx as any).body = body;
       }
 
-      const result = await handler(ctx);
-      return toResponseFast(result, ctx);
+      return chain(ctx);
     };
   }
 

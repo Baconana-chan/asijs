@@ -14,7 +14,7 @@ export class Context<
   TQuery = Record<string, string>,
   TParams = Record<string, string>,
 > {
-  readonly request: Request;
+  request: Request;
   private _decodeQuery: boolean;
 
   // Lazy URL parsing — только когда нужно
@@ -53,6 +53,26 @@ export class Context<
    */
   circuitBreaker?: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
 
+  /**
+   * Error boundary helper (added by errorBoundary() middleware).
+   * Catch handler errors and return a structured response or fallback.
+   *
+   * @example
+   * ```ts
+   * app.get("/risky", async (ctx) => {
+   *   const result = await ctx.errorBoundary(
+   *     () => riskyCall(),
+   *     { fallback: { ok: false } },
+   *   );
+   *   return result;
+   * });
+   * ```
+   */
+  errorBoundary?: <T>(
+    fn: () => T | Promise<T>,
+    options?: import("./error-boundary").ErrorBoundaryOptions<T>,
+  ) => Promise<T>;
+
   // Валидированные данные (устанавливаются после валидации)
   /** Валидированное тело запроса */
   body!: TBody;
@@ -66,6 +86,48 @@ export class Context<
   constructor(request: Request, options?: { decodeQuery?: boolean }) {
     this.request = request;
     this._decodeQuery = options?.decodeQuery ?? false;
+  }
+
+  /**
+   * @internal Reset this context for reuse from a pool.
+   * Resets every field to its pristine state, deletes middleware-added
+   * properties (prevents cross-request leaks), and binds a new Request.
+   */
+  _reset(request: Request, decodeQuery: boolean): void {
+    // Delete middleware-added properties (e.g. ctx.user, ctx.auth) — own
+    // enumerable keys that aren't core Context fields. Uses for..in with a
+    // hasOwnProperty guard, so no array allocation on the hot path.
+    for (const key in this) {
+      if (!CONTEXT_CORE_KEYS.has(key) && Object.prototype.hasOwnProperty.call(this, key)) {
+        try {
+          delete (this as any)[key];
+        } catch {
+          // non-configurable — ignore
+        }
+      }
+    }
+
+    this.request = request;
+    this._decodeQuery = decodeQuery;
+    this._url = null;
+    this._path = null;
+    this._queryString = null;
+    this.params = {} as TParams;
+    this._query = null;
+    this._body = undefined;
+    this._bodyParsed = false;
+    this._cookies = null;
+    this._setCookies = [];
+    this._files = null;
+    this._status = 200;
+    this._headers = new Headers();
+    this.store = {};
+    this.session = undefined;
+    this.circuitBreaker = undefined;
+    this.errorBoundary = undefined;
+    (this as any).body = undefined;
+    (this as any).validatedQuery = undefined;
+    (this as any).validatedParams = undefined;
   }
 
   // ===== Fast path extraction =====
@@ -142,10 +204,33 @@ export class Context<
     return this._query;
   }
 
-  /** Fast query string parser без URL объекта */
+  /** Fast query string parser без URL объекта (2.2.6) */
   private _parseQueryString(qs: string): Record<string, string> {
     if (!qs) return {};
 
+    // Cached parse: повторяющиеся query-строки (pagination, фильтры) не
+    // парсятся заново. Возвращаем shallow copy — потребители могут мутировать
+    // ctx.query, кэш остаётся чистым.
+    const cache = getDefaultQueryCache();
+    if (cache) {
+      const key = (this._decodeQuery ? "d\u0000" : "r\u0000") + qs;
+      const hit = cache.get(key);
+      if (hit) {
+        const copy: Record<string, string> = {};
+        for (const k in hit) copy[k] = hit[k];
+        return copy;
+      }
+
+      const parsed = this._parseQueryStringUncached(qs);
+      cache.set(key, parsed);
+      return parsed;
+    }
+
+    return this._parseQueryStringUncached(qs);
+  }
+
+  /** Single-pass inline parser: q=a&b=c → {q:'a',b:'c'} без URL объекта */
+  private _parseQueryStringUncached(qs: string): Record<string, string> {
     const result: Record<string, string> = {};
     let start = 0;
 
@@ -161,24 +246,14 @@ export class Context<
         const keyRaw = qs.slice(start, eqIdx);
         const valueRaw = qs.slice(eqIdx + 1, end);
         if (this._decodeQuery) {
-          const key =
-            keyRaw.indexOf("%") === -1 ? keyRaw : decodeURIComponent(keyRaw);
-          const value =
-            valueRaw.indexOf("%") === -1
-              ? valueRaw
-              : decodeURIComponent(valueRaw);
-          result[key] = value;
+          result[safeDecode(keyRaw)] = safeDecode(valueRaw);
         } else {
           result[keyRaw] = valueRaw;
         }
       } else {
         // Ключ без значения
         const keyRaw = qs.slice(start, end);
-        const key = this._decodeQuery
-          ? keyRaw.indexOf("%") === -1
-            ? keyRaw
-            : decodeURIComponent(keyRaw)
-          : keyRaw;
+        const key = this._decodeQuery ? safeDecode(keyRaw) : keyRaw;
         if (key) result[key] = "";
       }
 
@@ -499,6 +574,233 @@ export class Context<
   redirect(url: string, status: 301 | 302 | 303 | 307 | 308 = 302): Response {
     return Response.redirect(url, status);
   }
+}
+
+/**
+ * Safe percent-decode: never throws on malformed input.
+ * `decodeURIComponent("%E0%A4%A")` бросает URIError — URLSearchParams вместо
+ * этого возвращает сырую строку. Возвращаем raw при ошибке (2.2.6).
+ */
+function safeDecode(s: string): string {
+  if (s.indexOf("%") === -1) return s;
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * Bounded LRU cache for parsed query strings (2.2.6).
+ *
+ * Key = decode-flag + query string. Cache entries are returned as shallow
+ * copies, so consumer mutations of `ctx.query` never poison the cache.
+ * Eviction is O(1): Map insertion order + delete/re-insert on access.
+ */
+export class QueryParseCache {
+  private max: number;
+  private cache = new Map<string, Record<string, string>>();
+
+  constructor(max: number = 512) {
+    this.max = max;
+  }
+
+  get(key: string): Record<string, string> | undefined {
+    const found = this.cache.get(key);
+    if (found) {
+      this.cache.delete(key);
+      this.cache.set(key, found);
+    }
+    return found;
+  }
+
+  set(key: string, value: Record<string, string>): void {
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+      this.cache.set(key, value);
+      return;
+    }
+    if (this.cache.size >= this.max) {
+      const oldest = this.cache.keys().next().value as string | undefined;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
+    this.cache.set(key, value);
+  }
+
+  has(key: string): boolean {
+    return this.cache.has(key);
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+}
+
+let defaultQueryCache: QueryParseCache | null = null;
+let queryCacheDisabled = false;
+
+/**
+ * Get the shared query-parse cache (enabled by default in Asi, 2.2.6).
+ * Returns null when disabled via `queryCache: false` or before first use
+ * with no default — the parser then falls back to direct parsing.
+ */
+export function getDefaultQueryCache(max?: number): QueryParseCache | null {
+  if (defaultQueryCache === null && !queryCacheDisabled) {
+    defaultQueryCache = new QueryParseCache(max ?? 512);
+  }
+  return defaultQueryCache;
+}
+
+/** Disable the shared query-parse cache (queryCache: false). */
+export function disableDefaultQueryCache(): void {
+  queryCacheDisabled = true;
+  defaultQueryCache = null;
+}
+
+/** Reset the shared cache state (tests / re-enable). */
+export function resetDefaultQueryCache(): void {
+  queryCacheDisabled = false;
+  defaultQueryCache = null;
+}
+
+/** Core Context field names kept across pool resets (everything else is deleted) */
+const CONTEXT_CORE_KEYS = new Set<string>([
+  "request",
+  "params",
+  "store",
+  "session",
+  "circuitBreaker",
+  "errorBoundary",
+  "body",
+  "validatedQuery",
+  "validatedParams",
+  // Internal lazy fields (own class properties — must survive reset)
+  "_decodeQuery",
+  "_url",
+  "_path",
+  "_queryString",
+  "_query",
+  "_body",
+  "_bodyParsed",
+  "_cookies",
+  "_setCookies",
+  "_files",
+  "_status",
+  "_headers",
+]);
+
+/**
+ * ContextPool — Recycler for zero-allocation request cycles.
+ *
+ * Pre-allocated `Context` objects are acquired per request and released back
+ * to the pool when the response is produced. This removes the per-request
+ * `new Context()` + field-init + Headers allocation from the hot path.
+ *
+ * Design:
+ * - `acquire(request, decodeQuery)` → resets a pooled context and returns it
+ * - `release(ctx)` → resets the context (including middleware-added props) and
+ *   returns it to the pool
+ * - Pool growth — when every context is in flight, a fresh one is created
+ * - Automatic shrink — a lazy timer trims the pool back to `size` after the
+ *   pool has been idle over `shrinkIntervalMs`
+ */
+// Shared placeholder request used to reset pooled contexts on release
+const PLACEHOLDER_REQUEST = new Request("http://localhost/");
+
+export class ContextPool {
+  private pool: Context[] = [];
+  private readonly size: number;
+  private readonly max: number;
+  private readonly shrinkIntervalMs: number;
+  private shrinkTimer: ReturnType<typeof setTimeout> | null = null;
+  private _stats = { acquired: 0, released: 0, created: 0 };
+
+  constructor(options: ContextPoolOptions = {}) {
+    this.size = options.size ?? 1000;
+    this.max = options.max ?? this.size * 2;
+    this.shrinkIntervalMs = options.shrinkIntervalMs ?? 30_000;
+    this._stats.created = this.size;
+
+    // Pre-allocate the pool
+    for (let i = 0; i < this.size; i++) {
+      this.pool.push(new Context(PLACEHOLDER_REQUEST));
+    }
+  }
+
+  /** Get a ready-to-use context bound to `request`. */
+  acquire(request: Request, decodeQuery: boolean): Context {
+    const ctx = this.pool.pop();
+    if (ctx) {
+      ctx._reset(request, decodeQuery);
+      this._stats.acquired++;
+      return ctx;
+    }
+    // Pool exhausted — grow
+    this._stats.created++;
+    this._stats.acquired++;
+    return new Context(request, { decodeQuery });
+  }
+
+  /** Reset the context and return it to the pool. */
+  release(ctx: Context): void {
+    ctx._reset(PLACEHOLDER_REQUEST, false);
+    this._stats.released++;
+
+    if (this.pool.length < this.max) {
+      this.pool.push(ctx);
+    }
+
+    // Lazy shrink — if we're over the target size, trim back to `size` after
+    // an idle interval. One-shot timer that doesn't hold the event loop open.
+    if (this.pool.length > this.size && !this.shrinkTimer) {
+      const t = setTimeout(() => {
+        this.shrinkTimer = null;
+        if (this.pool.length > this.size) {
+          this.pool.length = this.size;
+        }
+      }, this.shrinkIntervalMs);
+      (t as any).unref?.();
+      this.shrinkTimer = t;
+    }
+  }
+
+  /** Current pool depth (contexts available for reuse). */
+  get sizeNow(): number {
+    return this.pool.length;
+  }
+
+  /** Reset to a pristine state (used in tests). */
+  clear(): void {
+    if (this.shrinkTimer) {
+      clearTimeout(this.shrinkTimer);
+      this.shrinkTimer = null;
+    }
+    this.pool = [];
+    this._stats = { acquired: 0, released: 0, created: this.size };
+    const placeholder = new Request("http://localhost/");
+    for (let i = 0; i < this.size; i++) {
+      this.pool.push(new Context(placeholder));
+    }
+  }
+
+  /** Lifecycle counters for diagnostics. */
+  get stats() {
+    return { ...this._stats };
+  }
+}
+
+/** Опции для ContextPool */
+export interface ContextPoolOptions {
+  /** Pre-allocated pool size. Default 1000. */
+  size?: number;
+  /** Hard cap on the retained pool (growth bound). Default size * 2. */
+  max?: number;
+  /** Idle ms before the pool shrinks back to `size`. Default 30s. */
+  shrinkIntervalMs?: number;
 }
 
 /** Опции для установки cookie */

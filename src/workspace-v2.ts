@@ -27,6 +27,9 @@
 
 import { Asi, type AsiConfig } from "./asi";
 import { renderToString, jsx, type JSXElement } from "./jsx";
+import { getCircuitBreakerRegistry } from "./circuit-breaker";
+import type { EventBus } from "./event-bus";
+import type { Middleware } from "./types";
 
 // ===== Types =====
 
@@ -47,6 +50,20 @@ export interface WorkspaceOptions {
   openapiPath?: string;
   onError?: (error: unknown, request: Request) => Response | Promise<Response>;
   verbose?: boolean;
+  /**
+   * Enable live metrics collection (request rate, error rate, ws, breakers).
+   * Default: true.
+   */
+  metrics?: boolean;
+  /** JSON metrics endpoint (default: "/__asi/metrics") */
+  metricsPath?: string;
+  /**
+   * Shared state bus — distributed to every sub-app as `app.getState("eventBus")`.
+   * See {@link EventBus}.
+   */
+  bus?: EventBus;
+  /** Maximum time to wait for sub-app graceful shutdown (ms, default: 10_000) */
+  shutdownTimeoutMs?: number;
 }
 
 interface RegisteredApp {
@@ -54,6 +71,152 @@ interface RegisteredApp {
   hostname?: string;
   prefix?: string;
   app: Asi;
+}
+
+// ===== Per-route metrics =====
+
+interface RouteStat {
+  count: number;
+  errors: number;
+  totalDuration: number;
+}
+
+interface AppMetrics {
+  totalRequests: number;
+  errors: number;
+  statusCodes: Record<string, number>;
+  routes: Array<{
+    method: string;
+    path: string;
+    count: number;
+    errors: number;
+    averageDurationMs: number;
+  }>;
+  requestRate: number;
+  errorRate: number;
+  averageDurationMs: number;
+  wsConnections: number;
+  startedAt: number;
+}
+
+// ===== Metrics Collector =====
+
+/**
+ * Lightweight per-app metrics collector.
+ *
+ * Records request counts, status codes, per-route stats and a sliding-window
+ * request rate — used by the workspace dashboard / metrics endpoint.
+ */
+class WorkspaceMetricsCollector {
+  private totalRequests = 0;
+  private totalDuration = 0;
+  private errors = 0;
+  private statusCodes = new Map<number, number>();
+  private routeStats = new Map<string, RouteStat>();
+  private timestamps: number[] = [];
+  private errorTimestamps: number[] = [];
+  private maxHistory = 50_000;
+  private startedAt = Date.now();
+
+  /** Record a single request */
+  record(duration: number, status: number, method: string, path: string): void {
+    this.totalRequests++;
+    this.totalDuration += duration;
+    this.timestamps.push(Date.now());
+
+    if (status >= 400) {
+      this.errors++;
+      this.errorTimestamps.push(Date.now());
+    }
+
+    this.statusCodes.set(status, (this.statusCodes.get(status) ?? 0) + 1);
+
+    const key = `${method} ${path}`;
+    const stat = this.routeStats.get(key) ?? {
+      count: 0,
+      errors: 0,
+      totalDuration: 0,
+    };
+    stat.count++;
+    stat.totalDuration += duration;
+    if (status >= 400) stat.errors++;
+    this.routeStats.set(key, stat);
+
+    // Bound memory
+    if (this.timestamps.length > this.maxHistory) {
+      this.timestamps = this.timestamps.slice(-this.maxHistory / 2);
+      this.errorTimestamps = this.errorTimestamps.slice(-this.maxHistory / 2);
+    }
+  }
+
+  /** Number of requests in the last `windowMs` */
+  private countInWindow(list: number[], windowMs: number, now: number): number {
+    const cutoff = now - windowMs;
+    let count = 0;
+    // Arrays are roughly sorted — binary search the cutoff
+    let lo = 0;
+    let hi = list.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid] < cutoff) lo = mid + 1;
+      else hi = mid;
+    }
+    return list.length - lo;
+  }
+
+  /** Snapshot for the dashboard / metrics endpoint */
+  snapshot(): AppMetrics {
+    const now = Date.now();
+    const windowMs = 60_000;
+    const requestsInWindow = this.countInWindow(this.timestamps, windowMs, now);
+    const errorsInWindow = this.countInWindow(this.errorTimestamps, windowMs, now);
+
+    const statusCodes: Record<string, number> = {};
+    for (const [code, count] of this.statusCodes) {
+      statusCodes[String(code)] = count;
+    }
+
+    const routes = Array.from(this.routeStats.entries())
+      .map(([key, stat]) => {
+        const [method, path] = key.split(" ");
+        return {
+          method,
+          path,
+          count: stat.count,
+          errors: stat.errors,
+          averageDurationMs: stat.count > 0 ? stat.totalDuration / stat.count : 0,
+        };
+      })
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      totalRequests: this.totalRequests,
+      errors: this.errors,
+      statusCodes,
+      routes,
+      requestRate: requestsInWindow / (windowMs / 1000),
+      errorRate: requestsInWindow > 0 ? errorsInWindow / requestsInWindow : 0,
+      averageDurationMs: this.totalRequests > 0 ? this.totalDuration / this.totalRequests : 0,
+      wsConnections: 0,
+      startedAt: this.startedAt,
+    };
+  }
+}
+
+/** Middleware that feeds a WorkspaceMetricsCollector */
+function metricsCollectorMiddleware(collector: WorkspaceMetricsCollector): Middleware {
+  return async (ctx, next) => {
+    const start = performance.now();
+    try {
+      const response = await next();
+      const status = response instanceof Response ? response.status : 200;
+      collector.record(performance.now() - start, status, ctx.method, ctx.path);
+      return response;
+    } catch (error) {
+      collector.record(performance.now() - start, 500, ctx.method, ctx.path);
+      throw error;
+    }
+  };
 }
 
 // ===== CSS =====
@@ -97,63 +260,288 @@ const DASHBOARD_CSS = [
   ".tag-host { background: #1f6feb33; color: #58a6ff; }",
   ".tag-prefix { background: #9e6a0333; color: #d29922; }",
   ".empty { color: #8b949e; text-align: center; padding: 40px; }",
+  ".proc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }",
+  ".proc-item { background: #21262d; padding: 12px; border-radius: 6px; }",
+  ".proc-item span { display: block; color: #8b949e; font-size: 0.75rem; }",
+  ".proc-item b { display: block; font-size: 1.1rem; color: #58a6ff; margin-top: 4px; }",
+  ".app-card { background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 14px; margin: 10px 0; }",
+  ".app-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }",
+  ".app-card-head span { color: #8b949e; font-size: 0.8rem; }",
+  ".app-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 8px 0; }",
+  ".app-stat { background: #161b22; padding: 8px 10px; border-radius: 6px; }",
+  ".app-stat span { display: block; color: #8b949e; font-size: 0.7rem; }",
+  ".app-stat b { display: block; font-size: 1rem; color: #c9d1d9; margin: 2px 0 4px; }",
+  ".bar { height: 4px; background: #30363d; border-radius: 2px; overflow: hidden; }",
+  ".bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }",
+  ".route-details { margin-top: 8px; }",
+  ".route-details summary { cursor: pointer; color: #8b949e; font-size: 0.8rem; }",
+  ".route-table { margin-top: 8px; }",
+  ".route-table td, .route-table th { padding: 5px 8px; font-size: 0.75rem; }",
 ].join("\n");
 
-// ===== Dashboard =====
+// ===== Metrics JSON =====
 
-function buildDashboard(apps: RegisteredApp[]): JSXElement {
+function buildMetricsSnapshot(ws: Workspace): Record<string, unknown> {
+  const apps = ws.getApps().map((ra) => {
+    const collector = ws.getCollector(ra.name);
+    const base = collector
+      ? collector.snapshot()
+      : {
+          totalRequests: 0,
+          errors: 0,
+          statusCodes: {} as Record<string, number>,
+          routes: [] as AppMetrics["routes"],
+          requestRate: 0,
+          errorRate: 0,
+          averageDurationMs: 0,
+          startedAt: Date.now(),
+        };
+
+    return {
+      name: ra.name,
+      hostname: ra.hostname ?? null,
+      prefix: ra.prefix ?? null,
+      routeCount: ra.app.getRoutes().length,
+      plugins: ra.app.getPlugins().length,
+      wsConnections: ra.app.wsConnectionCount,
+      ...base,
+    };
+  });
+
+  // Circuit breakers from the global registry
+  const breakerRegistry = getCircuitBreakerRegistry();
+  const circuitBreakers = Object.entries(breakerRegistry.getAllMetrics()).map(
+    ([name, metrics]) => ({
+      name,
+      state: metrics.state,
+      successCount: metrics.successCount,
+      failureCount: metrics.failureCount,
+      recoveryCount: metrics.recoveryCount ?? 0,
+      lastFailure: metrics.lastFailure ?? null,
+    }),
+  );
+
+  // Process-level CPU / memory
+  const memory = process.memoryUsage();
+  const cpu = process.cpuUsage();
+  const processStart = process.uptime();
+
+  return {
+    generatedAt: Date.now(),
+    process: {
+      pid: process.pid,
+      uptimeSeconds: processStart,
+      memory: {
+        rss: memory.rss,
+        heapUsed: memory.heapUsed,
+        heapTotal: memory.heapTotal,
+        external: memory.external,
+      },
+      cpu: {
+        user: cpu.user,
+        system: cpu.system,
+      },
+    },
+    apps,
+    circuitBreakers,
+    bus: ws.getBusStats(),
+  };
+}
+
+// ===== Dashboard v2 =====
+
+/** Inline JS that polls the metrics endpoint and live-renders the dashboard */
+const DASHBOARD_SCRIPT = `
+(function () {
+  var metricsUrl = __METRICS_URL__;
+  var state = null;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fmtMs(n) { return (n || 0).toFixed(1) + "ms"; }
+  function fmtRate(n) { return (n || 0).toFixed(1); }
+  function fmtBytes(n) {
+    if (!n) return "0 B";
+    var u = ["B", "KB", "MB", "GB"];
+    var i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return n.toFixed(1) + " " + u[i];
+  }
+  function stateColor(s) {
+    return s === "OPEN" ? "#da3633" : s === "HALF_OPEN" ? "#9e6a03" : "#238636";
+  }
+  function bar(value, max, color) {
+    var pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+    return '<div class="bar"><div class="bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div>';
+  }
+
+  function render() {
+    if (!state) return;
+    var d = state;
+
+    // Header stats
+    document.getElementById("stat-apps").textContent = d.apps.length;
+    document.getElementById("stat-routes").textContent = d.apps.reduce(function (s, a) { return s + a.routeCount; }, 0);
+    document.getElementById("stat-plugins").textContent = d.apps.reduce(function (s, a) { return s + a.plugins; }, 0);
+    document.getElementById("stat-ws").textContent = d.apps.reduce(function (s, a) { return s + a.wsConnections; }, 0);
+    document.getElementById("stat-req").textContent = d.apps.reduce(function (s, a) { return s + a.totalRequests; }, 0);
+    document.getElementById("stat-breakers").textContent = d.circuitBreakers.length;
+
+    // Process card
+    document.getElementById("proc-pid").textContent = d.process.pid;
+    document.getElementById("proc-uptime").textContent = Math.floor(d.process.uptimeSeconds) + "s";
+    document.getElementById("proc-rss").textContent = fmtBytes(d.process.memory.rss);
+    document.getElementById("proc-heap").textContent = fmtBytes(d.process.memory.heapUsed);
+    document.getElementById("proc-cpu").textContent =
+      ((d.process.cpu.user + d.process.cpu.system) / 1e6).toFixed(1) + "s";
+
+    // Per-app cards
+    var appsHtml = d.apps.map(function (a) {
+      var badges = [];
+      if (a.hostname) badges.push('<span class="app-badge tag-host">Host: ' + esc(a.hostname) + "</span>");
+      if (a.prefix) badges.push('<span class="app-badge tag-prefix">Prefix: ' + esc(a.prefix) + "</span>");
+      var maxRate = 1;
+      d.apps.forEach(function (o) { if (o.requestRate > maxRate) maxRate = o.requestRate; });
+      var errColor = a.errorRate > 0.05 ? "#da3633" : a.errorRate > 0.01 ? "#9e6a03" : "#238636";
+      var errBar = bar(a.errorRate, Math.max(0.01, a.errorRate), errColor);
+      return (
+        '<div class="app-card">' +
+          '<div class="app-card-head"><strong>' + esc(a.name) + "</strong>" +
+            '<span>' + a.routeCount + " routes \u00B7 " + a.plugins + " plugins \u00B7 " + a.wsConnections + " ws</span></div>" +
+          badges.join("") +
+          '<div class="app-stats">' +
+            '<div class="app-stat"><span>Req/s</span><b>' + fmtRate(a.requestRate) + "</b>" +
+              bar(a.requestRate, maxRate, "#58a6ff") + "</div>" +
+            '<div class="app-stat"><span>Error rate</span><b>' + (a.errorRate * 100).toFixed(2) + "%</b>" + errBar + "</div>" +
+            '<div class="app-stat"><span>Avg</span><b>' + fmtMs(a.averageDurationMs) + "</b></div>" +
+            '<div class="app-stat"><span>Total</span><b>' + a.totalRequests + "</b></div>" +
+          "</div>" +
+          '<details class="route-details"><summary>Routes (' + a.routes.length + ")</summary>" +
+            '<table class="route-table"><thead><tr><th>Route</th><th>Count</th><th>Errors</th><th>Err%</th><th>Avg</th></tr></thead><tbody>' +
+            a.routes.map(function (r) {
+              var er = r.count > 0 ? (r.errors / r.count) * 100 : 0;
+              return "<tr><td><span class=\"method \" + r.method + \"\">" + r.method + "</span> <code>" + esc(r.path) +
+                "</code></td><td>" + r.count + "</td><td>" + r.errors + "</td><td>" + er.toFixed(1) + "%</td><td>" +
+                fmtMs(r.averageDurationMs) + "</td></tr>";
+            }).join("") +
+          "</tbody></table></details>" +
+        "</div>"
+      );
+    }).join("");
+    document.getElementById("apps-list").innerHTML = appsHtml || '<p class="empty">No sub-apps</p>';
+
+    // Circuit breakers
+    var cbHtml = d.circuitBreakers.length
+      ? '<table class="route-table"><thead><tr><th>Breaker</th><th>State</th><th>OK</th><th>Fail</th><th>Recoveries</th></tr></thead><tbody>' +
+        d.circuitBreakers.map(function (c) {
+          return "<tr><td><code>" + esc(c.name) + "</code></td><td><span style=\"color:" + stateColor(c.state) + "\">" +
+            c.state + "</span></td><td>" + c.successCount + "</td><td>" + c.failureCount + "</td><td>" +
+            c.recoveryCount + "</td></tr>";
+        }).join("") +
+      "</tbody></table>"
+      : '<p class="empty">No circuit breakers registered</p>';
+    document.getElementById("breakers-list").innerHTML = cbHtml;
+
+    // Bus
+    if (d.bus) {
+      document.getElementById("bus-name").textContent = d.bus.name;
+      document.getElementById("bus-topics").textContent = d.bus.topics;
+      document.getElementById("bus-handlers").textContent = d.bus.handlers;
+      document.getElementById("bus-emitted").textContent = d.bus.emitted;
+      document.getElementById("bus-redis").textContent = d.bus.redisConnected ? "connected" : "in-memory";
+    }
+
+    document.getElementById("last-updated").textContent = new Date(d.generatedAt).toLocaleTimeString();
+  }
+
+  function poll() {
+    fetch(metricsUrl, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) { state = data; render(); })
+      .catch(function () { /* keep last state */ });
+  }
+
+  poll();
+  setInterval(poll, 2000);
+})();
+`;
+
+function buildDashboard(apps: RegisteredApp[], ws: Workspace): JSXElement {
   const totalRoutes = apps.reduce((s, a) => s + a.app.getRoutes().length, 0);
   const totalPlugins = apps.reduce((s, a) => s + a.app.getPlugins().length, 0);
 
-  const routeRows: Array<{
-    name: string;
-    method: string;
-    path: string;
-    valid: string;
-    mw: string;
-  }> = [];
-
-  for (const ra of apps) {
-    for (const r of ra.app.getRoutes()) {
-      routeRows.push({
-        name: ra.name,
-        method: r.method,
-        path: r.path,
-        valid: r.hasValidation ? "\u2713" : "\u2014",
-        mw: r.hasMiddleware ? "\u2713" : "\u2014",
-      });
-    }
-  }
-
   const body: JSXElement[] = [
     jsx("header", {
-      children: jsx("h1", { children: "\uD83D\uDE80 AsiJS Workspace Dashboard" }),
+      children: [
+        jsx("h1", { children: "\uD83D\uDE80 AsiJS Workspace Dashboard" }),
+        jsx("div", { style: "color:#8b949e;font-size:0.85rem;margin-top:6px", children: "Live monitoring \u2014 auto-refresh 2s" }),
+      ],
     }),
     jsx("div", {
       className: "stats",
       children: [
-        buildStat(String(apps.length), "Apps"),
-        buildStat(String(totalRoutes), "Routes"),
-        buildStat(String(totalPlugins), "Plugins"),
-        buildStat(String(apps.filter((a) => !!a.hostname).length), "Host-based"),
-        buildStat(String(apps.filter((a) => !!a.prefix).length), "Prefix-based"),
+        buildStat(0, "Apps", "stat-apps"),
+        buildStat(0, "Routes", "stat-routes"),
+        buildStat(0, "Plugins", "stat-plugins"),
+        buildStat(0, "WebSocket", "stat-ws"),
+        buildStat(0, "Requests", "stat-req"),
+        buildStat(0, "Breakers", "stat-breakers"),
       ],
     }),
     jsx("div", {
       className: "card",
       children: [
-        jsx("h2", { children: "\uD83D\uDCE6 Sub-Apps" }),
-        ...apps.map((ra) => buildAppCard(ra)),
+        jsx("h2", { children: "\uD83D\uDCA0 Process" }),
+        jsx("div", {
+          className: "proc-grid",
+          children: [
+            procItem("PID", "proc-pid"),
+            procItem("Uptime", "proc-uptime"),
+            procItem("RSS", "proc-rss"),
+            procItem("Heap", "proc-heap"),
+            procItem("CPU", "proc-cpu"),
+          ],
+        }),
       ],
     }),
     jsx("div", {
       className: "card",
       children: [
-        jsx("h2", { children: "\uD83D\uDCCD All Routes" }),
-        routeRows.length > 0
-          ? buildRouteTable(routeRows)
-          : jsx("p", { className: "empty", children: "No routes registered" }),
+        jsx("h2", { children: "\uD83D\uDCE6 Sub-Apps \u2014 request rate & error rate" }),
+        jsx("div", { id: "apps-list", children: jsx("p", { className: "empty", children: "Loading..." }) }),
       ],
+    }),
+    jsx("div", {
+      className: "card",
+      children: [
+        jsx("h2", { children: "\u26A1 Circuit Breakers" }),
+        jsx("div", { id: "breakers-list", children: jsx("p", { className: "empty", children: "Loading..." }) }),
+      ],
+    }),
+    jsx("div", {
+      className: "card",
+      children: [
+        jsx("h2", { children: "\uD83D\uDCE4 Shared State Bus" }),
+        ws.getBus()
+          ? jsx("div", {
+              className: "stats",
+              children: [
+                buildStat("\u2014", "Bus", "bus-name"),
+                buildStat("0", "Topics", "bus-topics"),
+                buildStat("0", "Handlers", "bus-handlers"),
+                buildStat("0", "Events", "bus-emitted"),
+                buildStat("\u2014", "Mode", "bus-redis"),
+              ],
+            })
+          : jsx("p", { className: "empty", children: "No shared bus configured \u2014 pass { bus } to Workspace options" }),
+      ],
+    }),
+    jsx("div", {
+      style: "color:#8b949e;font-size:0.75rem;text-align:center;padding:10px",
+      children: "Last updated: <span id=\"last-updated\">\u2014</span>",
     }),
   ];
 
@@ -168,88 +556,34 @@ function buildDashboard(apps: RegisteredApp[]): JSXElement {
         ],
       }),
       jsx("body", {
-        children: jsx("div", { className: "container", children: body }),
+        children: jsx("div", {
+          className: "container",
+          children: [
+            ...body,
+            jsx("script", { children: DASHBOARD_SCRIPT.replace("__METRICS_URL__", JSON.stringify(ws.metricsPath)) }),
+          ],
+        }),
       }),
     ],
   });
 }
 
-function buildStat(value: string, label: string): JSXElement {
+function buildStat(value: string | number, label: string, id?: string): JSXElement {
   return jsx("div", {
     className: "stat",
     children: [
-      jsx("div", { className: "stat-value", children: value }),
+      jsx("div", { className: "stat-value", id, children: String(value) }),
       jsx("div", { className: "stat-label", children: label }),
     ],
   });
 }
 
-function buildAppCard(ra: RegisteredApp): JSXElement {
-  const info: JSXElement[] = [];
-
-  info.push(
-    jsx("div", {
-      style: "display:flex;justify-content:space-between;align-items:center",
-      children: [
-        jsx("strong", { style: "color:#58a6ff;font-size:1rem", children: ra.name }),
-        jsx("span", {
-          style: "color:#8b949e;font-size:0.8rem",
-          children: ra.app.getRoutes().length + " routes \u00B7 " + ra.app.getPlugins().length + " plugins",
-        }),
-      ],
-    }),
-  );
-
-  if (ra.hostname) {
-    info.push(
-      jsx("div", { style: "margin-top:6px", children:
-        jsx("span", { className: "app-badge tag-host", children: "Host: " + ra.hostname }),
-      }),
-    );
-  }
-
-  if (ra.prefix) {
-    info.push(
-      jsx("div", { style: "margin-top:4px", children:
-        jsx("span", { className: "app-badge tag-prefix", children: "Prefix: " + ra.prefix }),
-      }),
-    );
-  }
-
-  return jsx("div", { style: "padding:12px;margin:8px 0;background:#21262d;border-radius:6px", children: info });
-}
-
-function buildRouteTable(rows: Array<{ name: string; method: string; path: string; valid: string; mw: string }>): JSXElement {
-  return jsx("table", {
+function procItem(label: string, id: string): JSXElement {
+  return jsx("div", {
+    className: "proc-item",
     children: [
-      jsx("thead", {
-        children: jsx("tr", {
-          children: [
-            jsx("th", { children: "App" }),
-            jsx("th", { children: "Route" }),
-            jsx("th", { children: "Val" }),
-            jsx("th", { children: "Mw" }),
-          ],
-        }),
-      }),
-      jsx("tbody", {
-        children: rows.map((r, i) =>
-          jsx("tr", {
-            children: [
-              jsx("td", { children: jsx("code", { children: r.name }) }),
-              jsx("td", {
-                children: [
-                  jsx("span", { className: "method " + r.method, children: r.method }),
-                  " ",
-                  jsx("code", { children: r.path }),
-                ],
-              }),
-              jsx("td", { children: r.valid }),
-              jsx("td", { children: r.mw }),
-            ],
-          }),
-        ),
-      }),
+      jsx("span", { children: label }),
+      jsx("b", { id, children: "\u2014" }),
     ],
   });
 }
@@ -333,8 +667,10 @@ function buildSwaggerHTML(jsonUrl: string, title: string): string {
 
 export class Workspace {
   private apps: RegisteredApp[] = [];
-  private options: Required<WorkspaceOptions>;
+  private options: Required<Omit<WorkspaceOptions, "bus">>;
   private server: any = null;
+  private collectors = new Map<string, WorkspaceMetricsCollector>();
+  private bus: EventBus | undefined;
 
   constructor(options: WorkspaceOptions = {}) {
     this.options = {
@@ -346,11 +682,16 @@ export class Workspace {
       openapiPath: options.openapiPath ?? "/__asi/docs",
       onError: options.onError ?? (() => new Response("Workspace Error", { status: 500 })),
       verbose: options.verbose ?? true,
+      metrics: options.metrics ?? true,
+      metricsPath: options.metricsPath ?? "/__asi/metrics",
+      shutdownTimeoutMs: options.shutdownTimeoutMs ?? 10_000,
     };
+    this.bus = options.bus;
   }
 
   app(name: string, config: AsiConfig, setup: (app: Asi) => void): this {
     var asiApp = new Asi(config);
+    this.prepareApp(name, asiApp);
     setup(asiApp);
     this.apps.push({ name: name, app: asiApp });
     return this;
@@ -358,6 +699,7 @@ export class Workspace {
 
   appWith(config: WorkspaceAppConfig): this {
     var asiApp = new Asi(config.config);
+    this.prepareApp(config.name, asiApp);
     config.setup(asiApp);
     this.apps.push({
       name: config.name,
@@ -366,6 +708,18 @@ export class Workspace {
       app: asiApp,
     });
     return this;
+  }
+
+  /** Wire metrics middleware and shared state bus into a sub-app */
+  private prepareApp(name: string, asiApp: Asi): void {
+    if (this.options.metrics) {
+      const collector = new WorkspaceMetricsCollector();
+      this.collectors.set(name, collector);
+      asiApp.use(metricsCollectorMiddleware(collector));
+    }
+    if (this.bus) {
+      asiApp.setState("eventBus", this.bus);
+    }
   }
 
   listen(portArg?: number, callback?: () => void): any {
@@ -441,9 +795,20 @@ export class Workspace {
 
     // Dashboard HTML
     if (opts.dashboard && path === opts.dashboardPath) {
-      var html = await renderToString(buildDashboard(this.apps));
+      var html = await renderToString(buildDashboard(this.apps, this));
       return new Response("<!DOCTYPE html>" + html, {
         headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // Metrics JSON
+    if (opts.metrics && path === opts.metricsPath) {
+      var snapshot = buildMetricsSnapshot(this);
+      return new Response(JSON.stringify(snapshot), {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
       });
     }
 
@@ -466,11 +831,66 @@ export class Workspace {
     return null;
   }
 
-  stop(): void {
+  /**
+   * Graceful shutdown cascade — sub-apps first, then the root server.
+   *
+   * 1. Drain each sub-app's WebSocket connections
+   * 2. Run each sub-app's lifecycle manager (if attached via lifecycle())
+   * 3. Stop the shared Bun.serve root server
+   */
+  async stop(): Promise<void> {
+    // 1. Sub-apps: drain WebSockets + lifecycle shutdown
+    for (const ra of this.apps) {
+      try {
+        if (ra.app.wsConnectionCount > 0) {
+          await ra.app.drainWebSockets(this.options.shutdownTimeoutMs);
+        }
+      } catch {
+        // Drain failures shouldn't block the cascade
+      }
+
+      const lifecycleManager = ra.app.state<{ shutdown: () => Promise<void> }>("lifecycleManager");
+      if (lifecycleManager && typeof lifecycleManager.shutdown === "function") {
+        try {
+          await lifecycleManager.shutdown();
+        } catch {
+          // Continue the cascade even if one sub-app fails
+        }
+      } else {
+        ra.app.stop();
+      }
+    }
+
+    // 2. Root server last
     if (this.server) {
       this.server.stop();
       this.server = null;
     }
+  }
+
+  /** Get the metrics collector for a sub-app (internal) */
+  getCollector(name: string): WorkspaceMetricsCollector | undefined {
+    return this.collectors.get(name);
+  }
+
+  /** Registered sub-apps (internal, for dashboard/metrics) */
+  getApps(): RegisteredApp[] {
+    return this.apps;
+  }
+
+  /** The shared state bus (undefined when not configured) */
+  getBus(): EventBus | undefined {
+    return this.bus;
+  }
+
+  /** Bus stats for the dashboard (null when no bus) */
+  getBusStats(): ReturnType<EventBus["stats"]> | null {
+    return this.bus ? this.bus.stats() : null;
+  }
+
+  /** Metrics endpoint path */
+  get metricsPath(): string {
+    return this.options.metricsPath;
   }
 
   private printBanner(port: number): void {

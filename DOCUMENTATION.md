@@ -91,6 +91,12 @@ const app = new Asi({
   // Decode query parameters (decodeURIComponent)
   // Default: false for max performance
   decodeQuery: false,
+
+  // Cache parsed query strings (QueryParseCache, LRU 512, O(1) eviction)
+  // Повторяющиеся query-строки не парсятся заново; результат возвращается
+  // как shallow copy (мутации ctx.query не портят кэш).
+  // Default: true | false отключает | число задаёт max
+  queryCache: true,
 });
 ```
 
@@ -122,6 +128,7 @@ const app = new Asi();
 - In compiled mode, static routes without middleware/validation may precompute responses for faster GETs.
 - Middleware without `next` can be flattened in compiled mode to reduce overhead.
 - Query parsing skips `decodeURIComponent` by default; enable `decodeQuery` if you need decoded values.
+- Parsed query strings are cached (LRU 512) — repeated `?page=2&limit=50`-style URLs skip re-parsing (+19% on query-heavy workloads). Malformed percent-encoding never throws.
 
 ---
 
@@ -362,6 +369,44 @@ try {
     console.log(e.errors);
   }
 }
+```
+
+### Compiled Validation (2.2.5)
+
+Валидация по умолчанию использует **скомпилированные валидаторы**
+(`TypeCompiler`), которые генерируют плоский JS-код вместо интерпретации
+схемы — до **400× быстрее** интерпретированного `Value.Check`.
+
+`validateAndCoerce()` — двухстадийный:
+
+1. **Fast path** — скомпилированный `Check` на сырых данных. Если данные
+   уже соответствуют схеме и в схеме нет `default` значений, `Convert` +
+   `Default` полностью пропускаются (данные возвращаются как есть, без
+   копирования).
+2. **Slow path** — полная коерция (`Convert` → `Default` → compiled
+   `Check`) с идентичной семантикой прежней реализации — вызывается
+   только когда данные не соответствуют схеме или нужно материализовать
+   `default`-значения.
+
+```typescript
+import { validate, validateAndCoerce, schemaHasDefaults } from "asijs";
+
+// Fast path: типизированные JSON body валидируются без Convert+Default
+const result = validateAndCoerce(schema, data);
+
+// schemaHasDefaults — анализ схемы на наличие default (кэшируется через WeakMap)
+if (schemaHasDefaults(schema)) {
+  // требуется материализация defaults
+}
+```
+
+Компилированные валидаторы кэшируются в **LRU-кэше** (по умолчанию
+включён, `lruSchemaCache: true`, max 10000; O(1) eviction):
+
+```typescript
+const app = new Asi({ lruSchemaCache: true });   // default
+const app = new Asi({ lruSchemaCache: 5000 });   // custom max
+const app = new Asi({ lruSchemaCache: false });  // simple Map
 ```
 
 ---
@@ -1613,6 +1658,108 @@ type AllTypes = InferRPCAPI<typeof api>;
 
 ---
 
+## Async Error Boundary
+
+```typescript
+import { Asi, errorBoundary, NotFoundError, SystemError, retry } from "asijs";
+
+const app = new Asi();
+app.plugin(errorBoundary());
+
+// Business errors → structured 4xx:
+app.get("/users/:id", async (ctx) => {
+  const user = await db.find(ctx.params.id);
+  if (!user) throw new NotFoundError("User not found");
+  return user;
+});
+
+// Catch errors locally with a fallback:
+app.get("/risky", async (ctx) => {
+  return ctx.errorBoundary(() => riskyCall(), { fallback: { ok: false } });
+});
+
+// Retry idempotent operations:
+const data = await retry(() => fetchExternal(), {
+  attempts: 3,
+  backoff: "exponential",
+  delayMs: 50,
+});
+```
+
+Classification: `business` (4xx) / `system` (5xx) / `fatal` (crash) / `validation`. Structured body: `{ error, code, category, details?, requestId? }`.
+
+Reporting pipeline with hooks:
+
+```typescript
+app.plugin(errorBoundary({
+  reporters: [
+    (report) => sentry.captureException(report.error),
+  ],
+  minCategory: "system",
+}));
+```
+
+Full guide: [docs/features/error-boundary.md](docs/features/error-boundary.md)
+
+---
+
+## Observability Suite
+
+### OTel Logs Bridge
+
+```typescript
+import { Asi, otelLogs } from "asijs";
+
+app.plugin(otelLogs({
+  otlp: {
+    endpoint: "http://localhost:4318/v1/logs",
+    serviceName: "my-api",
+  },
+}));
+```
+
+Structured log entries are converted to OTLP LogRecords with OTel semantic conventions and buffered-flushed to the collector.
+
+### Distributed Tracing (Redis)
+
+```typescript
+import { createRedisTraceBridge, generateTraceId, generateSpanId } from "asijs";
+
+const bridge = await createRedisTraceBridge({ url: process.env.REDIS_URL! });
+bridge.emit({ traceId: generateTraceId(), spanId: generateSpanId(), name: "GET /users" });
+```
+
+Span events propagate W3C trace context between instances via Redis pub/sub.
+
+### Healthcheck Dashboard
+
+```typescript
+import { Asi, healthDashboard } from "asijs";
+
+app.use(healthDashboard({
+  checks: {
+    database: async () => { await db.ping(); },
+    redis: () => redis.ping(),
+  },
+}));
+// GET /__health      — HTML dashboard (auto-refresh 5s, circuit breakers, process info)
+// GET /__health.json — JSON snapshot (200/503)
+```
+
+### Grafana Dashboard Export
+
+```typescript
+import { createGrafanaDashboard } from "asijs";
+
+app.get("/grafana.json", () => new Response(JSON.stringify(createGrafanaDashboard()), {
+  headers: { "Content-Type": "application/json" },
+}));
+```
+
+Full guide: [docs/features/observability.md](docs/features/observability.md)
+
+---
+
 ## Workspace Development
 
 In a Bun monorepo with multiple sub-apps, `bun --hot` normally restarts the entire process when any file changes. AsiJS Workspace Development solves this by spawning **each sub-app as its own Bun process** with `--hot`, so only the sub-app whose files changed gets reloaded.
@@ -1790,6 +1937,140 @@ app.get("/chaos", chaos(0.5), handler);  // 50% failure rate
 
 ---
 
+## CLI v2 — Smarter Developer Tools
+
+### Analyze
+
+```bash
+bunx asijs analyze            # Static project analysis
+bunx asijs analyze --info     # Include info-level findings
+bunx asijs analyze --json     # Machine-readable output
+bunx asijs analyze --cwd ./app
+```
+
+Finds:
+- **Dead routes** — same `method + path` registered twice (first is dead code)
+- **Path shadowing** — static route declared after a dynamic one of the same shape
+- **Missing validation** — `POST/PUT/PATCH/DELETE` without a schema
+- **Duplicate middleware** — `app.use(x)` registered multiple times
+- **Bottlenecks** — redundant `async` (no `await`), `await` in non-async handlers, sync middleware containing `await`
+
+```typescript
+import { analyzeProject, analyzeSource } from "asijs";
+const report = await analyzeProject(process.cwd());
+```
+
+### Doctor
+
+```bash
+bunx asijs doctor             # Project diagnostics
+bunx asijs doctor --json
+```
+
+Checks: configuration (package.json, entry, config file), dependencies (asijs, typescript, dev script), TypeScript strict mode + module resolution, security (rate limiting, validation on mutations, security headers, hard-coded secrets, admin auth).
+
+```typescript
+import { runDoctor } from "asijs";
+const report = await runDoctor(process.cwd());
+```
+
+### Upgrade
+
+```bash
+bunx asijs upgrade                # Check & update
+bunx asijs upgrade --dry-run      # Show changes without writing
+bunx asijs upgrade --codemod      # Also run breaking-changes codemod
+bunx asijs upgrade --offline      # Skip registry lookup
+```
+
+```typescript
+import { checkForUpdates, upgradeProject, compareVersions } from "asijs";
+```
+
+### Template
+
+```bash
+bunx asijs template api       # Install template into current dir (skips existing files)
+```
+
+### Dev Tools
+
+```bash
+bunx asijs dev --inspect      # Dev + DevTools hint (dashboard, OpenAPI, REPL, analyze, doctor)
+```
+
+---
+
+## Static Files: In-Memory Cache (2.2.7)
+
+```typescript
+import { staticFiles } from "asijs";
+
+// Preload matching files into memory at startup
+app.use(staticFiles("./public", {
+  preload: true,                    // glob "**/*.{html,css,js,svg}" по умолчанию
+  // preload: ["**/*.html", "**/*.css"]  // явные паттерны (Bun.Glob)
+
+  // TTL кэша в секундах — файл перечитывается с диска после истечения
+  cacheTtl: 60,
+
+  cacheSmallFiles: true,            // кэшировать до cacheMaxFileSize (128KB)
+  cacheMaxFileSize: 128 * 1024,
+  cacheMaxEntries: 512,
+  cacheMaxBytes: 16 * 1024 * 1024,
+}));
+```
+
+- **`preload`** — загружает файлы в память при старте (`Bun.Glob`); отдача из
+  памяти вообще без fs-вызовов (до **5.4×** быстрее: 4.3k → 23.2k req/s).
+- **`cacheTtl`** — TTL в секундах; ловит изменения файла, невидимые
+  size/mtime (MemoryCache-совместимая семантика).
+- Без `preload`/`cacheTtl` поведение прежнее: `cacheSmallFiles` валидирует
+  size/mtime с диска на каждый запрос, изменения подхватываются мгновенно.
+
+---
+
+## Database Layer (2.3)
+
+Zero-dependency database access: SQLite через `bun:sqlite` (built-in), PostgreSQL
+через lazy `import("postgres")`.
+
+```typescript
+import { Asi, Database } from "asijs";
+
+// Standalone
+const db = new Database({ url: "file:./app.db" });
+db.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)");
+const rows = db.query("SELECT * FROM users");
+
+// Через Asi config — app.db lazy + auto-migration
+const app = new Asi({
+  database: {
+    url: "file:./app.db",
+    migrationsDir: "./migrations",
+    autoMigrate: true,   // pending-миграции при первом app.db
+    autoSeed: true,      // seed.sql / seed.ts после миграций
+  },
+});
+```
+
+### Миграции
+
+```bash
+asi db migrate                 # apply pending
+asi db migrate --status        # applied vs pending
+asi db migrate --down          # rollback last
+asi db migrate --create "add posts"  # scaffold migrations/001_add_posts.sql
+asi db seed [file]             # .sql или .ts модуль
+asi db studio                  # GUI: http://localhost:5500
+```
+
+Конвенция файлов миграций: `001_create_users.sql` (up-only) или
+`001_create_users.up.sql` + `001_create_users.down.sql` (reversible).
+Прогресс отслеживается в таблице `__migrations`.
+
+---
+
 ## API Reference
 
 ### Asi Class
@@ -1870,6 +2151,44 @@ function startWorkspaceDev(
   options?: WorkspaceDevOptions,
 ): Promise<WorkspaceDevController>;
 ```
+
+### Workspace V2 — Production Multi-App Server
+
+```typescript
+// Run multiple apps on a single Bun.serve with host/prefix routing
+class Workspace {
+  app(name: string, config: AsiConfig, setup: (app: Asi) => void): this;
+  appWith(config: WorkspaceAppConfig): this;
+  listen(port?: number, callback?: () => void): any;
+  async stop(): Promise<void>; // graceful cascade: sub-apps → root
+}
+
+function createWorkspace(options?: WorkspaceOptions): Workspace;
+```
+
+Internal endpoints (enabled by default):
+- `GET {dashboardPath}` (`/__asi/workspace`) — live dashboard (auto-refresh 2s)
+- `GET {metricsPath}` (`/__asi/metrics`) — JSON metrics per app
+- `GET {openapiPath}` (`/__asi/docs`) — Swagger UI
+
+### Shared State Bus
+
+```typescript
+// In-memory pub/sub between sub-apps
+class EventBus {
+  on<T>(topic: string, handler: EventHandler<T>): () => void;
+  once<T>(topic: string, handler: EventHandler<T>): () => void;
+  off<T>(topic: string, handler: EventHandler<T>): void;
+  emit<T>(topic: string, payload: T): void;
+  emitAsync<T>(topic: string, payload: T): Promise<void>;
+  stats(): EventBusStats;
+}
+
+// With Redis bridge (cross-instance)
+function createRedisEventBus(options: RedisEventBusOptions): Promise<EventBus>;
+```
+
+Pass `{ bus }` to `Workspace` — every sub-app receives the bus via `app.getState("eventBus")`.
 
 ### Context Class
 

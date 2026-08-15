@@ -27,7 +27,7 @@ import {
   readFileSync,
   rmSync,
 } from "fs";
-import { join, resolve, basename } from "path";
+import { join, resolve, basename, relative } from "path";
 import { scanWorkspace, startWorkspaceDev, startStandaloneDev, findStandaloneEntry, type WorkspaceDevController } from "./workspace";
 import {
   runCodemod,
@@ -42,6 +42,12 @@ import { SERVERLESS_PLATFORMS } from "./serverless";
 
 // Plugin Registry
 import { PluginRegistry, installPlugin, scaffoldPlugin, listInstalledPlugins, uninstallPlugin } from "./plugin-registry";
+
+// CLI v2 — analyze / doctor / upgrade
+import { analyzeProject } from "./analyze";
+import { runDoctor } from "./doctor";
+import { checkForUpdates, upgradeProject } from "./upgrade";
+import { handleDb } from "./db/cli";
 
 // ===== Colors =====
 const colors = {
@@ -1409,13 +1415,30 @@ type TemplateName = keyof typeof TEMPLATES;
 
 async function startDevMode(args: string[]) {
   let basePort = 3000;
+  let inspect = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--port" || args[i] === "-p") {
       basePort = parseInt(args[i + 1], 10) || 3000;
       i++;
+    } else if (args[i] === "--inspect") {
+      inspect = true;
     }
   }
+
+  // DevTools banner when --inspect is passed: point to the Dev dashboard + REPL
+  const printInspectHint = (port: number, entryPoint?: string) => {
+    if (!inspect) return;
+    console.log();
+    console.log(c.bold("🛠️  DevTools"));
+    console.log(`   ${c.dim("Dev dashboard:")}  http://localhost:${port}/__dev`);
+    console.log(`   ${c.dim("OpenAPI:")}        http://localhost:${port}/__docs`);
+    console.log(`   ${c.dim("Interactive REPL:")}  ${c.cyan("bunx asijs repl")}${entryPoint ? ` --preload ${relative(process.cwd(), entryPoint)}` : ""}`);
+    console.log(`   ${c.dim("Inspect project:")}  ${c.cyan("bunx asijs inspect")}`);
+    console.log(`   ${c.dim("Analyze project:")}  ${c.cyan("bunx asijs analyze")}`);
+    console.log(`   ${c.dim("Doctor:")}          ${c.cyan("bunx asijs doctor")}`);
+    console.log();
+  };
 
   let controller: WorkspaceDevController | undefined;
 
@@ -1449,6 +1472,8 @@ async function startDevMode(args: string[]) {
       console.error(c.red("Error starting workspace:"), error);
       process.exit(1);
     }
+    // DevTools hint for the first sub-app
+    printInspectHint(apps[0]?.port ?? basePort, apps[0]?.entryPoint);
     return;
   }
 
@@ -1467,6 +1492,7 @@ async function startDevMode(args: string[]) {
       console.error(c.red("Error starting app:"), error);
       process.exit(1);
     }
+    printInspectHint(basePort, entry);
     return;
   }
 
@@ -1494,6 +1520,30 @@ async function main() {
   // Handle `asijs dev` — start workspace dev mode
   if (command === "dev") {
     await startDevMode(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs analyze` — static analysis
+  if (command === "analyze" || command === "a") {
+    await handleAnalyze(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs doctor` — project diagnostics
+  if (command === "doctor") {
+    await handleDoctor(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs upgrade` — auto-update
+  if (command === "upgrade") {
+    await handleUpgrade(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs template <name>` — install template into current dir
+  if (command === "template") {
+    await handleTemplate(args.slice(1));
     return;
   }
 
@@ -1539,6 +1589,12 @@ async function main() {
     return;
   }
 
+  // Handle `asijs db <action>` — database layer (migrate/seed/studio)
+  if (command === "db") {
+    await handleDb(args.slice(1));
+    return;
+  }
+
   // Parse arguments for create
   if (command === "create" || command === "init" || command === "new") {
     projectName = args[1];
@@ -1557,7 +1613,7 @@ async function main() {
     printHelp();
     return;
   } else if (command === "--version" || command === "-v") {
-    console.log("asijs v1.2.0");
+    console.log("asijs v1.4.0");
     return;
   } else if (command && !command.startsWith("-")) {
     // Direct project name (bun create asijs my-app)
@@ -2755,6 +2811,224 @@ async function startRepl(args: string[]) {
   await repl.start();
 }
 
+// ===== Analyze =====
+
+async function handleAnalyze(args: string[]) {
+  let includeInfo = false;
+  let jsonOutput = false;
+  let cwd = process.cwd();
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--info" || args[i] === "-i") includeInfo = true;
+    else if (args[i] === "--json") jsonOutput = true;
+    else if (args[i] === "--cwd" && args[i + 1]) {
+      cwd = resolve(args[i + 1]);
+      i++;
+    }
+  }
+
+  console.log(c.bold("🔬 AsiJS Analyze — Static Project Analysis"));
+  console.log();
+
+  const report = await analyzeProject({ cwd, includeInfo });
+
+  if (jsonOutput) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  console.log(`   ${c.dim("Scanned")} ${report.summary.filesScanned} file(s)`);
+  console.log();
+
+  if (report.issues.length === 0) {
+    console.log(c.green("   ✓ No issues found — clean project!"));
+    console.log();
+    return;
+  }
+
+  const icon: Record<string, string> = {
+    error: c.red("✗"),
+    warning: c.yellow("⚠"),
+    info: c.cyan("ℹ"),
+  };
+
+  for (const issue of report.issues) {
+    console.log(`   ${icon[issue.severity]} ${issue.message}`);
+    console.log(`     ${c.dim(issue.file)}${issue.line ? `:${issue.line}` : ""}`);
+    if (issue.snippet) {
+      console.log(`     ${c.dim(issue.snippet.replace(/\n/g, " ").slice(0, 90))}`);
+    }
+    console.log(`     ${c.green("→")} ${issue.suggestion}`);
+    console.log();
+  }
+
+  console.log(c.bold("Summary:"));
+  console.log(`   ${c.red(String(report.summary.errors))} errors, ${c.yellow(String(report.summary.warnings))} warnings${includeInfo ? `, ${c.cyan(String(report.summary.info))} info` : " (add --info for info-level)"}`);
+  console.log();
+}
+
+// ===== Doctor =====
+
+async function handleDoctor(args: string[]) {
+  let jsonOutput = false;
+  let cwd = process.cwd();
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--json") jsonOutput = true;
+    else if (args[i] === "--cwd" && args[i + 1]) {
+      cwd = resolve(args[i + 1]);
+      i++;
+    }
+  }
+
+  console.log(c.bold("🩺 AsiJS Doctor — Project Diagnostics"));
+  console.log();
+
+  const report = await runDoctor({ cwd });
+
+  if (jsonOutput) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  const icon: Record<string, string> = {
+    pass: c.green("✓"),
+    warn: c.yellow("⚠"),
+    fail: c.red("✗"),
+    skip: c.dim("·"),
+    info: c.cyan("ℹ"),
+  };
+  const categoryColor: Record<string, (s: string) => string> = {
+    config: c.cyan,
+    dependencies: c.magenta,
+    typescript: c.blue,
+    security: c.yellow,
+  };
+
+  for (const check of report.checks) {
+    const colored = categoryColor[check.category] ?? ((s: string) => s);
+    console.log(`   ${icon[check.status]} [${colored(check.category)}] ${check.label}`);
+    if (check.detail && check.status !== "pass") {
+      console.log(`     ${c.dim(check.detail)}`);
+    }
+    if (check.suggestion && check.status !== "pass") {
+      console.log(`     ${c.green("→")} ${check.suggestion}`);
+    }
+  }
+
+  console.log();
+  console.log(c.bold("Summary:"));
+  console.log(`   ${c.green(String(report.summary.pass))} pass, ${c.yellow(String(report.summary.warn))} warn, ${c.red(String(report.summary.fail))} fail, ${c.cyan(String(report.summary.info))} info, ${c.dim(String(report.summary.skip))} skip`);
+  console.log();
+
+  if (!report.healthy) {
+    process.exitCode = 1;
+  }
+}
+
+// ===== Upgrade =====
+
+async function handleUpgrade(args: string[]) {
+  let dryRun = false;
+  let runCodemod = false;
+  let offline = false;
+
+  for (const arg of args) {
+    if (arg === "--dry-run") dryRun = true;
+    else if (arg === "--codemod") runCodemod = true;
+    else if (arg === "--offline") offline = true;
+  }
+
+  console.log(c.bold("⬆️  AsiJS Upgrade"));
+  console.log();
+
+  const check = await checkForUpdates(process.cwd(), { offline });
+  console.log(`   ${c.dim("Installed:")} ${check.installed ?? c.dim("not found")}`);
+  console.log(`   ${c.dim("Latest:")}    ${check.latest ?? c.dim("unknown")}`);
+  console.log();
+
+  if (!check.updateAvailable) {
+    console.log(c.green(`   ${check.message}`));
+    console.log();
+    return;
+  }
+
+  console.log(c.yellow(`   ${check.message}`));
+  console.log();
+
+  try {
+    const result = await upgradeProject({
+      cwd: process.cwd(),
+      dryRun,
+      runCodemod,
+      offline,
+    });
+    console.log(c.green(`   ${result.message}`));
+    console.log();
+  } catch (error) {
+    console.error(c.red("   Upgrade failed:"), error);
+    process.exit(1);
+  }
+}
+
+// ===== Template =====
+
+async function handleTemplate(args: string[]) {
+  const name = args[0];
+
+  if (!name || !TEMPLATES[name as TemplateName]) {
+    console.log(c.bold("🎨 AsiJS Templates"));
+    console.log();
+    console.log(`   Usage: ${c.cyan("bunx asijs template <name>")}`);
+    console.log();
+    console.log("   Available templates:");
+    Object.entries(TEMPLATES).forEach(([key, val]) => {
+      console.log(`     ${c.cyan(key.padEnd(12))} ${val.description}`);
+    });
+    console.log();
+    process.exitCode = name ? 1 : 0;
+    return;
+  }
+
+  const template = TEMPLATES[name as TemplateName];
+  const cwd = process.cwd();
+
+  console.log(c.bold("🎨 Installing template into current directory"));
+  console.log();
+  console.log(`   ${c.dim("Template:")} ${c.cyan(template.name)}`);
+  console.log(`   ${c.dim("Path:")}     ${c.dim(cwd)}`);
+  console.log();
+
+  let skipped = 0;
+  for (const [filePath, content] of Object.entries(template.files)) {
+    const fullPath = join(cwd, filePath);
+
+    if (existsSync(fullPath)) {
+      console.log(`   ${c.yellow("·")} ${filePath} — exists, skipping`);
+      skipped++;
+      continue;
+    }
+
+    const dir = join(cwd, filePath.split("/").slice(0, -1).join("/"));
+    if (dir && dir !== cwd) {
+      mkdirSync(dir, { recursive: true });
+    }
+
+    const fileContent = typeof content === "function" ? content(basename(cwd)) : content;
+    writeFileSync(fullPath, fileContent);
+    console.log(`   ${c.green("✓")} ${filePath}`);
+  }
+
+  console.log();
+  console.log(c.green("   Template installed!"));
+  if (skipped > 0) {
+    console.log(c.yellow(`   ${skipped} file(s) skipped — already exist.`));
+  }
+  console.log();
+  console.log(`   Next: ${c.cyan("bun install")} && ${c.cyan("bun run dev")}`);
+  console.log();
+}
+
 function printHelp() {
   console.log(`
 ${c.bold("AsiJS CLI")} — Create & migrate AsiJS projects
@@ -2766,15 +3040,25 @@ ${c.bold("Usage:")}
   bunx asijs build [options]
   bunx asijs plugin <action> [name] [options]
   bunx asijs repl [options]
+  bunx asijs analyze [options]
+  bunx asijs doctor [options]
+  bunx asijs upgrade [options]
+  bunx asijs template <name>
+  bunx asijs db migrate|seed|studio [options]
 
 ${c.bold("Commands:")}
   create   Create a new AsiJS project
   build    Production build for SPA/SSR apps (client + server bundles)
   migrate  Migrate existing project from Elysia / Hono / Fastify
-  dev      Start workspace dev mode with hot-reload
+  dev      Start workspace dev mode with hot-reload (--inspect for DevTools)
   inspect  Inspect project: routes, plugins, middleware, bundle size
   plugin   Manage plugins: search, install, create, list
   repl     Interactive REPL — create routes, test requests, inspect state
+  analyze  Static analysis: dead routes, duplicate middleware, validation, bottlenecks
+  doctor   Project diagnostics: config, deps, TypeScript strict, security
+  upgrade  Check for and apply AsiJS updates (+ breaking-changes codemod)
+  template Install a template into the current directory
+  db       Database: migrate (--create/--down/--status), seed, studio GUI
 
 ${c.bold("Plugin Actions:")}
   search [query]   Search plugins in the official registry
@@ -2788,6 +3072,24 @@ ${c.bold("REPL Options:")}
   -p, --port <port>      Start test server on port (default: 3001)
   -s, --silent           Less verbose output
   -l, --preload <file>   Preload a source file
+
+${c.bold("Analyze Options:")}
+  -i, --info             Include info-level findings (default: off)
+  --json                 Output as JSON
+  --cwd <path>           Analyze a specific directory
+
+${c.bold("Doctor Options:")}
+  --json                 Output as JSON
+  --cwd <path>           Diagnose a specific directory
+
+${c.bold("Upgrade Options:")}
+  --dry-run              Show planned changes without writing
+  --codemod              Run breaking-changes codemod after upgrading
+  --offline              Skip the npm registry lookup
+
+${c.bold("Dev Options:")}
+  --inspect              Show DevTools links (dashboard, REPL, analyze, doctor)
+  -p, --port <port>      Base port for sub-apps (default: 3000)
 
 ${c.bold("Build Options:")}
   --client <path>      Client entry point (default: src/client.tsx)
@@ -2839,6 +3141,13 @@ ${c.bold("Examples:")}
   bunx asijs plugin create my-plugin --with-tests
   bunx asijs plugin list
   bunx asijs plugin awesome
+  bunx asijs analyze
+  bunx asijs analyze --info --json
+  bunx asijs doctor
+  bunx asijs upgrade --dry-run
+  bunx asijs upgrade --codemod
+  bunx asijs template api
+  bunx asijs dev --inspect
 `);
 }
 

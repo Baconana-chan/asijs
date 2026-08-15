@@ -8,6 +8,7 @@ import {
   devSecurity,
   type SecurityConfig,
 } from "../src/security-core";
+import { buildSecurityHeaders, securityHeaders, strictSecurity } from "../src/security";
 
 // ============================================================================
 // parseSize
@@ -121,8 +122,9 @@ describe("SecurityManager", () => {
     });
     const mw = mgr.buildMiddleware();
 
-    // Only skip wrapper (which is NOOP) remains
-    expect(mw.length).toBe(1);
+    // No middleware at all — the skip wrapper NOOP is not added when there
+    // are no skip paths (2.2.4 optimization: no no-op hops on the hot path)
+    expect(mw.length).toBe(0);
   });
 });
 
@@ -426,5 +428,220 @@ describe("Edge cases", () => {
     app.get("/", () => "hello");
     app.compile();
     expect(app).toBeDefined();
+  });
+});
+
+// ============================================================================
+// 2.2.4 — Security Headers: Pre-built Response
+// ============================================================================
+
+describe("buildSecurityHeaders (pre-built static headers)", () => {
+  test("returns a reusable header pairs array", () => {
+    const { headers, hstsHeader } = buildSecurityHeaders(strictSecurity);
+    expect(Array.isArray(headers)).toBe(true);
+    expect(headers.length).toBeGreaterThan(5);
+    expect(hstsHeader).toContain("max-age");
+
+    // Pairs are [name, value]
+    for (const [name, value] of headers) {
+      expect(typeof name).toBe("string");
+      expect(typeof value).toBe("string");
+      expect(name.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("includes the CSP header from config", () => {
+    const { headers } = buildSecurityHeaders(strictSecurity);
+    const csp = headers.find(([n]) => n === "Content-Security-Policy");
+    expect(csp).toBeDefined();
+    expect(csp![1]).toContain("default-src");
+  });
+
+  test("returns empty array when all headers disabled", () => {
+    const { headers } = buildSecurityHeaders({
+      contentSecurityPolicy: false,
+      noSniff: false,
+      frameOptions: false,
+      xssFilter: false,
+      referrerPolicy: false,
+      dnsPrefetchControl: false,
+      ieNoOpen: false,
+      crossDomainPolicy: false,
+      originAgentCluster: false,
+    });
+    expect(headers.length).toBe(0);
+  });
+
+  test("hstsHeader is null when hsts disabled", () => {
+    const { hstsHeader } = buildSecurityHeaders({ hsts: false });
+    expect(hstsHeader).toBeNull();
+  });
+});
+
+describe("securityHeaders middleware (2.2.4 optimizations)", () => {
+  test("applies pre-built headers to the response", async () => {
+    const app = new Asi({ silent: true } as any);
+    app.use(securityHeaders(strictSecurity));
+    app.get("/", () => "hello");
+
+    const res = await app.handle(new Request("http://localhost/"));
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(res.headers.get("Content-Security-Policy")).toContain("frame-ancestors");
+  });
+
+  test("does not allocate a URL for HSTS check on http", async () => {
+    const app = new Asi({ silent: true } as any);
+    app.use(securityHeaders(strictSecurity));
+    app.get("/", () => "hello");
+
+    const res = await app.handle(new Request("http://localhost/"));
+    // HSTS only applied over https
+    expect(res.headers.get("Strict-Transport-Security")).toBeNull();
+  });
+
+  test("applies HSTS over https", async () => {
+    const app = new Asi({ silent: true } as any);
+    app.use(securityHeaders(strictSecurity));
+    app.get("/", () => "hello");
+
+    const res = await app.handle(
+      new Request("https://localhost/"),
+    );
+    expect(res.headers.get("Strict-Transport-Security")).toContain("max-age");
+  });
+});
+
+describe("nonce path detection (2.2.4)", () => {
+  const sec = {
+    autoNonce: true,
+    autoEscape: false,
+    maxBodySize: false,
+    strictContentType: false,
+    headers: false,
+    warnInDev: false,
+    xssScan: false,
+    skipPaths: [],
+  };
+
+  test("skips nonce generation for JSON-only Accept", async () => {
+    const app = new Asi({ silent: true, security: sec } as any);
+    app.get("/api", (ctx) => {
+      return { nonce: (ctx.store as any).cspNonce ?? null };
+    });
+
+    const res = await app.handle(
+      new Request("http://localhost/api", {
+        headers: { accept: "application/json" },
+      }),
+    );
+    const json = await res.json();
+    // JSON client — no nonce generated (saves crypto per request)
+    expect(json.nonce).toBeNull();
+  });
+
+  test("generates nonce for HTML-capable Accept", async () => {
+    const app = new Asi({ silent: true, security: sec } as any);
+    app.get("/page", (ctx) => {
+      return { nonce: (ctx.store as any).cspNonce ?? null };
+    });
+
+    const res = await app.handle(
+      new Request("http://localhost/page", {
+        headers: { accept: "text/html" },
+      }),
+    );
+    const json = await res.json();
+    expect(json.nonce).toBeTruthy();
+  });
+
+  test("generates nonce when no Accept header sent", async () => {
+    const app = new Asi({ silent: true, security: sec } as any);
+    app.get("/bare", (ctx) => {
+      return { nonce: (ctx.store as any).cspNonce ?? null };
+    });
+
+    const res = await app.handle(new Request("http://localhost/bare"));
+    const json = await res.json();
+    expect(json.nonce).toBeTruthy();
+  });
+
+  test("injects nonce into CSP only for HTML responses", async () => {
+    const app = new Asi({
+      silent: true,
+      security: { ...sec, headers: strictSecurity },
+    } as any);
+    app.get("/page", () =>
+      new Response("<html><body>hi</body></html>", {
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+    app.get("/json", () => ({ ok: true }));
+
+    // HTML response → CSP gets the nonce
+    const htmlRes = await app.handle(
+      new Request("http://localhost/page", {
+        headers: { accept: "text/html" },
+      }),
+    );
+    const csp = htmlRes.headers.get("Content-Security-Policy");
+    expect(csp).toContain("nonce-");
+
+    // JSON response → CSP untouched (no nonce injected)
+    const jsonRes = await app.handle(
+      new Request("http://localhost/json", {
+        headers: { accept: "application/json" },
+      }),
+    );
+    const jsonCsp = jsonRes.headers.get("Content-Security-Policy");
+    expect(jsonCsp).not.toContain("nonce-");
+  });
+});
+
+describe("security middleware chain (2.2.4)", () => {
+  test("does not add no-op middleware hops when features disabled", () => {
+    const mgr = new SecurityManager({
+      autoEscape: false,
+      maxBodySize: false,
+      autoNonce: false,
+      strictContentType: false,
+      headers: true,
+      warnInDev: false,
+      xssScan: true, // default patterns → passthrough, not added
+      skipPaths: [],
+    });
+    const mw = mgr.buildMiddleware();
+    // Only the headers middleware — no skip wrapper, no xssScan no-op
+    expect(mw.length).toBe(1);
+  });
+
+  test("adds xssScan middleware when custom patterns supplied", () => {
+    const mgr = new SecurityManager({
+      autoEscape: false,
+      maxBodySize: false,
+      autoNonce: false,
+      strictContentType: false,
+      headers: false,
+      warnInDev: false,
+      xssScan: [/custom\s*=/i],
+      skipPaths: [],
+    });
+    const mw = mgr.buildMiddleware();
+    expect(mw.length).toBe(1);
+  });
+
+  test("adds skip wrapper when skipPaths configured", () => {
+    const mgr = new SecurityManager({
+      autoEscape: false,
+      maxBodySize: false,
+      autoNonce: false,
+      strictContentType: false,
+      headers: false,
+      warnInDev: false,
+      xssScan: false,
+      skipPaths: ["/webhooks"],
+    });
+    const mw = mgr.buildMiddleware();
+    expect(mw.length).toBe(1);
   });
 });

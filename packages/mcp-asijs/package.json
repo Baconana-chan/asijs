@@ -1,0 +1,49 @@
+{
+  "name": "asijs-mcp",
+  "version": "1.0.0",
+  "description": "MCP v2 server for AsiJS — AI-native protocol with stdio/HTTP/SSE transports, deep AsiJS runtime integration, prompts, sampling, roots, and workflows",
+  "keywords": [
+    "asijs",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "llm",
+    "claude",
+    "stdio",
+    "sse",
+    "agent"
+  ],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./transports": {
+      "types": "./dist/transports/index.d.ts",
+      "import": "./dist/transports/index.js",
+      "default": "./dist/transports/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "asijs": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "asijs": "file:../..",
+    "typescript": "^5.0.0"
+  }
+}

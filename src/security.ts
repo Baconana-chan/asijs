@@ -288,10 +288,16 @@ function buildPermissionsPolicyHeader(
 // ===== Security Middleware =====
 
 /**
- * Create security headers middleware
+ * Pre-build the static security headers for a given configuration.
+ *
+ * Returns the pre-built header pairs (reused across requests) plus the HSTS
+ * header value, which is applied conditionally over HTTPS. This avoids
+ * re-iterating the config and re-building header strings on every request
+ * (2.2.4 — Security Headers: Pre-built Response).
  */
-export function securityHeaders(options: SecurityOptions = {}): Middleware {
-  // Pre-compute headers for performance
+export function buildSecurityHeaders(
+  options: SecurityOptions = {},
+): { headers: Array<[string, string]>; hstsHeader: string | null } {
   const headers: Array<[string, string]> = [];
   const hstsHeader =
     options.hsts !== false
@@ -399,17 +405,37 @@ export function securityHeaders(options: SecurityOptions = {}): Middleware {
     ]);
   }
 
+  return { headers, hstsHeader };
+}
+
+/**
+ * Create security headers middleware
+ *
+ * Optimized (2.2.4):
+ * - Static headers are pre-built ONCE as a flat pairs array
+ * - Applied to each response with a tight loop (no config iteration, no
+ *   Headers-object iteration overhead per request)
+ * - HSTS protocol check avoids allocating a URL object (`request.url` string)
+ */
+export function securityHeaders(options: SecurityOptions = {}): Middleware {
+  const { headers, hstsHeader } = buildSecurityHeaders(options);
+  const len = headers.length;
+
   // Return middleware
   return async (ctx: Context, next) => {
     const response = await next();
 
     if (response instanceof Response) {
-      for (const [name, value] of headers) {
-        response.headers.set(name, value);
+      // Apply all pre-built static headers in one tight loop
+      const resHeaders = response.headers;
+      for (let i = 0; i < len; i++) {
+        const [name, value] = headers[i];
+        resHeaders.set(name, value);
       }
 
-      if (hstsHeader && ctx.url.protocol === "https:") {
-        response.headers.set("Strict-Transport-Security", hstsHeader);
+      // HSTS only over HTTPS — string check instead of URL allocation
+      if (hstsHeader && ctx.request.url.startsWith("https://")) {
+        resHeaders.set("Strict-Transport-Security", hstsHeader);
       }
     }
 

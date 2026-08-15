@@ -253,8 +253,11 @@ export class SecurityManager {
   buildMiddleware(appConfig?: { development?: boolean }): Middleware[] {
     const chain: Middleware[] = [];
 
-    // 1. Skip paths check wrapper
-    chain.push(this._wrapWithSkipCheck());
+    // 1. Skip paths check wrapper — only added when there are paths to skip
+    //    (avoids a no-op middleware hop on the hot path)
+    if (this.config.skipPaths.length > 0) {
+      chain.push(this._wrapWithSkipCheck());
+    }
 
     // 2. maxBodySize
     if (this.bodySizeBytes > 0) {
@@ -266,8 +269,9 @@ export class SecurityManager {
       chain.push(this._createContentTypeMiddleware());
     }
 
-    // 4. XSS scan
-    if (this.config.xssScan) {
+    // 4. XSS scan — current implementation is a passthrough, so only add it
+    //    when it actually scans (custom patterns supplied)
+    if (this.config.xssScan && this._xssScans()) {
       chain.push(this._createXssScanMiddleware());
     }
 
@@ -290,6 +294,15 @@ export class SecurityManager {
     }
 
     return chain;
+  }
+
+  /** True if xssScan is configured with actual custom patterns */
+  private _xssScans(): boolean {
+    return (
+      typeof this.config.xssScan === "object" &&
+      Array.isArray(this.config.xssScan) &&
+      this.config.xssScan.length > 0
+    );
   }
 
   /**
@@ -425,26 +438,42 @@ export class SecurityManager {
     };
   }
 
-  /** Generate CSP nonce per request */
+  /** Generate CSP nonce per request (only for HTML-capable requests) */
   private _createNonceMiddleware(): Middleware {
     return async (ctx, next) => {
       // Skip if security was bypassed for this path
       if ((ctx.store as Record<string, unknown>)["__securitySkipped"]) {
         return next();
       }
+
+      // Nonce path detection (2.2.4): JSON APIs don't need CSP nonces.
+      // If the client clearly does not accept HTML, skip generation entirely
+      // (saves crypto + string ops per request on the API hot path).
+      const accept = ctx.request.headers.get("accept") ?? "";
+      const wantsHtml =
+        accept.includes("text/html") || accept.includes("*/*") || accept === "";
+      if (!wantsHtml) {
+        return next();
+      }
+
       const nonce = generateNonce();
       if (ctx.store) {
         (ctx.store as Record<string, unknown>)["cspNonce"] = nonce;
       }
       const response = await next();
-      // Add nonce to CSP if headers are present
-      const existingCsp = response.headers.get("Content-Security-Policy");
-      if (existingCsp && nonce) {
-        response.headers.set(
-          "Content-Security-Policy",
-          existingCsp.replace("script-src", `script-src 'nonce-${nonce}'`)
-            .replace(/'self'/, "'self' 'nonce-" + nonce + "'"),
-        );
+
+      // Add nonce to CSP — only when the response is actually HTML
+      const contentType = response.headers.get("Content-Type") ?? "";
+      if (contentType.includes("text/html")) {
+        const existingCsp = response.headers.get("Content-Security-Policy");
+        if (existingCsp) {
+          response.headers.set(
+            "Content-Security-Policy",
+            existingCsp
+              .replace("script-src", `script-src 'nonce-${nonce}'`)
+              .replace(/'self'/, "'self' 'nonce-" + nonce + "'"),
+          );
+        }
       }
       return response;
     };

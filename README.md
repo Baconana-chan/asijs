@@ -26,7 +26,7 @@
 - 🔥 **Hot Reload 2.0** — `fs.watch` with 200ms debounce, module-level hot swap, HMR browser push via WebSocket
 - 💬 **Interactive REPL** — `asi repl`: create routes on the fly, test requests, inspect state
 - 🌐 **Web Playground** — Browser-based IDE: code editor, output panel, request bar, 5 built-in examples
-- 🛠️ **CLI v2** — `asi create/dev/inspect/build/plugin/repl/generate/integrate`
+- 🛠️ **CLI v2** — `asi create/dev/inspect/build/plugin/repl/generate/integrate/analyze/doctor/upgrade/template`
 - 📊 **Benchmark Dashboard** — Chart.js dashboard with trend lines, CI pipeline
 
 ### Resilience & Performance
@@ -178,6 +178,15 @@ bunx asijs integrate ./app.js
 # Generate scaffold
 bunx asijs generate route users
 bunx asijs generate plugin auth
+
+# CLI v2 — Smarter Developer Tools
+bunx asijs analyze              # Static analysis: dead routes, validation, bottlenecks
+bunx asijs analyze --info --json
+bunx asijs doctor               # Project diagnostics: config, deps, strict, security
+bunx asijs upgrade --dry-run    # Check for AsiJS updates
+bunx asijs upgrade --codemod    # Update + breaking-changes codemod
+bunx asijs template api         # Install template into current dir
+bunx asijs dev --inspect        # Dev + DevTools hint (dashboard, REPL, analyze)
 ```
 
 ### Templates
@@ -508,7 +517,7 @@ Includes **OWASP-recommended headers** by default: CSP, HSTS, X-Frame-Options, X
 
 AsiJS is built for performance. Full benchmark dashboard available at `/benchmarks/`.
 
-### Production Benchmarks (v1.3.0)
+### Production Benchmarks (v1.4.0)
 
 | Scenario | Requests/sec | vs Elysia | vs Hono |
 |----------|-------------|-----------|---------|
@@ -666,6 +675,9 @@ Full documentation available at the [VitePress docs site](https://baconana-chan.
 - [Security](docs/features/security.md)
 - [SSG](docs/features/ssg.md)
 - [MCP](docs/features/mcp.md)
+- [MCP v2 — AI-Native Protocol](docs/features/mcp-v2.md)
+- [Async Error Boundary](docs/features/error-boundary.md)
+- [Observability](docs/features/observability.md)
 - [API Versioning](docs/features/api-versioning.md)
 - [Circuit Breaker](docs/features/circuit-breaker.md)
 - [Framework Adapters](docs/features/adapters.md)

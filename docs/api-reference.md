@@ -99,14 +99,91 @@ class Context {
 }
 ```
 
+## Query parsing
+
+```typescript
+class QueryParseCache { // bounded LRU, O(1) eviction via Map delete+set
+  constructor(max?: number);      // default 512
+  get(key): Record<string,string> | undefined;
+  set(key, value): void;
+  has(key): boolean;
+  clear(): void;
+  size: number;
+}
+
+// Shared cache state (enabled by default via Asi `queryCache: true`)
+function getDefaultQueryCache(max?): QueryParseCache | null;
+function disableDefaultQueryCache(): void;
+function resetDefaultQueryCache(): void;
+```
+
+Query strings are parsed by an inline single-pass parser (no URL object, no
+URLSearchParams). Results are cached per query string and returned as shallow
+copies, so mutating `ctx.query` never poisons the cache. Malformed
+percent-encoding falls back to the raw string instead of throwing.
+
 ## Validation
 
 ```typescript
 function validate<T>(schema, data): ValidationResult<T>;
 function validateAndCoerce<T>(schema, data): ValidationResult<T>;
+function schemaHasDefaults(schema): boolean; // cached schema analysis (WeakMap)
 function createValidator<T>(schema): (data) => ValidationResult<T>;
 class ValidationException extends Error { errors: ValidationError[]; }
 ```
+
+Validation uses compiled TypeBox validators (TypeCompiler) by default —
+`validateAndCoerce()` runs a compiled `Check` fast path (skips Convert/Default
+when data already conforms and the schema has no defaults) and falls back to
+full coercion only when needed. Compiled validators are cached in an LRU cache
+(`lruSchemaCache: true` by default, max 10000, O(1) eviction).
+
+## Database Layer
+
+```typescript
+class Database { // bun:sqlite default, postgres via lazy import
+  constructor(config?: DatabaseConfig);
+  query<T>(sql, params?): T[];
+  queryAsync<T>(sql, params?): Promise<T[]>;
+  execute(sql, params?): number;
+  executeAsync(sql, params?): Promise<unknown>;
+  first<T>(sql, params?): T | undefined;
+  exec(sql): void;
+  transaction<T>(fn: () => T): T;
+  transactionAsync<T>(fn): Promise<T>;
+  listTables(): string[];
+  tableInfo(table): { name, type, notnull, pk }[];
+  close(): void;
+  type: "sqlite" | "postgres";
+  url: string;
+  raw: any;
+}
+
+interface DatabaseConfig {
+  url?: string;              // file:./app.db | postgres://...
+  type?: "sqlite" | "postgres" | "mysql" | "mssql";
+  migrationsDir?: string;    // default ./migrations
+  autoMigrate?: boolean;     // run pending on first app.db
+  seedFile?: string;
+  autoSeed?: boolean;
+}
+
+class Migrator {
+  constructor(db, { dir }?);
+  up(): { applied: string[]; skipped: number };
+  down(): { name, rolledBack } | null;
+  status(): { name, applied, appliedAt? }[];
+  create(name): string;      // scaffold NNN_name.sql
+}
+
+function migrate(db, dir?): { applied, skipped };
+function runSeed(db, file): Promise<SeedResult>;
+function findSeedFile(cwd?): string | null;
+function serveDbStudio(db, { port?, silent? }?): server;
+function studioHandler(db): (req) => Promise<Response>;
+```
+
+`AsiConfig.database` wires it into the app — `app.db` (lazy) + `autoMigrate`.
 
 ## Rate Limit
 
@@ -134,7 +211,28 @@ function etag(options?): Middleware;
 function cache(options?): AfterHandler;
 function cachePlugin(options?): AsiPlugin;
 class MemoryCache<T>;
+
+// Static files (plugins/static)
+function staticFiles(root, options?): Middleware;
+interface StaticOptions {
+  prefix?: string;                 // URL prefix, default ""
+  index?: string;                  // directory index file, default "index.html"
+  maxAge?: number;                 // Cache-Control max-age, default 0
+  etag?: boolean;                  // default true
+  etagStrategy?: "mtime" | "bun";  // default "mtime"
+  listing?: boolean;               // directory listing, default false
+  allowedExtensions?: string[];    // extension filter
+  cacheSmallFiles?: boolean;       // cache files <= cacheMaxFileSize
+  cacheMaxFileSize?: number;       // default 128KB
+  cacheMaxEntries?: number;        // default 512
+  cacheMaxBytes?: number;          // default 16MB
+  preload?: boolean | string | string[]; // memory-first serving (Bun.Glob)
+  cacheTtl?: number;               // TTL seconds (MemoryCache semantics)
+}
 ```
+
+With `preload` or `cacheTtl`, cached files are served from memory with zero
+fs calls (up to 5.4x faster on the request path).
 
 ## Trace
 
@@ -171,6 +269,101 @@ function scanWorkspace(options?): SubApp[];
 function startWorkspaceDev(apps, options?): Promise<WorkspaceDevController>;
 function asiDev(options?): Promise<WorkspaceDevController>;
 class WorkspaceDevController;
+
+// Workspace V2 — production multi-app server
+class Workspace {
+  app(name, config, setup): this;
+  appWith(config): this;
+  listen(port?, callback?): any;
+  async stop(): Promise<void>;
+}
+function createWorkspace(options?): Workspace;
+
+// Shared state bus
+class EventBus {
+  on<T>(topic, handler): () => void;
+  once<T>(topic, handler): () => void;
+  off<T>(topic, handler): void;
+  emit<T>(topic, payload): void;
+  emitAsync<T>(topic, payload): Promise<void>;
+  stats(): EventBusStats;
+}
+function createRedisEventBus(options): Promise<EventBus>;
+```
+
+## Analyze
+
+```typescript
+async function analyzeProject(options?): Promise<AnalysisReport>;
+function analyzeSource(source, options?): AnalysisReport;
+function findSourceFiles(cwd, extensions?): string[];
+function parseRoutesFromSource(source, file): ParsedRoute[];
+```
+
+## Doctor
+
+```typescript
+async function runDoctor(options?): Promise<DoctorReport>;
+```
+
+## Upgrade
+
+```typescript
+async function checkForUpdates(cwd, options?): Promise<UpdateCheck>;
+async function upgradeProject(options?): Promise<UpgradeResult>;
+async function fetchLatestVersion(packageName?, registry?): Promise<string | null>;
+function compareVersions(a, b): number;
+function parseVersion(v): { major, minor, patch };
+function versionFromRange(specifier): string | null;
+```
+
+## Async Error Boundary
+
+```typescript
+class HttpError extends Error { status; code?; details?; retryable?; }
+class BusinessError extends HttpError;
+class NotFoundError extends BusinessError;
+class UnauthorizedError extends BusinessError;
+class ForbiddenError extends BusinessError;
+class ConflictError extends BusinessError;
+class SystemError extends HttpError;
+class FatalError extends Error { crash; code?; }
+
+function classifyError(error): ClassifiedError;
+function toErrorResponse(ctx, error): Response;
+function errorBoundary(options?): AsiPlugin;
+function retry<T>(fn, options?): Promise<T>;
+function computeBackoff(attempt, options): number;
+function defaultShouldRetry(error): boolean;
+function tryCatch<T>(fn): { ok: true, value } | { ok: false, error };
+
+// ctx (with errorBoundary() plugin):
+// ctx.errorBoundary<T>(fn, { fallback? | onError? | rethrow? }): Promise<T>
+```
+
+## Observability
+
+```typescript
+// OTel Logs Bridge
+class OTLPLogsExporter { record(entry); flush(); start(); stop(); }
+function entryToOTLPLogRecord(entry, serviceName?, instanceId?): OTLPLogRecord;
+function otelLogs(options): AsiPlugin;
+function createOTelLogger(options): { logger, exporter };
+function levelToSeverityNumber(level): number;
+
+// Distributed tracing (Redis)
+class RedisTraceBridge { connect(); disconnect(); emit(span); onSpan(handler); }
+function createRedisTraceBridge(options): Promise<RedisTraceBridge>;
+function newTraceId(): string;   // 32 hex
+function newSpanId(): string;    // 16 hex
+
+// Healthcheck dashboard
+function healthDashboard(options): Middleware;
+function buildHealthSnapshot(options): Promise<HealthDashboardSnapshot>;
+function renderHealthDashboardHTML(snapshot, refreshSeconds): string;
+
+// Grafana export
+function createGrafanaDashboard(options?): Record<string, unknown>;
 ```
 
 ## Misc

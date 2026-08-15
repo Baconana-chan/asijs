@@ -21,6 +21,7 @@
  */
 
 import { join, extname } from "path";
+import type { BunFile } from "bun";
 import type { Middleware } from "../types";
 import type { Context } from "../context";
 
@@ -92,6 +93,28 @@ export interface StaticOptions {
    * @default 16777216 (16MB)
    */
   cacheMaxBytes?: number;
+
+  /**
+   * Preload файлов в память при старте (in-memory cache, 2.2.7).
+   *
+   * - `true` — загрузить все файлы под glob `**&#47;*.{html,css,js,svg}`
+   * - строка | массив строк — явные glob-паттерны, резолвятся относительно `root`
+   *
+   * Файлы больше `cacheMaxFileSize` пропускаются. Preload работает независимо
+   * от `cacheSmallFiles` (загруженные файлы всегда отдаются из памяти).
+   *
+   * @default false
+   */
+  preload?: boolean | string | string[];
+
+  /**
+   * TTL кэша в секундах (MemoryCache-совместимая семантика).
+   * После истечения файл перечитывается с диска при следующем запросе —
+   * полезно когда файл меняется без изменения size/mtime.
+   *
+   * @default undefined (без истечения — инвалидация по size/mtime)
+   */
+  cacheTtl?: number;
 }
 
 // Минимальный набор MIME типов
@@ -175,6 +198,8 @@ export function staticFiles(
     cacheMaxFileSize = 128 * 1024,
     cacheMaxEntries = 512,
     cacheMaxBytes = 16 * 1024 * 1024,
+    preload = false,
+    cacheTtl,
   } = options;
 
   // Normalize prefix
@@ -198,16 +223,17 @@ export function staticFiles(
     }
   >();
 
-  const fileCache = new Map<
-    string,
-    {
-      body: ArrayBuffer;
-      headers: Record<string, string>;
-      etag?: string;
-      size: number;
-      mtime: number;
-    }
-  >();
+  interface CacheEntry {
+    body: ArrayBuffer;
+    headers: Record<string, string>;
+    etag?: string;
+    size: number;
+    mtime: number;
+    /** 0 = никогда не истекает (инвалидация по size/mtime); иначе Date.now() + ttl */
+    expires: number;
+  }
+
+  const fileCache = new Map<string, CacheEntry>();
   let cacheBytes = 0;
 
   const evictCache = () => {
@@ -220,10 +246,105 @@ export function staticFiles(
     }
   };
 
+  /** Lazy TTL cleanup — выбросить истёкшие записи (вызывается при записи) */
+  const purgeExpired = () => {
+    if (!cacheTtl) return;
+    const now = Date.now();
+    for (const [key, entry] of fileCache) {
+      if (entry.expires !== 0 && entry.expires <= now) {
+        cacheBytes -= entry.size;
+        fileCache.delete(key);
+      }
+    }
+  };
+
+  /** Запись в fileCache: чтение буфера + ETag(bun) + byte-accounting + eviction */
+  const cacheFile = async (
+    filePath: string,
+    file: BunFile,
+    size: number,
+    mtime: number,
+    baseHeaders: Record<string, string>,
+    etagValue: string | undefined,
+  ): Promise<{ body: ArrayBuffer; headers: Record<string, string>; etag: string | undefined }> => {
+    const body = await file.arrayBuffer();
+    if (etag && etagStrategy === "bun") {
+      etagValue = buildBunHashEtag(body);
+      baseHeaders = { ...baseHeaders, ETag: etagValue };
+    }
+    purgeExpired();
+    fileCache.set(filePath, {
+      body,
+      headers: baseHeaders,
+      etag: etagValue,
+      size,
+      mtime,
+      expires: cacheTtl ? Date.now() + cacheTtl * 1000 : 0,
+    });
+    cacheBytes += size;
+    evictCache();
+    return { body, headers: baseHeaders, etag: etagValue };
+  };
+
+  /** Кэш-валидность: size/mtime совпали и TTL не истёк */
+  const isFresh = (entry: CacheEntry, size: number, mtime: number): boolean =>
+    entry.size === size &&
+    entry.mtime === mtime &&
+    (entry.expires === 0 || entry.expires > Date.now());
+
+  // Preload (2.2.7): загрузить matching файлы в память при старте
+  const DEFAULT_PRELOAD_GLOB = "**/*.{html,css,js,svg}";
+  let preloadSettled = !preload;
+  let preloadPromise: Promise<void> | null = null;
+
+  if (preload) {
+    const patterns = preload === true ? [DEFAULT_PRELOAD_GLOB] : Array.isArray(preload) ? preload : [preload];
+    preloadPromise = (async () => {
+      const seen = new Set<string>();
+      for (const pattern of patterns) {
+        const glob = new Bun.Glob(pattern);
+        for await (const rel of glob.scan({ cwd: root, onlyFiles: true })) {
+          const fp = join(root, rel);
+          if (seen.has(fp)) continue;
+          seen.add(fp);
+          try {
+            const file = Bun.file(fp);
+            const size = file.size;
+            if (size > cacheMaxFileSize) continue;
+            const mtime = file.lastModified;
+            const ext = extname(fp).slice(1).toLowerCase();
+            if (allowedSet && !allowedSet.has(ext)) continue;
+            const baseHeaders = {
+              "Content-Type": getMimeType(ext),
+              "Cache-Control": cacheControl,
+            };
+            let etagValue: string | undefined;
+            if (etag && etagStrategy === "mtime") {
+              etagValue = `"${mtime.toString(16)}-${size.toString(16)}"`;
+              (baseHeaders as Record<string, string>).ETag = etagValue;
+            }
+            await cacheFile(fp, file, size, mtime, baseHeaders, etagValue);
+          } catch {
+            // Пропускаем недоступные файлы
+          }
+        }
+      }
+    })().catch(() => {
+      /* preload — best-effort */
+    }).finally(() => {
+      preloadSettled = true;
+    });
+  }
+
   return async (
     ctx: Context,
     next: () => Promise<Response>,
   ): Promise<Response> => {
+    // First requests wait for startup preload (fast — уже в полёте)
+    if (preloadPromise && !preloadSettled) {
+      await preloadPromise;
+    }
+
     // Only handle GET and HEAD
     if (ctx.method !== "GET" && ctx.method !== "HEAD") {
       return next();
@@ -250,6 +371,28 @@ export function staticFiles(
     let filePath = join(root, relativePath);
 
     try {
+      // === FAST PATH (2.2.7): in-memory cache hit — ноль fs-вызовов ===
+      // `file.exists()` стоит ~150µs на запрос — главный bottleneck. Когда
+      // пользователь явно выбрал memory-first serving (`preload` или
+      // `cacheTtl`), отдаём из памяти без stat/read. Trade-off: изменение
+      // файла без смены TTL/size/mtime не подхватывается мгновенно
+      // (поведение CDN edge). Без этих опций сохраняется прежняя семантика:
+      // cacheSmallFiles валидирует size/mtime с диска на каждый запрос.
+      const memoryFirst = cacheTtl !== undefined || preload !== false;
+      const cachedHit = memoryFirst ? fileCache.get(filePath) : undefined;
+      if (cachedHit && (cachedHit.expires === 0 || cachedHit.expires > Date.now())) {
+        const fastHeaders = new Headers(cachedHit.headers);
+        if (etag && cachedHit.etag && ctx.header("If-None-Match") === cachedHit.etag) {
+          return new Response(null, { status: 304, headers: fastHeaders });
+        }
+        fastHeaders.set("Content-Length", String(cachedHit.size));
+        if (ctx.method === "HEAD") {
+          return new Response(null, { status: 200, headers: fastHeaders });
+        }
+        return new Response(cachedHit.body, { headers: fastHeaders });
+      }
+
+      // Slow path — fs операции
       let file = Bun.file(filePath);
       let exists = await file.exists();
 
@@ -315,12 +458,20 @@ export function staticFiles(
         headers = new Headers(baseHeaders);
       }
 
-      const cachedFile = canCache ? fileCache.get(filePath) : undefined;
-      if (cachedFile && cachedFile.size === size && cachedFile.mtime === mtime) {
-        baseHeaders = cachedFile.headers;
-        headers = new Headers(baseHeaders);
-        if (cachedFile.etag) {
-          etagValue = cachedFile.etag;
+      // In-memory cache lookup (2.2.7) — читаем всегда: preloaded файлы
+      // отдаются из памяти даже при cacheSmallFiles: false
+      const cachedFile = fileCache.get(filePath);
+      if (cachedFile) {
+        if (isFresh(cachedFile, size, mtime)) {
+          baseHeaders = cachedFile.headers;
+          headers = new Headers(baseHeaders);
+          if (cachedFile.etag) {
+            etagValue = cachedFile.etag;
+          }
+        } else {
+          // Истёк (TTL) или size/mtime изменились — выбросить и перечитать
+          fileCache.delete(filePath);
+          cacheBytes -= cachedFile.size;
         }
       }
 
@@ -341,41 +492,48 @@ export function staticFiles(
       }
 
       if (canCache) {
-        if (cachedFile && cachedFile.size === size && cachedFile.mtime === mtime) {
+        if (cachedFile && isFresh(cachedFile, size, mtime)) {
           const responseHeaders = new Headers(cachedFile.headers);
           responseHeaders.set("Content-Length", String(size));
           return new Response(cachedFile.body, { headers: responseHeaders });
         }
 
-        const buffer = await file.arrayBuffer();
-        if (canHash) {
-          etagValue = buildBunHashEtag(buffer);
-          baseHeaders = { ...baseHeaders, ETag: etagValue };
-          headerCache.set(filePath, {
-            headers: baseHeaders,
-            etag: etagValue,
-            size,
-            mtime,
-            etagStrategy,
-          });
-          if (etagValue && ifNoneMatch === etagValue) {
-            const responseHeaders = new Headers(baseHeaders);
-            return new Response(null, { status: 304, headers: responseHeaders });
-          }
-        }
-        fileCache.set(filePath, {
+        const {
           body: buffer,
+          headers: newBaseHeaders,
+          etag: cachedEtag,
+        } = await cacheFile(
+          filePath,
+          file,
+          size,
+          mtime,
+          baseHeaders,
+          etagValue,
+        );
+        baseHeaders = newBaseHeaders;
+        if (etagValue === undefined) etagValue = cachedEtag;
+        headerCache.set(filePath, {
           headers: baseHeaders,
           etag: etagValue,
           size,
           mtime,
+          etagStrategy,
         });
-        cacheBytes += size;
-        evictCache();
+        if (etagValue && ifNoneMatch === etagValue) {
+          const responseHeaders = new Headers(baseHeaders);
+          return new Response(null, { status: 304, headers: responseHeaders });
+        }
 
         const responseHeaders = new Headers(baseHeaders);
         responseHeaders.set("Content-Length", String(size));
         return new Response(buffer, { headers: responseHeaders });
+      }
+
+      // Preloaded (без cacheSmallFiles) — отдаём из памяти
+      if (cachedFile && isFresh(cachedFile, size, mtime)) {
+        const responseHeaders = new Headers(cachedFile.headers);
+        responseHeaders.set("Content-Length", String(size));
+        return new Response(cachedFile.body, { headers: responseHeaders });
       }
 
       if (canHash) {

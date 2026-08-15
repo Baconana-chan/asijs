@@ -713,3 +713,187 @@ export function metricsPlugin(
   });
 }
 
+// ========================================================================
+// Grafana Dashboard Export
+// ========================================================================
+
+/** Options for the pre-built Grafana dashboard */
+export interface GrafanaDashboardOptions {
+  /** Dashboard title (default: "AsiJS Metrics") */
+  title?: string;
+  /** Prometheus datasource UID (default: "prometheus") */
+  datasource?: string;
+  /** Metrics prefix used by metricsPlugin (default: "http") */
+  prefix?: string;
+  /** Refresh interval (default: "30s") */
+  refresh?: string;
+}
+
+/** A single Grafana panel */
+interface GrafanaPanel {
+  id: number;
+  type: string;
+  title: string;
+  gridPos: { x: number; y: number; w: number; h: number };
+  datasource: { type: string; uid: string };
+  targets: Array<{ expr: string; legendFormat?: string; refId: string }>;
+  fieldConfig?: Record<string, unknown>;
+  options?: Record<string, unknown>;
+}
+
+/**
+ * Generate a pre-built Grafana dashboard JSON for AsiJS metrics.
+ *
+ * Import via Grafana: Dashboards → Import → paste JSON.
+ * Expects a Prometheus datasource scraping `GET /metrics`.
+ *
+ * @example
+ * ```ts
+ * const dashboard = createGrafanaDashboard({ prefix: "http" });
+ * app.get("/grafana.json", () => new Response(JSON.stringify(dashboard), {
+ *   headers: { "Content-Type": "application/json" },
+ * }));
+ * ```
+ */
+export function createGrafanaDashboard(options: GrafanaDashboardOptions = {}): Record<string, unknown> {
+  const title = options.title ?? "AsiJS Metrics";
+  const datasource = options.datasource ?? "prometheus";
+  const prefix = options.prefix ?? "http";
+  const refresh = options.refresh ?? "30s";
+
+  const ds = { type: "prometheus", uid: datasource };
+  let nextId = 1;
+  const panel = (p: Omit<GrafanaPanel, "id" | "datasource">): GrafanaPanel => {
+    const full: GrafanaPanel = { id: nextId++, datasource: ds, ...p } as GrafanaPanel;
+    return full;
+  };
+
+  const panels: GrafanaPanel[] = [
+    panel({
+      type: "stat",
+      title: "Requests total",
+      gridPos: { x: 0, y: 0, w: 6, h: 6 },
+      targets: [{ expr: `${prefix}_requests_total`, refId: "A" }],
+      fieldConfig: {
+        defaults: { unit: "short" },
+      },
+    }),
+    panel({
+      type: "stat",
+      title: "Requests per second",
+      gridPos: { x: 6, y: 0, w: 6, h: 6 },
+      targets: [{ expr: `${prefix}_requests_per_second`, refId: "A" }],
+      fieldConfig: {
+        defaults: { unit: "reqps" },
+      },
+    }),
+    panel({
+      type: "stat",
+      title: "Avg response time",
+      gridPos: { x: 12, y: 0, w: 6, h: 6 },
+      targets: [{ expr: `${prefix}_average_response_time_ms`, refId: "A" }],
+      fieldConfig: {
+        defaults: { unit: "ms" },
+      },
+    }),
+    panel({
+      type: "timeseries",
+      title: "Requests by status code",
+      gridPos: { x: 0, y: 6, w: 12, h: 8 },
+      targets: [
+        {
+          expr: `sum by (status) (rate(${prefix}_requests_by_status[5m]))`,
+          legendFormat: "{{status}}",
+          refId: "A",
+        },
+      ],
+      options: { legend: { displayMode: "list" } },
+    }),
+    panel({
+      type: "timeseries",
+      title: "Request duration (p50/p90/p99)",
+      gridPos: { x: 12, y: 6, w: 12, h: 8 },
+      targets: [
+        {
+          expr: `histogram_quantile(0.5, sum by (le) (rate(${prefix}_request_duration_seconds_bucket[5m])))`,
+          legendFormat: "p50",
+          refId: "A",
+        },
+        {
+          expr: `histogram_quantile(0.9, sum by (le) (rate(${prefix}_request_duration_seconds_bucket[5m])))`,
+          legendFormat: "p90",
+          refId: "B",
+        },
+        {
+          expr: `histogram_quantile(0.99, sum by (le) (rate(${prefix}_request_duration_seconds_bucket[5m])))`,
+          legendFormat: "p99",
+          refId: "C",
+        },
+      ],
+      fieldConfig: {
+        defaults: { unit: "s" },
+      },
+    }),
+    panel({
+      type: "timeseries",
+      title: "Requests by path",
+      gridPos: { x: 0, y: 14, w: 12, h: 8 },
+      targets: [
+        {
+          expr: `topk(10, sum by (path) (rate(${prefix}_requests_by_path[5m])))`,
+          legendFormat: "{{path}}",
+          refId: "A",
+        },
+      ],
+    }),
+    panel({
+      type: "stat",
+      title: "Error rate (5xx)",
+      gridPos: { x: 12, y: 14, w: 12, h: 8 },
+      targets: [
+        {
+          expr: `sum(rate(${prefix}_requests_by_status{status=~"5.."}[5m])) / sum(rate(${prefix}_requests_total[5m]))`,
+          refId: "A",
+        },
+      ],
+      fieldConfig: {
+        defaults: { unit: "percentunit", min: 0, max: 1 },
+      },
+    }),
+  ];
+
+  return {
+    annotations: {
+      list: [
+        {
+          builtIn: 1,
+          datasource: { type: "grafana", uid: "-- Grafana --" },
+          enable: true,
+          hide: true,
+          iconColor: "rgba(0, 211, 255, 1)",
+          name: "Annotations & Alerts",
+          type: "dashboard",
+        },
+      ],
+    },
+    editable: true,
+    fiscalYearStartMonth: 0,
+    graphTooltip: 1,
+    id: null,
+    links: [],
+    panels,
+    refresh,
+    schemaVersion: 39,
+    tags: ["asijs", "metrics"],
+    templating: { list: [] },
+    time: { from: "now-6h", to: "now" },
+    timepicker: {},
+    timezone: "browser",
+    title,
+    uid: "asijs-metrics",
+    version: 1,
+    weekStart: "",
+  };
+}
+
+

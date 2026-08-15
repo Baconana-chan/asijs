@@ -14,7 +14,13 @@ import {
   SchemaCacheLRU,
   MiddlewareChainFlattener,
   RadixTreeRouter,
+  PathSegmentsCache,
+  createInlineFlatChain,
+  getDefaultPathCache,
   getDefaultSchemaCache,
+  internString,
+  parsePathCached,
+  resetDefaultPathCache,
   resetDefaultSchemaCache,
 } from "../src/router-perf";
 import { Type } from "@sinclair/typebox";
@@ -142,6 +148,68 @@ describe("SchemaCacheLRU", () => {
 });
 
 // ============================================================================
+// 1b. PathSegmentsCache & string interning
+// ============================================================================
+
+describe("PathSegmentsCache", () => {
+  it("should cache parsed segments and return the same array", () => {
+    const cache = new PathSegmentsCache(10);
+    const a = parsePathCached("/users/42", cache);
+    const b = parsePathCached("/users/42", cache);
+    expect(a).toEqual(["users", "42"]);
+    expect(b).toBe(a); // same cached instance
+    expect(cache.size).toBe(1);
+  });
+
+  it("should handle the root path", () => {
+    const cache = new PathSegmentsCache(10);
+    expect(parsePathCached("/", cache)).toEqual([]);
+    expect(parsePathCached("/", cache)).toEqual([]);
+    expect(cache.size).toBe(1);
+  });
+
+  it("should evict least-recently-used entries when full", () => {
+    const cache = new PathSegmentsCache(2);
+    parsePathCached("/a", cache);
+    parsePathCached("/b", cache);
+    parsePathCached("/c", cache); // evicts /a
+    expect(cache.size).toBe(2);
+    expect(parsePathCached("/a", cache)).toEqual(["a"]); // re-parsed, not cached
+  });
+
+  it("should be shared as the default cache and resettable", () => {
+    resetDefaultPathCache();
+    const c1 = getDefaultPathCache();
+    const c2 = getDefaultPathCache();
+    expect(c1).toBe(c2);
+    parsePathCached("/shared", c1);
+    expect(c2.has("/shared")).toBe(true);
+    resetDefaultPathCache();
+    expect(getDefaultPathCache()).not.toBe(c1);
+    resetDefaultPathCache();
+  });
+
+  it("should not use the cache when disabled", () => {
+    const cache = new PathSegmentsCache(10);
+    const a = parsePathCached("/x", null);
+    const b = parsePathCached("/x", null);
+    expect(a).toEqual(b);
+    expect(a).not.toBe(b); // fresh arrays
+    expect(cache.size).toBe(0);
+  });
+});
+
+describe("internString", () => {
+  it("should return the same instance for identical input", () => {
+    const a = internString("userId");
+    const b = internString("userId");
+    expect(a).toBe(b);
+    // Distinct inputs stay distinct
+    expect(internString("id")).not.toBe(a);
+  });
+});
+
+// ============================================================================
 // 2. MiddlewareChainFlattener
 // ============================================================================
 
@@ -245,6 +313,119 @@ describe("MiddlewareChainFlattener", () => {
     expect(await res.text()).toBe("Unauthorized");
     expect(log).toEqual(["auth"]);
     // handler not called
+  });
+
+  it("should inline middleware that returns a plain value (short-circuit)", async () => {
+    const flattener = new MiddlewareChainFlattener();
+    const log: string[] = [];
+
+    const authMw = async (ctx: Context) => {
+      log.push("auth");
+      return { error: "not authorized" };
+    };
+    const handler = async () => {
+      log.push("handler");
+      return new Response("never");
+    };
+
+    const flat = flattener.flatten(handler, [authMw], "plain-return");
+    const ctx = new Context(new Request("http://localhost/test"));
+    const res = await flat.execute(ctx);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ error: "not authorized" });
+    expect(log).toEqual(["auth"]);
+  });
+
+  it("should invalidate cache when same id is re-registered with a different handler", async () => {
+    const flattener = new MiddlewareChainFlattener();
+    const mw = async () => undefined;
+
+    const handlerA = async () => new Response("A");
+    const handlerB = async () => new Response("B");
+
+    const f1 = flattener.flatten(handlerA, [mw], "dup-route");
+    const f2 = flattener.flatten(handlerB, [mw], "dup-route");
+
+    // Must NOT be the same cached function — identity differs
+    expect(f1).not.toBe(f2);
+    expect(flattener.cacheSize).toBe(1); // second call overwrites
+
+    const ctx = new Context(new Request("http://localhost/test"));
+    expect(await (await f2.execute(ctx)).text()).toBe("B");
+  });
+});
+
+// ============================================================================
+// 2b. createInlineFlatChain
+// ============================================================================
+
+describe("createInlineFlatChain", () => {
+  it("should run middlewares in order then handler", async () => {
+    const log: string[] = [];
+    const mw1 = async () => {
+      log.push("mw1");
+    };
+    const mw2 = async () => {
+      log.push("mw2");
+    };
+    const handler = async () => {
+      log.push("handler");
+      return new Response("done");
+    };
+
+    const exec = createInlineFlatChain([mw1, mw2], handler);
+    const ctx = new Context(new Request("http://localhost/test"));
+    const res = await exec(ctx);
+    expect(await res.text()).toBe("done");
+    expect(log).toEqual(["mw1", "mw2", "handler"]);
+  });
+
+  it("should short-circuit on a returned Response", async () => {
+    const log: string[] = [];
+    const mw = async () => new Response("blocked", { status: 403 });
+    const handler = async () => {
+      log.push("handler");
+      return new Response("never");
+    };
+
+    const exec = createInlineFlatChain([mw], handler);
+    const ctx = new Context(new Request("http://localhost/test"));
+    const res = await exec(ctx);
+    expect(res.status).toBe(403);
+    expect(await res.text()).toBe("blocked");
+    expect(log).toEqual([]);
+  });
+
+  it("should serialize plain return values from middleware", async () => {
+    const mw = async () => ({ hello: "world" });
+    const handler = async () => new Response("never");
+
+    const exec = createInlineFlatChain([mw], handler);
+    const ctx = new Context(new Request("http://localhost/test"));
+    const res = await exec(ctx);
+    expect(await res.json()).toEqual({ hello: "world" });
+  });
+
+  it("should behave identically with the non-codegen fallback", async () => {
+    const log: string[] = [];
+    const mw1 = async () => {
+      log.push("mw1");
+    };
+    const mw2 = async () => {
+      log.push("mw2");
+      return new Response("short", { status: 201 });
+    };
+    const handler = async () => {
+      log.push("handler");
+      return new Response("never");
+    };
+
+    const exec = createInlineFlatChain([mw1, mw2], handler, { codegen: false });
+    const ctx = new Context(new Request("http://localhost/test"));
+    const res = await exec(ctx);
+    expect(res.status).toBe(201);
+    expect(await res.text()).toBe("short");
+    expect(log).toEqual(["mw1", "mw2"]);
   });
 });
 
@@ -359,6 +540,39 @@ describe("RadixTreeRouter", () => {
     expect(router.find("GET", "/route/100")).toBeNull();
   });
 
+  it("should bypass segment walk for static paths (inline static bypass)", () => {
+    const router = new RadixTreeRouter();
+    const handler = async () => new Response("ok");
+
+    router.add("GET", "/health", handler);
+    router.add("GET", "/", handler);
+
+    // Static hits come straight from the bypass map
+    expect(router.find("GET", "/health")!.handler).toBe(handler);
+    expect(router.find("GET", "/")!.handler).toBe(handler);
+    expect(router.find("GET", "/health")!.params).toEqual({});
+
+    // Static bypass respects the ALL fallback
+    const anyHandler = async () => new Response("any");
+    router.add("ALL", "/ping", anyHandler);
+    expect(router.find("GET", "/ping")!.handler).toBe(anyHandler);
+    expect(router.find("POST", "/ping")!.handler).toBe(anyHandler);
+
+    // Method mismatch → falls through to the tree walk, still correct
+    router.add("POST", "/health", async () => new Response("post"));
+    expect(router.find("GET", "/health")!.handler).toBe(handler);
+  });
+
+  it("should return a fresh params object per static match", () => {
+    const router = new RadixTreeRouter();
+    router.add("GET", "/static", async () => new Response("ok"));
+
+    const a = router.find("GET", "/static");
+    const b = router.find("GET", "/static");
+    expect(a!.params).not.toBe(b!.params);
+    expect(a!.params).toEqual({});
+  });
+
   it("should report hasRoutes correctly", () => {
     const router = new RadixTreeRouter();
     expect(router.hasRoutes).toBe(false);
@@ -459,6 +673,116 @@ describe("Asi app — flattened middleware", () => {
     expect(await res.text()).toBe("ok");
     expect(log).toEqual(["mw-before", "handler", "mw-after"]);
   });
+
+  it("should enable the chain flattener by default", () => {
+    const app = new Asi({ silent: true } as any);
+    expect((app as any).chainFlattener).not.toBeNull();
+
+    const disabled = new Asi({ silent: true, flattenMiddleware: false } as any);
+    expect((disabled as any).chainFlattener).toBeNull();
+  });
+
+  it("should inline flat middleware chains by default (no next)", async () => {
+    const app = new Asi({ silent: true } as any);
+
+    const log: string[] = [];
+    app.use(async () => {
+      log.push("mw1");
+    });
+    app.use(async () => {
+      log.push("mw2");
+    });
+    app.get("/inline", () => {
+      log.push("handler");
+      return "inline-ok";
+    });
+
+    const res = await app.handle(new Request("http://localhost/inline"));
+    expect(await res.text()).toBe("inline-ok");
+    expect(log).toEqual(["mw1", "mw2", "handler"]);
+  });
+
+  it("should inline flat middleware with radix router (default flatten)", async () => {
+    const app = new Asi({ silent: true, router: "radix" } as any);
+
+    const log: string[] = [];
+    app.use(async () => {
+      log.push("flat");
+    });
+    app.get("/radix-flat", () => {
+      log.push("handler");
+      return "radix-flat-ok";
+    });
+
+    const res = await app.handle(new Request("http://localhost/radix-flat"));
+    expect(await res.text()).toBe("radix-flat-ok");
+    expect(log).toEqual(["flat", "handler"]);
+  });
+
+  it("should use the radix router by default", () => {
+    const app = new Asi({ silent: true } as any);
+    expect((app as any).radixRouter).not.toBeNull();
+
+    const trie = new Asi({ silent: true, router: "trie" } as any);
+    expect((trie as any).radixRouter).toBeNull();
+  });
+
+  it("should apply path-based middleware with the default radix router", async () => {
+    const app = new Asi({ silent: true } as any);
+    const calls: string[] = [];
+
+    app.use("/api", async (ctx, next) => {
+      calls.push("api-mw");
+      return next();
+    });
+    app.get("/api/test", () => {
+      calls.push("handler");
+      return "ok";
+    });
+    app.get("/apix", () => {
+      calls.push("apix");
+      return "apix";
+    });
+
+    await app.handle(new Request("http://localhost/api/test"));
+    await app.handle(new Request("http://localhost/apix"));
+    expect(calls).toEqual(["api-mw", "handler", "apix"]);
+  });
+
+  it("should set cookies through the flattened chain (default router)", async () => {
+    const app = new Asi({ silent: true } as any);
+    app.get("/login", (ctx) => {
+      ctx.setCookie("session", "xyz", { httpOnly: true });
+      return { ok: true };
+    });
+
+    const res = await app.handle(new Request("http://localhost/login"));
+    const setCookie = res.headers.get("Set-Cookie");
+    expect(setCookie).toContain("session=xyz");
+    expect(setCookie).toContain("HttpOnly");
+  });
+
+  it("should apply auto-escape through the flattened chain (default router)", async () => {
+    const app = new Asi({
+      silent: true,
+      security: {
+        autoEscape: true,
+        maxBodySize: false,
+        autoNonce: false,
+        strictContentType: false,
+        headers: false,
+        warnInDev: false,
+        xssScan: false,
+        skipPaths: [],
+      },
+    } as any);
+    app.get("/xss", () => '<script>alert("xss")</script>');
+
+    const res = await app.handle(new Request("http://localhost/xss"));
+    const body = await res.text();
+    expect(body).not.toContain("<script>");
+    expect(body).toContain("&lt;script&gt;");
+  });
 });
 
 describe("Asi app — LRU schema cache", () => {
@@ -483,6 +807,50 @@ describe("Asi app — LRU schema cache", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.valid).toBe(true);
+  });
+
+  it("lruSchemaCache is enabled by default (2.2.5)", async () => {
+    // Reset to force a fresh default LRU instance
+    resetDefaultSchemaCache();
+
+    // No lruSchemaCache option — should default to true
+    const app = new Asi({ silent: true } as any);
+    app.get(
+      "/check",
+      (ctx) => ({ ok: true }),
+      {
+        schema: {
+          query: Type.Object({ q: Type.String() }),
+        },
+      },
+    );
+
+    const res = await app.handle(new Request("http://localhost/check?q=x"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+
+    // The default cache should now be populated by the app's constructor
+    const cache = getDefaultSchemaCache();
+    expect(cache.size).toBeGreaterThan(0);
+  });
+
+  it("lruSchemaCache: false uses plain Map cache", async () => {
+    resetDefaultSchemaCache();
+
+    const app = new Asi({ silent: true, lruSchemaCache: false } as any);
+    app.get(
+      "/plain",
+      (ctx) => ({ ok: true }),
+      {
+        schema: {
+          query: Type.Object({ q: Type.String() }),
+        },
+      },
+    );
+
+    const res = await app.handle(new Request("http://localhost/plain?q=x"));
+    expect(res.status).toBe(200);
   });
 });
 

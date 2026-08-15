@@ -372,4 +372,116 @@ describe("Validation", () => {
       expect(json.city).toBe("NYC");
     });
   });
+
+  // ======================================================================
+  // 2.2.5 — Compiled TypeBox validation (fast path)
+  // ======================================================================
+  describe("Compiled validation (2.2.5)", () => {
+    const schema = Type.Object({
+      id: Type.Number(),
+      name: Type.String({ minLength: 2 }),
+      age: Type.Optional(Type.Number()),
+      role: Type.Union([
+        Type.Literal("admin"),
+        Type.Literal("user"),
+        Type.Literal("guest"),
+      ]),
+      tags: Type.Array(Type.String()),
+      profile: Type.Object({
+        bio: Type.Optional(Type.String()),
+        active: Type.Boolean(),
+      }),
+    });
+
+    const goodData = {
+      id: 42,
+      name: "Alice",
+      age: 30,
+      role: "admin",
+      tags: ["a", "b"],
+      profile: { bio: "hi", active: true },
+    };
+
+    it("fast path: valid data passes without mutation", async () => {
+      const { validateAndCoerce } = await import("../src/validation");
+      const data = { ...goodData };
+      const result = validateAndCoerce(schema, data);
+      expect(result.success).toBe(true);
+      // Returns the same reference (no copy) — identity preserved
+      expect(result.data).toBe(data);
+    });
+
+    it("fast path: coercion still applied when data needs it", async () => {
+      const { validateAndCoerce } = await import("../src/validation");
+      const result = validateAndCoerce(schema, {
+        ...goodData,
+        id: "42",
+        age: "30",
+        profile: { bio: "hi", active: "true" },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data!.id).toBe(42);
+      expect(result.data!.age).toBe(30);
+      expect((result.data!.profile as any).active).toBe(true);
+    });
+
+    it("fast path: defaults are still materialized", async () => {
+      const { validateAndCoerce } = await import("../src/validation");
+      const withDefaults = Type.Object({
+        name: Type.String(),
+        role: Type.String({ default: "guest" }),
+        nested: Type.Optional(
+          Type.Object({
+            count: Type.Number({ default: 0 }),
+          }),
+        ),
+      });
+      // Defaults on provided objects are applied
+      const result = validateAndCoerce(withDefaults, { name: "Al" });
+      expect(result.success).toBe(true);
+      expect(result.data!.role).toBe("guest");
+      // Optional nested object absent → stays absent
+      expect((result.data as any).nested).toBeUndefined();
+
+      // Provided nested object → its defaults materialize
+      const result2 = validateAndCoerce(withDefaults, {
+        name: "Al",
+        nested: {},
+      });
+      expect(result2.success).toBe(true);
+      expect((result2.data!.nested as any).count).toBe(0);
+    });
+
+    it("fast path: invalid data produces detailed errors", async () => {
+      const { validateAndCoerce } = await import("../src/validation");
+      const result = validateAndCoerce(schema, {
+        ...goodData,
+        name: "x", // too short
+        tags: [1, 2], // not strings
+      });
+      expect(result.success).toBe(false);
+      expect(result.errors!.length).toBeGreaterThanOrEqual(1);
+      expect(result.errors!.some((e) => e.path.includes("name"))).toBe(true);
+    });
+
+    it("schemaHasDefaults detects nested/array/union defaults", async () => {
+      const { schemaHasDefaults } = await import("../src/validation");
+      expect(schemaHasDefaults(Type.Object({ a: Type.Number() }))).toBe(false);
+      expect(schemaHasDefaults(Type.Object({ a: Type.Number({ default: 1 }) }))).toBe(true);
+      expect(schemaHasDefaults(Type.Object({ a: Type.Array(Type.String({ default: "x" })) }))).toBe(true);
+      expect(schemaHasDefaults(Type.Union([Type.String(), Type.Number({ default: 0 })]))).toBe(true);
+      // Cycle-safe: recursive schema does not hang
+      const rec: any = Type.Object({ name: Type.String() });
+      rec.properties.self = rec;
+      expect(schemaHasDefaults(rec)).toBe(false);
+    });
+
+    it("validate() uses compiled checker and returns same data", async () => {
+      const { validate } = await import("../src/validation");
+      const data = { ...goodData };
+      const result = validate(schema, data);
+      expect(result.success).toBe(true);
+      expect(result.data).toBe(data);
+    });
+  });
 });

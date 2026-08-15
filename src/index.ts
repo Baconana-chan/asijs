@@ -12,7 +12,17 @@ export type {
   MiddlewareInfo,
   AppConfigInfo,
 } from "./asi";
-export { Context, type TypedContext, type CookieOptions } from "./context";
+export {
+  Context,
+  ContextPool,
+  QueryParseCache,
+  getDefaultQueryCache,
+  disableDefaultQueryCache,
+  resetDefaultQueryCache,
+  type TypedContext,
+  type CookieOptions,
+  type ContextPoolOptions,
+} from "./context";
 export type {
   Handler,
   Middleware,
@@ -52,6 +62,26 @@ export {
 // Plugin exports
 export { cors, type CorsOptions } from "./plugins/cors";
 export { staticFiles, type StaticOptions } from "./plugins/static";
+
+export {
+  Database,
+  Migrator,
+  migrate,
+  slugify,
+  runSeed,
+  findSeedFile,
+  serveDbStudio,
+  studioHandler,
+  type DbConfig,
+  type DatabaseConfig,
+  type DatabaseType,
+  type Row,
+  type MigrationFile,
+  type MigrationStatus,
+  type SeedResult,
+  type DbStudioOptions,
+  type StudioApiResponse,
+} from "./db";
 
 // Plugin system
 export {
@@ -446,6 +476,114 @@ export {
   type WorkspaceAppConfig,
 } from "./workspace-v2";
 
+// ===== Shared State Bus =====
+export {
+  EventBus,
+  RedisEventBusBridge,
+  createRedisEventBus,
+  type EventBusOptions,
+  type EventHandler,
+  type EventMeta,
+  type EventBusStats,
+  type RedisEventBusOptions,
+} from "./event-bus";
+
+// ===== Observability Suite =====
+export {
+  OTLPLogsExporter,
+  entryToOTLPLogRecord,
+  levelToSeverityNumber,
+  levelToSeverityText,
+  otelLogs,
+  createOTelLogger,
+  type OTLPLogsOptions,
+  type OTLPLogsExportResult,
+  type OTLPLogRecord,
+  type OTelLogsPluginOptions,
+} from "./otel-logs";
+export {
+  RedisTraceBridge,
+  createRedisTraceBridge,
+  newTraceId,
+  newSpanId,
+  type RedisTraceBridgeOptions,
+  type SpanEvent,
+  type SpanEventHandler,
+} from "./redis-trace";
+export {
+  healthDashboard,
+  buildHealthSnapshot,
+  renderHealthDashboardHTML,
+  type HealthDashboardOptions,
+  type HealthDashboardSnapshot,
+} from "./health-dashboard";
+export {
+  createGrafanaDashboard,
+  type GrafanaDashboardOptions,
+} from "./metrics";
+
+// ===== Async Error Boundary =====
+export {
+  HttpError,
+  BusinessError,
+  NotFoundError,
+  UnauthorizedError,
+  ForbiddenError,
+  ConflictError,
+  SystemError,
+  FatalError,
+  classifyError,
+  toErrorResponse,
+  errorBoundary,
+  attachErrorBoundary,
+  runErrorReporters,
+  retry,
+  computeBackoff,
+  defaultShouldRetry,
+  tryCatch,
+  type ErrorCategory,
+  type ClassifiedError,
+  type ErrorResponseBody,
+  type ErrorBoundaryOptions,
+  type ErrorReporter,
+  type ErrorReportContext,
+  type ErrorReporterOptions,
+  type ErrorBoundaryPluginOptions,
+  type ErrorRetryOptions,
+  type BackoffStrategy,
+} from "./error-boundary";
+
+// ===== CLI v2 — Analyze / Doctor / Upgrade =====
+export {
+  analyzeProject,
+  analyzeSource,
+  findSourceFiles,
+  parseRoutesFromSource,
+  type AnalyzeOptions,
+  type AnalysisReport,
+  type AnalysisIssue,
+  type AnalysisSummary,
+  type IssueSeverity,
+} from "./analyze";
+export {
+  runDoctor,
+  type DoctorReport,
+  type DoctorCheck,
+  type DoctorOptions,
+  type CheckStatus,
+} from "./doctor";
+export {
+  checkForUpdates,
+  upgradeProject,
+  fetchLatestVersion,
+  compareVersions,
+  parseVersion,
+  versionFromRange,
+  type UpdateCheck,
+  type UpgradeOptions,
+  type UpgradeResult,
+} from "./upgrade";
+
 // ===== RPC 2.0 — Server Actions + Auto Treaty =====
 export {
   serverAction,
@@ -508,7 +646,6 @@ export {
   type DrizzleConfig,
   type PrismaConfig,
   type KyselyConfig,
-  type DatabaseConfig,
   type DatabaseClient,
   type TransactionOptions,
   type PoolStats,

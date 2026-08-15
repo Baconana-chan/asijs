@@ -2,7 +2,14 @@ import type { Server, ServerWebSocket } from "bun";
 import type { ServerAdapter, ServerHandle } from "./runtime/types";
 import type { RoomManager, PubSubWebSocket } from "./ws-pubsub";
 import type { TSchema, Static } from "@sinclair/typebox";
-import { Context, type TypedContext } from "./context";
+import {
+  Context,
+  ContextPool,
+  disableDefaultQueryCache,
+  getDefaultQueryCache,
+  type TypedContext,
+} from "./context";
+import { Database, Migrator } from "./db";
 import { Router } from "./router";
 import {
   validateAndCoerce,
@@ -92,6 +99,25 @@ export interface WebSocketRoute<T = unknown> {
 export interface AsiConfig {
   port?: number;
   hostname?: string;
+
+  /**
+   * Database Layer (2.3) — настроить встроенное подключение к БД.
+   *
+   * SQLite через `bun:sqlite` (zero-dep), PostgreSQL через пакет `postgres`
+   * (lazy import, `bun add postgres`). Доступ через `app.db`.
+   *
+   * ```ts
+   * const app = new Asi({
+   *   database: {
+   *     url: "file:./app.db",
+   *     migrationsDir: "./migrations",
+   *     autoMigrate: true,
+   *   },
+   * });
+   * ```
+   */
+  database?: import("./db").DatabaseConfig;
+
   /** Включить подробные ошибки в dev режиме */
   development?: boolean;
   /** HTML error pages with auto-discovery for 404/500 */
@@ -168,6 +194,18 @@ export interface AsiConfig {
    */
   decodeQuery?: boolean;
 
+  /**
+   * Cache parsed query strings (QueryParseCache).
+   *
+   * Повторяющиеся query-строки (pagination, фильтры) не парсятся заново —
+   * результат берётся из bounded LRU-кэша и возвращается как shallow copy
+   * (мутации ctx.query не портят кэш). Pass a number to set the maximum
+   * cache size (default 512).
+   *
+   * @default true
+   */
+  queryCache?: boolean | number;
+
     /**
    * Плагин для HTTP-сервера (например, nodeAdapter для Node.js)
    * По умолчанию: undefined (используется Bun.serve())
@@ -206,31 +244,50 @@ export interface AsiConfig {
   /**
    * Router backend selection.
    *
-   * - `"trie"` (default) — standard segment-based trie router (proven, compatible)
-   * - `"radix"` — compressed radix tree with binary-search static children
+   * - `"radix"` (default) — compressed radix tree with binary-search static
+   *   children, inline static-route bypass, and a pre-parsed path cache.
    *   Uses sorted arrays instead of Maps for static segment lookup.
    *   More memory-efficient for 1M+ routes.
+   * - `"trie"` — standard segment-based trie router (proven, compatible)
    *
-   * @default "trie"
+   * @default "radix"
    */
   router?: "trie" | "radix";
 
   /**
    * Enable the middleware chain flattener.
    * When true, middleware chains are compiled into a single flat async function
-   * during compile(), avoiding per-request loop/chain overhead.
+   * during compile(), avoiding per-request loop/chain overhead. Flat
+   * middlewares (without `next`) are inlined directly — no runtime loop.
    *
-   * @default false
+   * @default true
    */
   flattenMiddleware?: boolean;
 
   /**
    * Enable LRU-based schema validator cache instead of the simple Map.
    * Prevents unbounded memory growth with large numbers of schemas.
+   * Pass a number to set the maximum cache size (default 10000).
    *
-   * @default false (uses simple Map)
+   * @default true
    */
   lruSchemaCache?: boolean | number;
+
+  /**
+   * Enable the request Context pool (Recycler pattern).
+   *
+   * When enabled, `Context` objects are pre-allocated and reused across
+   * requests instead of being created per request — removes the per-request
+   * Context + Headers allocation from the hot path.
+   *
+   * Pass an object for fine-grained control:
+   * ```ts
+   * const app = new Asi({ contextPool: { size: 1000, shrinkIntervalMs: 30_000 } });
+   * ```
+   *
+   * @default true
+   */
+  contextPool?: boolean | import("./context").ContextPoolOptions;
 
   /**
    * Built-in security protections.
@@ -448,6 +505,9 @@ export class Asi {
   // Middleware chain flattener — optional when config.flattenMiddleware === true
   private chainFlattener: MiddlewareChainFlattener | null = null;
 
+  // Context pool — Recycler for zero-allocation request cycles
+  private contextPool: ContextPool | null = null;
+
   // Route metadata for compilation
   private routeMetadata: Array<{
     method: RouteMethod;
@@ -467,6 +527,57 @@ export class Asi {
 
   // Built-in security
   private _securityManager: SecurityManager | null = null;
+
+  // Database Layer (2.3)
+  private _db: import("./db").Database | null = null;
+  private _dbInitAttempted = false;
+
+  /**
+   * Database connection (2.3). Lazily created from `config.database` on first
+   * access. With `autoMigrate: true`, pending migrations run automatically
+   * (once) on first access; with `autoSeed`, the seed file runs too.
+   */
+  get db(): import("./db").Database | null {
+    if (!this.config.database) return null;
+    if (!this._db && !this._dbInitAttempted) {
+      this._dbInitAttempted = true;
+      this._db = new Database(this.config.database);
+
+      // Auto-migration (2.3) — lazy, on first database access
+      const dbConfig = this.config.database;
+      const silent = this.config.silent ?? false;
+      if (dbConfig.autoMigrate) {
+        try {
+          const migrator = new Migrator(this._db, { dir: dbConfig.migrationsDir });
+          const result = migrator.up();
+          if (result.applied.length > 0 && !silent) {
+            console.log(
+              `🗄️  Applied ${result.applied.length} migration(s): ${result.applied.join(", ")}`,
+            );
+          }
+        } catch (err) {
+          if (!silent) console.warn(`⚠️  Migration failed: ${(err as Error).message}`);
+        }
+      }
+
+      // Auto-seed — fire-and-forget (TS-сиды могут быть async)
+      if (dbConfig.autoSeed && !silent) {
+        void (async () => {
+          try {
+            const { runSeed, findSeedFile } = await import("./db/seed");
+            const seedFile = dbConfig.seedFile ?? findSeedFile(process.cwd());
+            if (seedFile) {
+              await runSeed(this._db!, seedFile);
+              console.log(`🌱 Seeded database from ${seedFile}`);
+            }
+          } catch (err) {
+            console.warn(`⚠️  Seed failed: ${(err as Error).message}`);
+          }
+        })();
+      }
+    }
+    return this._db;
+  }
 
   constructor(config: AsiConfig = {}) {
     // Environment detection
@@ -496,21 +607,44 @@ export class Asi {
       );
     }
 
-    // Router performance — initialise optional optimisations
-    if (this.config.router === "radix") {
+    // Router performance — radix is the default backend
+    if (this.config.router !== "trie") {
       this.radixRouter = new RadixTreeRouter();
     }
 
-    if (this.config.flattenMiddleware) {
-      this.chainFlattener = new MiddlewareChainFlattener();
+    // Context pool — on by default, disable with contextPool: false
+    if (this.config.contextPool !== false) {
+      this.contextPool = new ContextPool(
+        typeof this.config.contextPool === "object"
+          ? this.config.contextPool
+          : undefined,
+      );
     }
 
-    if (this.config.lruSchemaCache) {
+    if (this.config.flattenMiddleware !== false) {
+      // Use the app's own toResponse so flattened chains still apply
+      // Set-Cookie headers and auto-escape (unlike bare toResponseFast)
+      this.chainFlattener = new MiddlewareChainFlattener({
+        toResponse: (result, ctx) => this.toResponse(result, ctx),
+      });
+    }
+
+    if (this.config.lruSchemaCache !== false) {
       const maxSize =
         typeof this.config.lruSchemaCache === "number"
           ? this.config.lruSchemaCache
           : 10000;
       enableLRUSchemaCache(maxSize);
+    }
+
+    if (this.config.queryCache === false) {
+      disableDefaultQueryCache();
+    } else {
+      getDefaultQueryCache(
+        typeof this.config.queryCache === "number"
+          ? this.config.queryCache
+          : undefined,
+      );
     }
 
     // Built-in security — auto-register middleware chain
@@ -1637,13 +1771,22 @@ export class Asi {
 
     const method = request.method as RouteMethod;
 
-    // Lazy context creation — только когда нужен
+    // Lazy context acquisition — только когда нужен (pooled when enabled)
     let ctx: Context | null = null;
+    let ctxFromPool = false;
     const getContext = () => {
       if (!ctx) {
-        ctx = new Context(request, {
-          decodeQuery: this.config.decodeQuery ?? false,
-        });
+        if (this.contextPool) {
+          ctx = this.contextPool.acquire(
+            request,
+            this.config.decodeQuery ?? false,
+          );
+          ctxFromPool = true;
+        } else {
+          ctx = new Context(request, {
+            decodeQuery: this.config.decodeQuery ?? false,
+          });
+        }
         ctx._setUrlParts(path, queryString);
       }
       return ctx;
@@ -1679,18 +1822,27 @@ export class Asi {
         }
       }
 
-      // === RADIX PATH: Radix tree router (when opted in) ===
+      // === RADIX PATH: Radix tree router (default backend) ===
       if (this.radixRouter) {
         const radixMatch = this.radixRouter.find(method, path);
         if (radixMatch) {
           ctx = getContext();
           ctx.params = radixMatch.params;
 
-          // Use flattener if enabled
-          if (this.chainFlattener) {
+          // Path-based middleware (use("/api", mw)) must be merged in,
+          // mirroring the trie path. When present we skip the flattener:
+          // the merged array is a fresh copy per request, which would miss
+          // the compiled-chain cache every time.
+          const hasPathMw = this.pathMiddlewares.size > 0;
+          const middlewares = hasPathMw
+            ? this.mergeMiddlewares(radixMatch.middlewares, path)
+            : radixMatch.middlewares;
+
+          // Use flattener if enabled (stable middlewares array → cache hits)
+          if (this.chainFlattener && !hasPathMw) {
             const flat = this.chainFlattener.flatten(
               radixMatch.handler,
-              radixMatch.middlewares,
+              middlewares,
               method + ":" + radixMatch.path,
             );
             let response = await flat.execute(ctx);
@@ -1703,10 +1855,10 @@ export class Asi {
             return response;
           }
 
-          // Normal execution with radix match
+          // Normal execution with radix match (merged path middleware)
           let response = await this.executeHandler(
             ctx,
-            radixMatch.middlewares,
+            middlewares,
             radixMatch.handler,
           );
 
@@ -1733,9 +1885,17 @@ export class Asi {
         // Если есть глобальные middleware — дать им шанс обработать
         if (globalMw.length > 0) {
           const notFoundHandler = () => this.notFound(ctx!);
-          return this.executeHandler(ctx, globalMw, notFoundHandler);
+          // Await — the finally below releases the pooled ctx, so it must
+          // not run while executeHandler is still using ctx asynchronously.
+          const mwResponse = await this.executeHandler(
+            ctx,
+            globalMw,
+            notFoundHandler,
+          );
+          return mwResponse;
         }
-        return this.notFound(ctx);
+        // Await before returning — same pooling-safety reason
+        return await this.notFound(ctx);
       }
 
       ctx = getContext();
@@ -1790,7 +1950,15 @@ export class Asi {
       return response;
     } catch (error) {
       ctx = getContext();
-      return this.handleError(ctx, error);
+      // Await first — the finally below releases the pooled context, so it
+      // must not run while handleError is still using ctx asynchronously.
+      const errorResponse = await this.handleError(ctx, error);
+      return errorResponse;
+    } finally {
+      // Return the context to the pool (if pooled) after the response is built
+      if (ctxFromPool && ctx && this.contextPool) {
+        this.contextPool.release(ctx);
+      }
     }
   }
 
@@ -2200,6 +2368,9 @@ export class Asi {
     if (!this.isCompiled) {
       this.compile();
     }
+
+    // Database Layer (2.3) — авто-миграция/сид запускаются лениво при первом
+    // обращении к `app.db` (getter), поэтому здесь ничего не нужно.
 
     // Если есть WebSocket роуты — используем websocket опцию
     const hasWebSocket = this.wsRoutes.size > 0;
