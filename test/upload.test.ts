@@ -210,7 +210,7 @@ describe("upload plugin", () => {
   });
 
   it("validates allowed MIME types", async () => {
-    const app = new Asi();
+    const app = new Asi({ silent: true });
     const storage = uploadStorage.local(TEST_UPLOAD_DIR);
 
     app.plugin(
@@ -241,7 +241,7 @@ describe("upload plugin", () => {
   });
 
   it("validates file size limit", async () => {
-    const app = new Asi();
+    const app = new Asi({ silent: true });
     const storage = uploadStorage.local(TEST_UPLOAD_DIR);
 
     // Only allow 1 byte max — our test file is 11 bytes

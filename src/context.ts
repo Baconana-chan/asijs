@@ -95,14 +95,20 @@ export class Context<
    */
   _reset(request: Request, decodeQuery: boolean): void {
     // Delete middleware-added properties (e.g. ctx.user, ctx.auth) — own
-    // enumerable keys that aren't core Context fields. Uses for..in with a
-    // hasOwnProperty guard, so no array allocation on the hot path.
-    for (const key in this) {
-      if (!CONTEXT_CORE_KEYS.has(key) && Object.prototype.hasOwnProperty.call(this, key)) {
-        try {
-          delete (this as any)[key];
-        } catch {
-          // non-configurable — ignore
+    // enumerable keys that aren't core Context fields.
+    // Fast path: a pristine pooled context has exactly CONTEXT_CORE_KEYS.size
+    // own enumerable fields, so count keys with a cheap for..in first and only
+    // run the hasOwnProperty + delete pass when something was actually added.
+    let keyCount = 0;
+    for (const key in this) keyCount++;
+    if (keyCount !== CONTEXT_CORE_KEYS.size) {
+      for (const key in this) {
+        if (!CONTEXT_CORE_KEYS.has(key) && Object.prototype.hasOwnProperty.call(this, key)) {
+          try {
+            delete (this as any)[key];
+          } catch {
+            // non-configurable — ignore
+          }
         }
       }
     }
@@ -128,6 +134,18 @@ export class Context<
     (this as any).body = undefined;
     (this as any).validatedQuery = undefined;
     (this as any).validatedParams = undefined;
+  }
+
+  /**
+   * @internal Lightweight rebind for pooled reuse.
+   * `release()` already reset this context to its pristine state, so acquire
+   * only needs to bind the new Request — no field scan, no allocations.
+   * Lazy fields (`_path`, `_query`, ...) are left null by release and get set
+   * by `_setUrlParts()` / lazy getters on demand.
+   */
+  _rebind(request: Request, decodeQuery: boolean): void {
+    this.request = request;
+    this._decodeQuery = decodeQuery;
   }
 
   // ===== Fast path extraction =====
@@ -735,7 +753,7 @@ export class ContextPool {
   acquire(request: Request, decodeQuery: boolean): Context {
     const ctx = this.pool.pop();
     if (ctx) {
-      ctx._reset(request, decodeQuery);
+      ctx._rebind(request, decodeQuery);
       this._stats.acquired++;
       return ctx;
     }

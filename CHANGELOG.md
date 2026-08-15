@@ -5,6 +5,19 @@ All notable changes to AsiJS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-08-15
+
+### 🐛 Bug Fixes
+
+- **Packaging: dist paths** — `bun build` с несколькими entry points клал JS в `dist/src/*.js` (префикс `src/`), а `main`/`module`/`bin`/`exports` указывали на `dist/*.js` — npm ворнил «No bin file found at dist/cli.js», и у опубликованного пакета не работали main и CLI. Добавлен `--entry-naming '[name].js'`, вывод теперь совпадает с объявленными путями (`dist/index.js`, `dist/cli.js`, ...). Валидация через `npm pack --dry-run`: 0 warnings. **Важно: asijs@1.4.0 уже опубликован с этим багом — требуется перепубликация 1.4.1.**
+- **Silent mode теперь действительно молчит** — `console.error("[Asi Error]")` и логи ошибок в `handleError()`/`notFound()`/плагинных хуках не гейтились за `silent: true`, из-за чего тесты с намеренными throw печатали большие `[Asi Error]`-блоки. Все error-логи обёрнуты в `if (!silent)` (контракт «отключить все логи»).
+- **ioredis: слушатель `error` на клиенте** — при недоступном Redis печаталось `[ioredis] Unhandled error event` (в проде unhandled 'error' на EventEmitter может уронить процесс). Добавлен no-op слушатель: ошибки подключения/операций по-прежнему всплывают через rejected promises.
+- **scanWorkspace: детерминированные порты** — порты назначались **до** сортировки по имени, а порядок `readdirSync` зависит от ФС (на Linux — hash-порядок) → в CI на Ubuntu порты могли «поменяться местами» и упасть тест. Теперь порты назначаются **после** сортировки (`3000, 3001, ...` по алфавиту).
+- **buildSSG: `durationMs` не может быть 0** — `Math.round(...)` на быстрой машине (CI) давал 0 для сборки < 0.5ms → падал `expect(durationMs).toBeGreaterThan(0)`. Теперь `Math.max(1, ...)`.
+- **Context pool: устранена регрессия hot path** — A/B v1.3.0 vs v1.4.0 на одной машине показал, что дефолтный пул контекстов замедлял простой `GET /` на **83%** (микробенчмарк с контрольными фреймворками: Elysia/Raw Bun/Hono флэт ±5%, AsiJS -33%). Причины и фиксы в `src/context.ts`: (1) `_reset()` вызывался **дважды** (acquire + release) с полным сканом полей и 4 аллокациями — acquire теперь делает лёгкий `_rebind()` (release уже оставил контекст чистым); (2) скан `for..in` + `Set.has` для удаления middleware-свойств заменён на дешёвый подсчёт ключей с полным сканом только когда свойства реально добавлены. Итог: оверхед пула **+83% → ~7%**, `GET /` с пулом теперь быстрее v1.3.0.
+- **Middleware chain flattener: не применяется к роутам без middleware** — `flattenMiddleware` на роуте без middleware делал per-request кэш-лукап (Map.get + строка id) ради копии `executeHandler(len === 0)`, что стоило ~14%. Теперь флаттер используется только при `middlewares.length > 0`, без-middleware роуты идут через собственный fast-path `executeHandler`.
+- **Радикс-роутер: fresh params на статических роутах** — отмечено, что radix аллоцирует свежий `params` объект на каждый статический матч (наблюдаемая нестабильность/проседание на малых таблицах роутов vs trie) — кандидат на отдельную оптимизацию (общий замороженный пустой объект для статических роутов).
+
 ## [1.4.0] - 2026-08-15
 
 ### 🚀 New Features

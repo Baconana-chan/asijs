@@ -517,7 +517,7 @@ Includes **OWASP-recommended headers** by default: CSP, HSTS, X-Frame-Options, X
 
 AsiJS is built for performance. Full benchmark dashboard available at `/benchmarks/`.
 
-### Production Benchmarks (v1.4.0)
+### Production Benchmarks (v1.4.1)
 
 | Scenario | Requests/sec | vs Elysia | vs Hono |
 |----------|-------------|-----------|---------|

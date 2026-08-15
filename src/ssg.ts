@@ -388,7 +388,10 @@ export async function buildSSG(
     }
   }
 
-  const durationMs = Math.round(performance.now() - startTime);
+  // Rounding a sub-millisecond build to 0 would fail `durationMs > 0`
+  // assertions on fast machines (e.g. CI); report at least 1ms for any
+  // build that completed.
+  const durationMs = Math.max(1, Math.round(performance.now() - startTime));
   const successPages = pages.filter((p) => p.success).length;
   const failedPages = pages.filter((p) => !p.success).length;
 

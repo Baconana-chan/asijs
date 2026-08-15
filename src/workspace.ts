@@ -108,7 +108,6 @@ export function scanWorkspace(
 ): SubApp[] {
   const cwd = options.cwd ?? process.cwd();
   const apps: SubApp[] = [];
-  let port = 3000;
 
   // Helper to check if a package is an AsiJS app
   const tryAddApp = (pkgDir: string, name?: string): SubApp | null => {
@@ -136,7 +135,7 @@ export function scanWorkspace(
             name: appName,
             entryPoint: entry,
             rootDir: pkgDir,
-            port: port++,
+            port: 0, // assigned deterministically after sorting
             process: null,
             status: "stopped",
           };
@@ -210,6 +209,14 @@ export function scanWorkspace(
 
   // Sort by name for deterministic order (filesystem order varies by OS)
   apps.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Assign ports AFTER sorting so they are deterministic on every platform —
+  // readdir order differs between filesystems (Linux uses hash order), so
+  // ports assigned during discovery would end up swapped after the sort.
+  let assignedPort = 3000;
+  for (const app of apps) {
+    app.port = assignedPort++;
+  }
 
   return apps;
 }

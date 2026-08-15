@@ -416,6 +416,7 @@ describe("Asi Framework", () => {
 
         const app = new Asi({
           errorPages: { rootDir },
+          silent: true,
         });
 
         app.get("/boom", () => {

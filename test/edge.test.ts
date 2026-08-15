@@ -95,7 +95,7 @@ describe("Edge Adapters", () => {
     });
 
     test("handles errors gracefully", async () => {
-      const app = new Asi();
+      const app = new Asi({ silent: true });
       app.get("/error", () => {
         throw new Error("Test error");
       });

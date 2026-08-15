@@ -327,7 +327,7 @@ describe("structuredLogger middleware", () => {
 
   it("sets error level for 5xx responses", async () => {
     const entries: StructuredLogEntry[] = [];
-    const app = new Asi();
+    const app = new Asi({ silent: true });
 
     app.use(
       structuredLogger({
@@ -353,7 +353,7 @@ describe("structuredLogger middleware", () => {
 
   it("logs error events with stack trace", async () => {
     const entries: StructuredLogEntry[] = [];
-    const app = new Asi();
+    const app = new Asi({ silent: true });
 
     app.use(
       structuredLogger({

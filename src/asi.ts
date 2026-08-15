@@ -1384,7 +1384,7 @@ export class Asi {
         try {
           hooks.onBeforeRoute(this._createPluginHost());
         } catch (error) {
-          console.error(`[Asi] Error in onBeforeRoute hook for plugin "${name}":`, error);
+          if (!this.config.silent) console.error(`[Asi] Error in onBeforeRoute hook for plugin "${name}":`, error);
         }
       }
     }
@@ -1838,8 +1838,10 @@ export class Asi {
             ? this.mergeMiddlewares(radixMatch.middlewares, path)
             : radixMatch.middlewares;
 
-          // Use flattener if enabled (stable middlewares array → cache hits)
-          if (this.chainFlattener && !hasPathMw) {
+          // Use flattener if enabled (stable middlewares array → cache hits).
+          // Skip it for middleware-free routes: executeHandler() already has
+          // a len === 0 fast path that avoids the per-request cache lookup.
+          if (this.chainFlattener && !hasPathMw && middlewares.length > 0) {
             const flat = this.chainFlattener.flatten(
               radixMatch.handler,
               middlewares,
@@ -2125,6 +2127,7 @@ export class Asi {
   }
 
   private async notFound(ctx: Context): Promise<Response> {
+    const silent = this.config.silent ?? false;
     if (this.customNotFoundHandler) {
       return this.customNotFoundHandler(ctx);
     }
@@ -2165,7 +2168,7 @@ export class Asi {
         );
         if (discovered) return discovered;
       } catch (pageError) {
-        console.error("[Asi] Error rendering discovered 404 page:", pageError);
+        if (!silent) console.error("[Asi] Error rendering discovered 404 page:", pageError);
       }
 
       // In development mode, use the pretty dev error page
@@ -2184,14 +2187,14 @@ export class Asi {
             suggestions,
           });
         } catch (devPageError) {
-          console.error("[Asi] Error rendering dev 404 page:", devPageError);
+          if (!silent) console.error("[Asi] Error rendering dev 404 page:", devPageError);
         }
       }
 
       try {
         return renderDefaultErrorPage(pageContext);
       } catch (defaultPageError) {
-        console.error("[Asi] Error rendering default 404 page:", defaultPageError);
+        if (!silent) console.error("[Asi] Error rendering default 404 page:", defaultPageError);
       }
     }
 
@@ -2236,6 +2239,7 @@ export class Asi {
   }
 
   private async handleError(ctx: Context, error: unknown): Promise<Response> {
+    const silent = this.config.silent ?? false;
     // Обработка ошибок валидации
     if (error instanceof ValidationException) {
       return ctx.status(400).jsonResponse({
@@ -2248,11 +2252,11 @@ export class Asi {
       try {
         return await this.customErrorHandler(ctx, error);
       } catch (handlerError) {
-        console.error("[Asi] Error in custom error handler:", handlerError);
+        if (!silent) console.error("[Asi] Error in custom error handler:", handlerError);
       }
     }
 
-    console.error("[Asi Error]", error);
+    if (!silent) console.error("[Asi Error]", error);
 
     const message =
       this.config.development && error instanceof Error
@@ -2283,7 +2287,7 @@ export class Asi {
         );
         if (discovered) return discovered;
       } catch (pageError) {
-        console.error("[Asi] Error rendering discovered 500 page:", pageError);
+        if (!silent) console.error("[Asi] Error rendering discovered 500 page:", pageError);
       }
 
       // In development mode, use the pretty dev error page with full details
@@ -2302,14 +2306,14 @@ export class Asi {
         try {
           return renderDevErrorPage(error, devCtx);
         } catch (devPageError) {
-          console.error("[Asi] Error rendering dev error page:", devPageError);
+          if (!silent) console.error("[Asi] Error rendering dev error page:", devPageError);
         }
       }
 
       try {
         return renderDefaultErrorPage(pageContext);
       } catch (defaultPageError) {
-        console.error("[Asi] Error rendering default 500 page:", defaultPageError);
+        if (!silent) console.error("[Asi] Error rendering default 500 page:", defaultPageError);
       }
     }
 

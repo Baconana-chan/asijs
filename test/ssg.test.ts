@@ -128,7 +128,7 @@ describe("buildSSG", () => {
     expect(result.totalPages).toBeGreaterThanOrEqual(2);
     expect(existsSync(join(TEST_OUT_DIR, "index.html"))).toBe(true);
   });    it("should handle errors gracefully", async () => {
-      const app = new Asi();
+      const app = new Asi({ silent: true });
       app.get("/ok", () => new Response("OK", {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       }));

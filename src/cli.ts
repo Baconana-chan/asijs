@@ -1613,7 +1613,7 @@ async function main() {
     printHelp();
     return;
   } else if (command === "--version" || command === "-v") {
-    console.log("asijs v1.4.0");
+    console.log("asijs v1.4.1");
     return;
   } else if (command && !command.startsWith("-")) {
     // Direct project name (bun create asijs my-app)

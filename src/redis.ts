@@ -120,6 +120,11 @@ async function lazyConnectAndReturn(
     } as any);
   }
 
+  // ioredis emits an 'error' event on connection failures; without a listener
+  // it is treated as unhandled and can crash the process. Operations still
+  // surface failures via rejected promises, so a no-op listener is enough.
+  client.on("error", () => {});
+
   await client.connect();
   return client;
 }
