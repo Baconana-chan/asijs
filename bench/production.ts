@@ -12,12 +12,14 @@
  * Run: bun run bench:production
  */
 
-import { Asi, Type, Context } from "../src";
+import { Asi, Type, Context, upload, uploadStorage } from "../src";
 import { jsx, renderToString } from "../src/jsx";
 import { staticFiles } from "../src/plugins/static";
 import { Elysia, t } from "elysia";
 import { Hono } from "hono";
 import { writeFileSync, mkdirSync, existsSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const ITERATIONS = parseInt(process.env.BENCH_ITERATIONS || "10000", 10);
 const WARMUP = parseInt(process.env.BENCH_WARMUP || "1000", 10);
@@ -478,6 +480,85 @@ async function benchFileUpload() {
   );
 
   printResults("3b. File Upload (5MB multipart)", results5MB);
+}
+
+// ============================================================================
+// Benchmark 3c: File Upload + Save to Disk (file-sharing scenario)
+//
+// The CI upload benchmarks above measure multipart PARSING only. A file-sharing
+// service also persists the file — measure the full pipeline: parse + save.
+// Compares the buffered path (arrayBuffer + write) vs streaming path
+// (saveStream, memory O(chunk)). Only AsiJS has this out of the box.
+// ============================================================================
+
+const UPLOAD_DIR = join(tmpdir(), "asi-upload-bench");
+
+function setupUploadDir() {
+  if (!existsSync(UPLOAD_DIR)) {
+    mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+}
+
+function cleanupUploadDir() {
+  if (existsSync(UPLOAD_DIR)) {
+    rmSync(UPLOAD_DIR, { recursive: true, force: true });
+  }
+}
+
+function createUploadSaveAsiApp(opts: { streaming: boolean }) {
+  const app = new Asi({ development: false });
+  app.plugin(
+    upload({
+      storage: uploadStorage.local(UPLOAD_DIR),
+      maxFileSize: 50 * 1024 * 1024,
+      streaming: opts.streaming,
+    }),
+  );
+  app.post("/upload", async (ctx: any) => {
+    const files = await ctx.uploadedFiles();
+    return { ok: true, count: files.length, bytes: files[0]?.size };
+  });
+  app.compile();
+  return app;
+}
+
+async function benchUploadSave() {
+  setupUploadDir();
+
+  try {
+    const asiBuffered = createUploadSaveAsiApp({ streaming: false });
+    const asiStreaming = createUploadSaveAsiApp({ streaming: true });
+
+    // 256KB file — big enough to show save cost, small enough for many iters
+    const content = new Uint8Array(256 * 1024);
+    for (let i = 0; i < content.length; i++) {
+      content[i] = (i * 31) % 256;
+    }
+    const file = new File([content], "bench-file.bin", {
+      type: "application/octet-stream",
+    });
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const createReq: RequestFactory = () =>
+      new Request("http://localhost/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+    const iters = 500; // disk I/O dominates — keep iterations moderate
+    const results: BenchResult[] = [];
+    results.push(
+      await runBench("AsiJS buffered (arrayBuffer)", (r) => asiBuffered.handle(r), createReq, iters),
+    );
+    results.push(
+      await runBench("AsiJS streaming (saveStream)", (r) => asiStreaming.handle(r), createReq, iters),
+    );
+
+    printResults("3c. File Upload + Save to Disk (256KB)", results);
+  } finally {
+    cleanupUploadDir();
+  }
 }
 
 // ============================================================================
@@ -1077,6 +1158,7 @@ async function main() {
   await benchMiddleware();
   await benchComplexValidation();
   await benchFileUpload();
+  await benchUploadSave();
   await benchStaticFiles();
   await benchJsxRendering();
   await benchBlogApi();
@@ -1085,7 +1167,7 @@ async function main() {
   console.log("\n📝 Notes:");
   console.log("   - Middleware test: 5 middleware chain passing context");
   console.log("   - Validation test: 4-level nested object with arrays");
-  console.log("   - File upload: FormData parsing (1MB and 5MB)");
+  console.log("   - File upload: FormData parsing (1MB and 5MB) + save-to-disk (256KB, buffered vs streaming)");
   console.log("   - Static files: Small and large file serving");
   console.log("   - JSX: 100-row table rendering (JSX vs string template)");
   console.log("   - Blog API: Real-world CRUD with auth and validation");

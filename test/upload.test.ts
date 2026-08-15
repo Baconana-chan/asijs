@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { existsSync, mkdirSync, rmSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, rmSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { Asi } from "../src";
 import { upload, uploadStorage } from "../src";
@@ -351,6 +351,179 @@ describe("upload plugin", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.count).toBe(1); // only the file
+  });
+});
+
+// ============================================================================
+// Streaming Uploads (saveStream path)
+// ============================================================================
+
+describe("upload streaming", () => {
+  beforeAll(() => {
+    if (!existsSync(TEST_UPLOAD_DIR)) {
+      mkdirSync(TEST_UPLOAD_DIR, { recursive: true });
+    }
+  });
+
+  afterAll(() => {
+    rmSync(TEST_UPLOAD_DIR, { recursive: true, force: true });
+  });
+
+  it("saveStream writes identical bytes to disk", async () => {
+    const storage = uploadStorage.local(TEST_UPLOAD_DIR);
+    expect(typeof storage.saveStream).toBe("function");
+
+    const content = new Uint8Array(256 * 1024);
+    for (let i = 0; i < content.length; i++) content[i] = (i * 13) % 256;
+    const file = new File([content], "stream.bin", { type: "application/octet-stream" });
+
+    const result = await storage.saveStream!(
+      "file",
+      "stream.bin",
+      "application/octet-stream",
+      file.stream(),
+      file.size,
+      { storage, maxFileSize: 1024 * 1024 },
+    );
+
+    expect(result.size).toBe(content.length);
+    expect(existsSync(result.path)).toBe(true);
+    const onDisk = new Uint8Array(readFileSync(result.path));
+    expect(onDisk.length).toBe(content.length);
+    expect(Buffer.from(onDisk).equals(Buffer.from(content))).toBe(true);
+  });
+
+  it("saveStream aborts and deletes partial file when over maxFileSize", async () => {
+    const storage = uploadStorage.local(TEST_UPLOAD_DIR);
+    const content = new Uint8Array(1024 * 1024); // 1MB
+    const file = new File([content], "big.bin", { type: "application/octet-stream" });
+
+    const before = readdirSync(TEST_UPLOAD_DIR).length;
+
+    let threw = false;
+    try {
+      await storage.saveStream!(
+        "file",
+        "big.bin",
+        "application/octet-stream",
+        file.stream(),
+        file.size,
+        { storage, maxFileSize: 1024 }, // 1KB limit
+      );
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+
+    // Partial file must be cleaned up — no new files left behind
+    expect(readdirSync(TEST_UPLOAD_DIR).length).toBe(before);
+  });
+
+  it("upload({ streaming: true }) saves files via saveStream", async () => {
+    const app = new Asi();
+    const storage = uploadStorage.local(TEST_UPLOAD_DIR);
+
+    app.plugin(
+      upload({
+        storage,
+        maxFileSize: 1024 * 1024,
+        streaming: true,
+      }),
+    );
+
+    app.post("/upload", async (ctx: any) => {
+      const files = await ctx.uploadedFiles();
+      return { files };
+    });
+
+    const formData = new FormData();
+    formData.append("file", TEST_FILE);
+
+    const res = await app.handle(
+      new Request("http://localhost/upload", {
+        method: "POST",
+        body: formData,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.files).toHaveLength(1);
+    expect(body.files[0].size).toBe(11);
+    expect(body.files[0].mimeType).toContain("text/plain");
+  });
+
+  it("upload({ streaming: true }) enforces size limit mid-stream", async () => {
+    const app = new Asi({ silent: true });
+    const storage = uploadStorage.local(TEST_UPLOAD_DIR);
+
+    app.plugin(
+      upload({
+        storage,
+        maxFileSize: 5, // our 11-byte file exceeds this
+        streaming: true,
+      }),
+    );
+
+    app.post("/upload", async (ctx: any) => {
+      const files = await ctx.uploadedFiles();
+      return { files };
+    });
+
+    const before = readdirSync(TEST_UPLOAD_DIR).length;
+    const formData = new FormData();
+    formData.append("file", TEST_FILE);
+
+    const res = await app.handle(
+      new Request("http://localhost/upload", {
+        method: "POST",
+        body: formData,
+      }),
+    );
+
+    expect(res.status).toBe(500);
+
+    // No partial files left behind — nothing new was written to disk
+    expect(readdirSync(TEST_UPLOAD_DIR).length).toBe(before);
+  });
+
+  it("upload({ streaming: true }) falls back to buffered path when storage lacks saveStream", async () => {
+    const app = new Asi();
+    // Minimal storage without saveStream
+    const bufferedOnly: any = {
+      name: "custom",
+      async save(_fieldName: string, fileName: string, mimeType: string, buffer: Uint8Array) {
+        return {
+          fieldName: "file",
+          fileName,
+          mimeType,
+          size: buffer.length,
+          url: `/uploads/${fileName}`,
+          path: fileName,
+          storage: "custom",
+        };
+      },
+    };
+
+    app.plugin(upload({ storage: bufferedOnly, streaming: true }));
+    app.post("/upload", async (ctx: any) => {
+      const files = await ctx.uploadedFiles();
+      return { count: files.length };
+    });
+
+    const formData = new FormData();
+    formData.append("file", TEST_FILE);
+
+    const res = await app.handle(
+      new Request("http://localhost/upload", {
+        method: "POST",
+        body: formData,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.count).toBe(1);
   });
 });
 

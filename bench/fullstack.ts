@@ -214,14 +214,18 @@ async function setupTokens() {
 // All middleware active on a simple JSON endpoint
 // ============================================================================
 
-function createFullGetAsiApp() {
+// Two AsiJS variants so the comparison is apples-to-apples:
+//  - "2-layer": cors + rate limit — the SAME set Elysia runs
+//  - "full":    cors + security + etag + cache + rate limit (all built-in)
+function createFullGetAsiApp(opts: { minimal: boolean }) {
   const app = new Asi({ development: false });
 
-  // All built-in middleware
   app.use(cors());
-  app.use(securityHeaders());
-  app.use(asiEtag());
-  app.use(cacheMiddleware({ ttl: "5m" }));
+  if (!opts.minimal) {
+    app.use(securityHeaders());
+    app.use(asiEtag());
+    app.use(cacheMiddleware({ ttl: "5m" }));
+  }
   app.use(
     rateLimitMiddlewareFunc({
       max: 100_000,
@@ -286,20 +290,36 @@ function createFullGetHonoApp() {
 }
 
 async function benchFullGet() {
-  const asiApp = createFullGetAsiApp();
+  // 1a. Apples-to-apples: same middleware set (cors + rate limit) on both
+  const asiMin = createFullGetAsiApp({ minimal: true });
   const elysiaApp = createFullGetElysiaApp();
-  const honoApp = createFullGetHonoApp();
 
   const createReq: RequestFactory = () => new Request("http://localhost/api/data");
 
-  const results: BenchResult[] = [];
-  results.push(await runBench("AsiJS (all middleware)", (r) => asiApp.handle(r), createReq));
-  results.push(await runBench("Elysia (cors+rateLimit)", (r) => elysiaApp.handle(r), createReq));
-  results.push(
+  const resultsMin: BenchResult[] = [];
+  resultsMin.push(
+    await runBench("AsiJS (cors+rateLimit)", (r) => asiMin.handle(r), createReq),
+  );
+  resultsMin.push(
+    await runBench("Elysia (cors+rateLimit)", (r) => elysiaApp.handle(r), createReq),
+  );
+
+  printResults("1a. Fully-Loaded GET — same middleware set (cors+rateLimit)", resultsMin);
+
+  // 1b. Full built-in stack: AsiJS (cors+sec+etag+cache+rl, 5 layers) vs
+  // Hono (cors+sec+etag+rl, 4 layers) — closest honest comparison available
+  const asiFull = createFullGetAsiApp({ minimal: false });
+  const honoApp = createFullGetHonoApp();
+
+  const resultsFull: BenchResult[] = [];
+  resultsFull.push(
+    await runBench("AsiJS (cors+sec+etag+cache+rl)", (r) => asiFull.handle(r), createReq),
+  );
+  resultsFull.push(
     await runBench("Hono (cors+sec+etag+rl)", (r) => honoApp.fetch(r), createReq),
   );
 
-  printResults("1. Fully-Loaded GET /api/data", results);
+  printResults("1b. Fully-Loaded GET — full built-in stack (5 vs 4 layers)", resultsFull);
 }
 
 // ============================================================================
@@ -1159,7 +1179,7 @@ async function benchCrud() {
 // ============================================================================
 
 async function benchPreflight() {
-  const asiApp = createFullGetAsiApp();
+  const asiApp = createFullGetAsiApp({ minimal: false });
   const elysiaApp = createFullGetElysiaApp();
   const honoApp = createFullGetHonoApp();
 

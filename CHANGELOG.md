@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.4.1] - 2026-08-15
 
+### 🚀 Upload: Streaming Saves
+
+- **`upload({ streaming: true })`** — файлы сохраняются через новый `saveStream` (память O(chunk) вместо O(file)): `file.stream()` пишется чанками напрямую на диск через Bun FileSink (fallback — Node `createWriteStream`). Для файлообменников это убирает вторую полную копию файла в JS-памяти на каждый загружаемый файл. Реализовано для local (FileSink/Node-pipe) и S3/R2 (streaming PUT с `Content-Length` и `duplex: "half"` под Node). Если storage не реализует `saveStream` — middleware бесшовно падает на буферизованный путь.
+- **Размер-лимит проверяется дважды**: fast-reject по объявленному `file.size` из multipart-заголовков ДО чтения потока + mid-stream аборт по факту записанных байт (partial file удаляется — rejected upload не оставляет мусора на диске).
+- **Local storage: async-запись** — `writeFileSync` (блокировал event loop на весь диск-IO, ~220ms на 50MB) заменён на `writeFile` (fs/promises). Буферизованный путь тоже не блокирует больше.
+- **Benchmark `3c. File Upload + Save to Disk (256KB)`** — CI-бенчмарки upload меряли только multipart-парсинг; добавлен сценарий полного файлообменника (parse + persist). Локально: streaming 538 req/s vs buffered 421 req/s (**+28%**), при этом streaming сохраняет память.
+- **Fully-Loaded GET разбит на честные пары** — старый бенчмарк сравнивал AsiJS full-stack (CORS+security+ETag+cache+rateLimit, 5 слоёв) против Elysia bare `cors+rateLimit` (2 слоя) — «11.2%» выглядело как поражение, хотя объём работы несравним. Теперь две группы: `1a` — **одинаковый набор middleware** на обоих (AsiJS 49.4k vs Elysia 35.0k = **141%**), `1b` — full-stack 5 слоёв vs Hono 4 слоя (6.3k vs 3.4k = **1.8×**).
+
 ### 🐛 Bug Fixes
 
 - **Packaging: dist paths** — `bun build` с несколькими entry points клал JS в `dist/src/*.js` (префикс `src/`), а `main`/`module`/`bin`/`exports` указывали на `dist/*.js` — npm ворнил «No bin file found at dist/cli.js», и у опубликованного пакета не работали main и CLI. Добавлен `--entry-naming '[name].js'`, вывод теперь совпадает с объявленными путями (`dist/index.js`, `dist/cli.js`, ...). Валидация через `npm pack --dry-run`: 0 warnings. **Важно: asijs@1.4.0 уже опубликован с этим багом — требуется перепубликация 1.4.1.**

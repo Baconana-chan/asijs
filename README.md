@@ -26,7 +26,7 @@
 - 🔥 **Hot Reload 2.0** — `fs.watch` with 200ms debounce, module-level hot swap, HMR browser push via WebSocket
 - 💬 **Interactive REPL** — `asi repl`: create routes on the fly, test requests, inspect state
 - 🌐 **Web Playground** — Browser-based IDE: code editor, output panel, request bar, 5 built-in examples
-- 🛠️ **CLI v2** — `asi create/dev/inspect/build/plugin/repl/generate/integrate/analyze/doctor/upgrade/template`
+- 🛠️ **CLI v2** — `asi create/dev/inspect/build/plugin/repl/generate/migrate/integrate/analyze/doctor/upgrade/db/template`
 - 📊 **Benchmark Dashboard** — Chart.js dashboard with trend lines, CI pipeline
 
 ### Resilience & Performance
@@ -74,11 +74,11 @@
 ### Ecosystem
 - 🤖 **MCP Ready** — Model Context Protocol server for AI/LLM integration (7 built-in tools, 4 resources)
 - 📦 **Plugin Registry** — `asi plugin search/install/create/list`. 40+ curated plugins in 8 categories
-- 🧩 **@asijs/next** — Next.js App Router, Pages Router, Edge Runtime adapter
-- 🧩 **@asijs/astro** — Astro server endpoints, method-specific endpoints, middleware
-- 🧩 **@asijs/remix** — Remix resource routes, loaders, actions
-- 🧩 **@asijs/sveltekit** — SvelteKit handle hook, server handler, universal handler
-- 🧩 **@asijs/opentelemetry** — OpenTelemetry automatic instrumentation
+- 🧩 **asijs-next** — Next.js App Router, Pages Router, Edge Runtime adapter
+- 🧩 **asijs-astro** — Astro server endpoints, method-specific endpoints, middleware
+- 🧩 **asijs-remix** — Remix resource routes, loaders, actions
+- 🧩 **asijs-sveltekit** — SvelteKit handle hook, server handler, universal handler
+- 🧩 **asijs-opentelemetry** — OpenTelemetry automatic instrumentation
 - 📋 **ESLint Plugin** — `eslint-plugin-asijs` with 4 rules: no-duplicate-route, no-missing-handler, validate-schema, no-unused-route
 - 🎨 **VS Code Extension** — Snippets, route explorer, hover provider, debug config, template explorer, create wizard
 
@@ -134,10 +134,12 @@ app.post("/users", async (ctx) => {
   const body = await ctx.body();
   return { id: 1, ...body };
 }, {
-  body: Type.Object({
-    name: Type.String({ minLength: 1 }),
-    email: Type.String({ format: "email" }),
-  }),
+  schema: {
+    body: Type.Object({
+      name: Type.String({ minLength: 1 }),
+      email: Type.String({ format: "email" }),
+    }),
+  },
 });
 
 // Start server
@@ -168,7 +170,7 @@ bunx asijs repl
 
 # Plugin management
 bunx asijs plugin search auth
-bunx asijs plugin install @asijs/auth
+bunx asijs plugin install cors
 bunx asijs plugin create my-plugin
 bunx asijs plugin list
 
@@ -226,10 +228,12 @@ app.post("/users", async (ctx) => {
   users.push(user);
   return ctx.status(201).jsonResponse(user);
 }, {
-  body: Type.Object({
-    name: Type.String({ minLength: 1 }),
-    email: Type.String({ format: "email" }),
-  }),
+  schema: {
+    body: Type.Object({
+      name: Type.String({ minLength: 1 }),
+      email: Type.String({ format: "email" }),
+    }),
+  },
 });
 
 app.listen(3000);
@@ -242,16 +246,16 @@ import { Asi, circuitBreaker, apiCircuitBreaker } from "asijs";
 
 const app = new Asi();
 
-// Global: protect against external API failures
-app.plugin(circuitBreaker({
+// Global: protect against external API failures (middleware, not a plugin)
+app.use(circuitBreaker({
   threshold: 5,           // 5 failures → OPEN
   window: 30000,          // 30 second sliding window
   recoveryTimeout: 10000, // 10s recovery
   fallback: () => ({ cached: true, data: [] }),
 }));
 
-// Per-route with presets
-app.get("/api/external", apiCircuitBreaker(), async (ctx) => {
+// Per-route with presets — apiCircuitBreaker(name) takes a breaker name
+app.get("/api/external", apiCircuitBreaker("stripe-api"), async (ctx) => {
   const data = await ctx.circuitBreaker!("stripe-api", () =>
     fetch("https://api.stripe.com/v1/charges")
   );
@@ -273,6 +277,7 @@ const rooms = createRoomManager({ maxRoomsPerConnection: 10 });
 app.ws("/chat", {
   open(ws) {
     ws.data = { joinedAt: Date.now() };
+    ws.join("lobby");
   },
   message(ws, message) {
     const msg = typeof message === "string" ? message : JSON.stringify(message);
@@ -307,9 +312,9 @@ const paths = [
 const result = await buildSSG(app, {
   staticPaths: paths,
   outDir: "./dist",
-  pretty: true,  // /about → about/index.html
+  format: "pretty",  // /about → about/index.html
 });
-// result: { total: 4, success: 4, failed: 0, duration: 12 }
+// result: { totalPages: 4, successPages: 4, failedPages: 0, durationMs: 12 }
 ```
 
 ### API Versioning
@@ -319,12 +324,12 @@ import { Asi, apiVersion, versionPath } from "asijs";
 
 const app = new Asi();
 
-app.plugin(apiVersion({
+app.use(apiVersion({
   defaultVersion: "2.0",
   supportedVersions: ["1.0", "2.0"],
   strategy: "url",       // URL-based: /v1/users, /v2/users
   fallback: "latest",    // Unsupported version → latest
-  deprecation: true,     // Add Sunset/Deprecation headers
+  deprecationHeaders: true, // Add Sunset/Deprecation headers
 }));
 
 // v1 users endpoint
@@ -360,10 +365,12 @@ const app = new Asi({
   },
 });
 
-// Presets
+// Presets — plain SecurityConfig objects, merged into AsiConfig.security
 import { maxSecurity, apiSecurityCore, devSecurity } from "asijs";
 
-app.get("/admin", maxSecurity(), () => "Secure admin page");
+const strictApp = new Asi({ security: maxSecurity });
+// Or merge with your own overrides:
+// const app = new Asi({ security: { ...apiSecurityCore, maxBodySize: "2mb" } });
 
 app.listen(3000);
 ```
@@ -371,12 +378,12 @@ app.listen(3000);
 ### Serverless / Edge
 
 ```typescript
-import { Asi, ServerlessOptimizer } from "asijs";
+import { Asi, serverless } from "asijs";
 
 const app = new Asi();
 
 // Warm start emulation
-await ServerlessOptimizer.warmUp(app);
+await serverless.warmUp(app);
 
 // Routes...
 app.get("/api/hello", () => ({ message: "Hello from edge!" }));
@@ -391,7 +398,7 @@ app.get("/api/hello", () => ({ message: "Hello from edge!" }));
 
 ```typescript
 // app/api/[[...asi]]/route.ts
-import { createNextHandler } from "@asijs/next";
+import { createNextHandler } from "asijs-next";
 import { Asi } from "asijs";
 
 const app = new Asi();
@@ -419,7 +426,7 @@ export const { GET, POST, PUT, DELETE } = createNextHandler(app);
 | `sessions()` | Session middleware (Memory, Cookie, Redis stores) | v1.2 |
 | `requestLogger()` | Coloured request logging (4 formats) | v1.2 |
 | `compression()` | gzip/brotli response compression | v1.2 |
-| `negotiateResponse()` | Content negotiation (JSON/HTML/XML) | v1.2 |
+| `negotiateResponse()` | Content negotiation helper (JSON/HTML/XML) | v1.2 |
 | `healthCheck()` | `/health`, `/ready`, `/live` endpoints | v1.2 |
 | `sse()` | Server-Sent Events | v1.2 |
 | `graphql()` | GraphQL (Yoga/Helix adapter) | v1.2 |
@@ -431,10 +438,10 @@ export const { GET, POST, PUT, DELETE } = createNextHandler(app);
 | `apiDocsPlugin()` | Full API documentation portal | v1.3 |
 | `apiVersion()` | API versioning (URL/Header/Combined) | v1.3 |
 | `authjs()` | Auth.js integration (GitHub, Google, Credentials) | v1.3 |
-| `upload()` | File upload (Local, S3, R2) | v1.3 |
+| `upload()` | File upload (Local, S3, R2) — `streaming: true` for memory-efficient large files | v1.3 |
 | `autoAPI()` | PostgREST-like auto CRUD from database | v1.3 |
 | `expressPlugin()` / `koaPlugin()` | Express/Koa middleware wrapper | v1.3 |
-| `otelPlugin()` | OpenTelemetry instrumentation | v1.3 |
+| `otelLogs()` | OpenTelemetry instrumentation (spans, metrics, logs) | v1.3 |
 | `webhooks()` | Stripe/GitHub/Svix signature verification | v1.2 |
 | `trustProxy()` | Real IP extraction from X-Forwarded-For | v1.2 |
 | `domainRouting()` | Subdomain-based routing | v1.2 |
@@ -450,7 +457,7 @@ const authPlugin = createPlugin({
   name: "auth",
   dependencies: ["sessions", "cors"],
   setup(app) {
-    app.before(async (ctx) => {
+    app.onBeforeHandle(async (ctx) => {
       ctx.user = await authenticate(ctx);
     });
   },
@@ -464,11 +471,11 @@ app.pluginInfo();           // Visualize dependency graph
 
 | Package | Description | Tests |
 |---------|-------------|-------|
-| `@asijs/next` | Next.js App Router / Pages Router / Edge adapter | 10 ✅ |
-| `@asijs/astro` | Astro server endpoints + middleware | 7 ✅ |
-| `@asijs/remix` | Remix resource routes + loader/action | 8 ✅ |
-| `@asijs/sveltekit` | SvelteKit handle hook + server/universal handlers | 8 ✅ |
-| `@asijs/opentelemetry` | Full OTel: spans, metrics, logs. 5 exporters | 22 ✅ |
+| `asijs-next` | Next.js App Router / Pages Router / Edge adapter | 10 ✅ |
+| `asijs-astro` | Astro server endpoints + middleware | 7 ✅ |
+| `asijs-remix` | Remix resource routes + loader/action | 8 ✅ |
+| `asijs-sveltekit` | SvelteKit handle hook + server/universal handlers | 8 ✅ |
+| `asijs-opentelemetry` | Full OTel: spans, metrics, logs. 5 exporters | 22 ✅ |
 | `eslint-plugin-asijs` | 4 ESLint rules for AsiJS projects | ✅ |
 
 ### VS Code Extension — `asijs-code`
@@ -506,10 +513,10 @@ const app = new Asi({
 });
 ```
 
-**Presets:**
-- `maxSecurity()` — Maximum security for web apps (strict CSP, strict HSTS)
-- `apiSecurityCore()` — Minimal overhead for API-only services
-- `devSecurity()` — Relaxed for development (inline scripts allowed)
+**Presets** (plain `SecurityConfig` objects — pass them to `security:` in `AsiConfig`):
+- `maxSecurity` — Maximum security for web apps (strict CSP, strict HSTS)
+- `apiSecurityCore` — Minimal overhead for API-only services
+- `devSecurity` — Relaxed for development (inline scripts allowed)
 
 Includes **OWASP-recommended headers** by default: CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy.
 
@@ -533,6 +540,7 @@ Numbers below are from the CI benchmark pipeline (GitHub Actions runner, bare me
 | Large JSON body 100KB (validated) | 2,684 req/s | 109.6% 🏆 | — |
 | File upload 1MB (multipart) | 5,093 req/s | 100.2% | 100.8% |
 | Static preload (in-memory cache, 2.2.7) | 77,898 req/s | — | **1.26×** vs disk |
+| Upload + save to disk (256KB, streaming) | 538 req/s | — | AsiJS-only (streaming +28% vs buffered) |
 
 ### Competitive / Near-Parity
 
@@ -549,14 +557,14 @@ Numbers below are from the CI benchmark pipeline (GitHub Actions runner, bare me
 
 ### Known Gaps (honest)
 
-| Scenario | AsiJS | vs Elysia | Note |
-|----------|-------|-----------|------|
-| GET / (simple JSON, compiled) | 432,321 req/s | 52.9% | Elysia's static-route fast path; radix fresh-params alloc (candidate, in CHANGELOG) |
-| GET /user/:id (path params) | 274,333 req/s | 80.2% | 123.1% |
-| 404 fast path (no route match) | 207,505 req/s | 20.9% | Elysia returns bare 404; candidate for optimization |
-| Complex validation (4-level nested) | 33,350 req/s | 28.0% | compiled validator needs work (2.2.5) |
-| Query cache miss (unique query) | 164,273 req/s | 45.3% | single-pass parser is linear in query length |
-| Fully-loaded GET (all middleware) | 13,335 req/s | 11.2% | ⚠️ different stack — AsiJS runs 7 middleware layers, Elysia only cors+rateLimit |
+| Scenario | AsiJS | vs Elysia | Why |
+|----------|-------|-----------|-----|
+| GET / (simple JSON, compiled) | 432,321 req/s | 52.9% | Elysia pre-compiles the handler into a closure and returns a pre-built response. AsiJS radix still allocates a fresh `params: {}` per static match (line in `router-perf.ts` `find()`), and builds the response body via JSON stringify on every request. Fix: shared frozen params for static routes — recorded in CHANGELOG as a candidate. |
+| GET /user/:id (path params) | 274,333 req/s | 80.2% | Path-match is a radix walk + params object — comparable cost to Elysia's; the gap is the params alloc + URL parsing, not the match itself. |
+| 404 fast path (no route match) | 207,505 req/s | 20.9% | AsiJS generates a JSON body `{error, path, method}` + searches similar routes in dev mode on every miss; Elysia returns a pre-built bare `NOT_FOUND` Response with no body. AsiJS intentionally ships a useful 404 body — a bare-response fast path is a candidate. |
+| Complex validation (4-level nested) | 33,350 req/s | 28.0% | The 2.2.5 compiled validator still walks TypeBox's generic check pipeline per level; Elysia's codegen emits specialized inline JS per schema. Narrowing the codegen (object/array hot paths) is the tracked follow-up. |
+| Query cache miss (unique query) | 164,273 req/s | 45.3% | Unique query strings bypass the 2.2.6 cache, so the single-pass parser runs per request and builds a fresh object. Elysia returns its own pre-built structure for the fixed benchmark query. |
+| Fully-loaded GET — full stack (5 vs 4 layers) | 6,332 req/s | — vs Hono: **1.8×** 🏆 | The old benchmark compared AsiJS's full stack (CORS+sec+ETag+cache+rateLimit) against Elysia's bare `cors+rateLimit` — not comparable. Now split into fair pairs: `1a` same middleware set on both (AsiJS **141%** of Elysia), `1b` full stack vs Hono's 4 layers (**1.8×**). |
 
 > ⚠️ Numbers are from a single CI run; runner hardware and `bun-version: latest` drift between runs.
 > Compare **within one run** (percentages), not absolute values across runs — use the dashboard trends
@@ -568,7 +576,7 @@ Numbers below are from the CI benchmark pipeline (GitHub Actions runner, bare me
 |-------|---------|--------|
 | Core | `bun run bench` | GET/params/query/POST, validation, compiled mode |
 | Production | `bun run bench:production` | middleware chain, upload, static, JSX, blog API |
-| Fullstack | `bun run bench:fullstack` | auth, gateway, CRUD, preflight, security headers |
+| Fullstack | `bun run bench:fullstack` | auth, gateway, CRUD, preflight, security headers, fair middleware-set comparison |
 | P0 Hot-Path | `bun run bench:p0` | concurrency, route scaling, static preload, array validation |
 | P1 API-Case | `bun run bench:p1` | query cache, 404, error path, large bodies |
 | P2 Features | `bun run bench:p2` | WebSocket pub/sub, cache layer, DB layer, allocations |

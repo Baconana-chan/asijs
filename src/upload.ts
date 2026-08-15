@@ -33,7 +33,8 @@
  * ```
  */
 
-import { mkdirSync, writeFileSync, existsSync, unlinkSync } from "fs";
+import { mkdirSync, existsSync, unlinkSync, createWriteStream } from "fs";
+import { writeFile } from "fs/promises";
 import { join, extname } from "path";
 import { randomUUID } from "crypto";
 import type { Context } from "./context";
@@ -71,6 +72,12 @@ export interface UploadOptions {
   publicPath?: string;
   /** Rename files: "keep" | "random" | "timestamp" (default: "random") */
   naming?: "keep" | "random" | "timestamp";
+  /**
+   * Stream file contents to storage instead of buffering the whole file in
+   * memory (default: false). Recommended for large files — memory stays
+   * O(chunk) instead of O(file). Requires the storage to implement `saveStream`.
+   */
+  streaming?: boolean;
 }
 
 export interface UploadStorage {
@@ -82,11 +89,26 @@ export interface UploadStorage {
     buffer: Uint8Array,
     options: UploadOptions,
   ) => Promise<UploadedFile>;
+  /**
+   * Optional streaming save — used when `upload({ streaming: true })`.
+   * Receives the file content as a ReadableStream and must not buffer the
+   * whole file in memory. `size` is the declared size from multipart headers.
+   * Enforces `options.maxFileSize` mid-stream (aborts + deletes partial file).
+   */
+  saveStream?: (
+    fieldName: string,
+    fileName: string,
+    mimeType: string,
+    stream: ReadableStream<Uint8Array>,
+    size: number,
+    options: UploadOptions,
+  ) => Promise<UploadedFile>;
   delete?: (path: string) => Promise<boolean>;
   url?: (path: string) => string;
 }
 
 // ============================================================================
+
 // Local Storage
 // ============================================================================
 
@@ -107,16 +129,93 @@ function localStorage(uploadDir: string): UploadStorage {
   return {
     name: "local",
     async save(fieldName, fileName, mimeType, buffer, options) {
-      const ext = extname(fileName);
       const savedName = generateFileName(fileName, options.naming ?? "random");
       const filePath = join(uploadDir, savedName);
-      writeFileSync(filePath, buffer);
+      // Async write — never block the event loop on disk I/O
+      await writeFile(filePath, buffer);
 
       return {
         fieldName,
         fileName: savedName,
         mimeType,
         size: buffer.length,
+        url: `${options.publicPath ?? "/uploads"}/${savedName}`,
+        path: filePath,
+        storage: "local",
+      };
+    },
+    async saveStream(fieldName, fileName, mimeType, stream, size, options) {
+      const savedName = generateFileName(fileName, options.naming ?? "random");
+      const filePath = join(uploadDir, savedName);
+      const maxFileSize = options.maxFileSize ?? 5 * 1024 * 1024;
+
+      // Fast reject before touching the stream — the declared size from
+      // multipart headers is already known.
+      if (size > maxFileSize) {
+        throw new Error(
+          `File "${fileName}" exceeds maximum size of ${maxFileSize} bytes`,
+        );
+      }
+
+      let written = 0;
+      try {
+        // Bun fast path: FileSink streams chunks straight to disk without
+        // buffering the whole file in JS memory. Fallback: Node write stream.
+        if (typeof Bun !== "undefined" && typeof Bun.file === "function") {
+          const sink = Bun.file(filePath).writer();
+          try {
+            const reader = stream.getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              written += value.length;
+              if (written > maxFileSize) {
+                // Cancel the reader so the request body stream stops
+                await reader.cancel().catch(() => {});
+                throw new Error(
+                  `File "${fileName}" exceeds maximum size of ${maxFileSize} bytes`,
+                );
+              }
+              sink.write(value);
+            }
+          } finally {
+            await sink.end();
+          }
+        } else {
+          // Node fallback — pipe the web stream into a write stream
+          const { Readable } = await import("stream");
+          await new Promise<void>((resolve, reject) => {
+            const ws = createWriteStream(filePath);
+            const nodeStream = Readable.fromWeb(stream as any);
+            nodeStream.on("data", (chunk: Buffer) => {
+              written += chunk.length;
+              if (written > maxFileSize) {
+                ws.destroy(new Error(
+                  `File "${fileName}" exceeds maximum size of ${maxFileSize} bytes`,
+                ));
+              }
+            });
+            nodeStream.pipe(ws);
+            ws.on("finish", () => resolve());
+            ws.on("error", reject);
+            nodeStream.on("error", reject);
+          });
+        }
+      } catch (error) {
+        // Remove the partial file so a rejected upload leaves no garbage
+        try {
+          unlinkSync(filePath);
+        } catch {
+          // ignore — file may not exist yet
+        }
+        throw error;
+      }
+
+      return {
+        fieldName,
+        fileName: savedName,
+        mimeType,
+        size: written,
         url: `${options.publicPath ?? "/uploads"}/${savedName}`,
         path: filePath,
         storage: "local",
@@ -210,6 +309,50 @@ function s3Storage(config: S3StorageConfig): UploadStorage {
         fileName: savedName,
         mimeType,
         size: buffer.length,
+        url,
+        path,
+        storage: "s3",
+      };
+    },
+    async saveStream(fieldName, fileName, mimeType, stream, size, options) {
+      const savedName = generateFileName(fileName, options.naming ?? "random");
+      const path = `uploads/${savedName}`;
+      const url = config.publicUrl
+        ? `${config.publicUrl}/${path}`
+        : `${config.endpoint}/${config.bucket}/${path}`;
+      const s3Url = config.forcePathStyle
+        ? `${config.endpoint}/${config.bucket}/${path}`
+        : `${config.endpoint}/${path}`;
+
+      try {
+        // Streaming PUT — body is a ReadableStream. Node fetch requires
+        // `duplex: "half"` for stream bodies; Bun handles it natively.
+        const init: RequestInit & { duplex?: string } = {
+          method: "PUT",
+          headers: {
+            "Content-Type": mimeType,
+            "Content-Length": String(size),
+            "x-amz-acl": "public-read",
+          },
+          body: stream as unknown as BodyInit,
+        };
+        if (typeof Bun === "undefined") {
+          init.duplex = "half";
+        }
+        const response = await fetch(s3Url, init);
+
+        if (!response.ok) {
+          throw new Error(`S3 upload failed: ${response.status} ${response.statusText}`);
+        }
+      } catch (error) {
+        throw new Error(`S3 upload failed: ${(error as Error).message}`);
+      }
+
+      return {
+        fieldName,
+        fileName: savedName,
+        mimeType,
+        size,
         url,
         path,
         storage: "s3",
@@ -339,6 +482,22 @@ export function upload(options: UploadOptions): AsiPlugin {
                 throw new Error(
                   `File type "${file.type}" is not allowed for "${file.name}"`,
                 );
+              }
+
+              // Streaming path — no full-file buffer in memory (great for
+              // large files). Falls back to the buffered path when the
+              // storage doesn't implement `saveStream`.
+              if (options.streaming === true && storage.saveStream) {
+                const uploaded = await storage.saveStream(
+                  fieldName,
+                  file.name,
+                  file.type,
+                  file.stream(),
+                  file.size,
+                  options,
+                );
+                files.push(uploaded);
+                continue;
               }
 
               // Read file buffer
