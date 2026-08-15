@@ -501,11 +501,6 @@
 
 ## P5 🟣 — v1.7+: Platform Era (после текущего roadmap)
 
-*Синтез идей из эксперимента «TODO.md × 5 ИИ» (ChatGPT / Grok / DeepSeek / GLM / Qwen).
-Отобрано по трём критериям: консенсус ≥3/5 ИИ, fit с уникальной позицией AsiJS
-(MCP/AI-native + performance + DX), реализуемость на уже существующей
-инфраструктуре (Redis, WS pub-sub, Circuit Breaker, Observability, Database Layer).*
-
 ### 5.1 — AI-Native Runtime 2.0 (P0 · консенсус 5/5 · главный differentiator)
 
 - [ ] **autoMCP** — REST/RPC роуты автоматически становятся MCP tools: `app.get('/users')` → `get_users` tool со схемой из TypeBox/OpenAPI (`autoMCP: true`)

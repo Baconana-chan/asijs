@@ -57,12 +57,18 @@ function parseBenchOutput(stdout: string): BenchTestGroup[] {
       continue;
     }
 
+    // Allow locale-variant thousands separators (comma, space, narrow NBSP) —
+    // toLocaleString() uses a space separator in some locales (e.g. ru), which
+    // previously made most result lines unparseable on non-en machines.
+    // Units: `req/s`, `ops/s`, `bytes/req` — the numeric value is stored as rps.
     const resultMatch = clean.match(
-      /^(.+?)\s{2,}(\d[\d,]*)\s*req\/s\s+\(([\d.]+)ms\)/,
+      /^(.+?)\s{2,}(\d[\d,\s\u202f]*)\s*(?:req|ops)\/s\s+\(([\d.]+)ms\)/,
+    ) || clean.match(
+      /^(.+?)\s{2,}(\d[\d,\s\u202f]*)\s*bytes\/req\s+\(([\d.]+)ms\)/,
     );
     if (resultMatch && currentGroup) {
       const name = resultMatch[1]!.trim();
-      const rps = parseInt(resultMatch[2]!.replace(/,/g, ""), 10);
+      const rps = parseInt(resultMatch[2]!.replace(/[\s\u202f,]/g, ""), 10);
       const avgMs = parseFloat(resultMatch[3]!);
       const hasErrors = clean.includes("⚠");
 
@@ -150,6 +156,27 @@ async function main() {
     allGroups.push(...fullstackGroups);
   } catch (e) {
     console.error("  ❌ Fullstack benchmarks failed:", e);
+  }
+
+  try {
+    const p0Groups = await runBenchScript("p0.ts", "P0 Hot-Path Benchmarks");
+    allGroups.push(...p0Groups);
+  } catch (e) {
+    console.error("  ❌ P0 benchmarks failed:", e);
+  }
+
+  try {
+    const p1Groups = await runBenchScript("p1.ts", "P1 API-Case Benchmarks");
+    allGroups.push(...p1Groups);
+  } catch (e) {
+    console.error("  ❌ P1 benchmarks failed:", e);
+  }
+
+  try {
+    const p2Groups = await runBenchScript("p2.ts", "P2 Feature Benchmarks");
+    allGroups.push(...p2Groups);
+  } catch (e) {
+    console.error("  ❌ P2 benchmarks failed:", e);
   }
 
   // Build snapshot

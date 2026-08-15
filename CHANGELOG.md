@@ -18,6 +18,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Middleware chain flattener: не применяется к роутам без middleware** — `flattenMiddleware` на роуте без middleware делал per-request кэш-лукап (Map.get + строка id) ради копии `executeHandler(len === 0)`, что стоило ~14%. Теперь флаттер используется только при `middlewares.length > 0`, без-middleware роуты идут через собственный fast-path `executeHandler`.
 - **Радикс-роутер: fresh params на статических роутах** — отмечено, что radix аллоцирует свежий `params` объект на каждый статический матч (наблюдаемая нестабильность/проседание на малых таблицах роутов vs trie) — кандидат на отдельную оптимизацию (общий замороженный пустой объект для статических роутов).
 
+### 📊 Benchmarking
+
+- **P0 Hot-Path Benchmarks (`bench/p0.ts`)** — новые сценарии под 2.2-работу, подключены в CI-коллектор:
+  - **Concurrency** (C=10/100/1000 in-flight) — AsiJS vs Elysia vs Hono; показывает, где context pool реально окупается. На локальном прогоне при C=1000 AsiJS ≈ Elysia (191k vs 190k req/s).
+  - **Route Table Scaling** — radix vs trie при N=10/100/1000/10000 роутов (lookup последнего роута — worst case). Подтверждает: radix на малых таблицах нестабилен (fresh-params аллокация), на масштабе ≈ trie — нужна оптимизация из пункта выше.
+  - **Static: preload vs disk** — память vs диск: локально **4.9–5.3×** (2.2.7).
+  - **Array Validation (100 items) + Validation Error Path** — compiled-валидация: AsiJS > Elysia на валидном массиве и на error-path (invalid payload возвращает 400 у AsiJS, 422 у Elysia — expected-status учитывается, без ложных «errors»).
+- **Фикс парсера коллектора (locale)** — `toLocaleString()` в русской локали Windows даёт пробел как разделитель тысяч (`16 354`), а regex `\d[\d,]*` допускал только запятые → локальные прогоны коллектора парсили почти ноль строк (на CI/en-US всё работало). Теперь regex принимает пробел/NBSP, а вывод всех бенчмарков форсируется `toLocaleString("en-US")`. Итог: локально парсится **102/102** результатов (было 7).
+- **P1 API-Case Benchmarks (`bench/p1.ts`)** — вторые сценарии, подключены в CI-коллектор (7 групп):
+  - **Query Cache (2.2.6)** — повторяющиеся query-строки (hit) vs уникальные (miss) vs `queryCache: false`. Учтён глобальный синглтон кэша: hit/miss гоняются на кэшированном приложении, `queryCache: false` создаётся после (иначе `disableDefaultQueryCache()` убил бы кэш и для hit-замера). Локально: hit ≈ disabled (64.9k vs 64.5k) > miss (52k) — кэш даёт ~25% на повторяющихся query, overhead на hit минимален (shallow copy при hit).
+  - **404 Fast Path** — missing-route lookup: AsiJS vs Elysia vs Hono (ожидаемый статус 404, без ложных ошибок).
+  - **Error Path** — handler бросает ошибку → 500: AsiJS (`silent: true`, не логирует), Elysia/Hono с явным `onError` (500 без шума в stderr).
+  - **Large JSON Bodies (10KB/100KB, validated)** — compiled-валидация массивов на больших телах: AsiJS впереди Elysia на 10KB (7.1k vs 5.8k) и на 100KB (752 vs 609 req/s).
+- **P2 Feature Benchmarks (`bench/p2.ts` + `bench/p2-alloc.ts`)** — сценарии для фич, у которых не было бенчмарков вообще (8 групп, подключены в CI-коллектор):
+  - **WebSocket Pub/Sub** — broadcast через `RoomManager` на 1/10/100 клиентов (mock ws: `readyState` + `send`, без реального сервера).
+  - **Cache Layer** — `MemoryCache` set/get (2.3M ops/s get vs 940k set), ETag-миддлварь 200 vs 304 fast-path, response-cache HIT vs MISS (64k vs 17k ops/s).
+  - **Database Layer (2.3)** — sqlite in-memory CRUD: insert/select/update/delete + транзакция из 3 стейтментов (5.8k ops/s vs 56k delete).
+  - **Allocations** — RSS growth per request, измеряется в **изолированном subprocess** (`bench/p2-alloc.ts`): Bun не возвращает страницы ОС, поэтому последовательные in-process замеры занижали бы второй сценарий. Локально: bare GET 2.6–2.8 KB/req, GET + 2 middleware 3.9–4.1 KB/req.
+  - Парсер коллектора расширен: принимает `ops/s` и `bytes/req` помимо `req/s` (значение складывается в `rps`).
+- **Dashboard: исторические тренды со всех категорий** — раньше `RPS Over Time` брал абсолютный RPS только из первой группы, где находилось имя фреймворка (обычно `GET / (simple JSON)`) — несопоставимо между категориями (GET /: 800k, upload: 7k) и ломалось при изменении набора групп между прогонами. Теперь:
+  - **`Avg Score vs Best — all categories (%)`** — нормализованный score: для каждого снапшота и топ-5 фреймворков среднее `(rps / groupBest × 100)` по **всем** группам, где фреймворк присутствует. Lower-is-better группы (аллокации, bytes/req) инвертируются (`groupBest / rps`), так что 100% всегда = «лучший в категории». Тултип показывает число учтённых групп.
+  - **`RPS by Category`** — второй чарт с выпадающим селектором: просмотр сырого RPS по любой группе за всю историю (по умолчанию `GET / (simple JSON)`).
+  - Нюанс реализации: `bun run <script>` внутри другого bun-процесса зависает (вложенный spawn) — subprocess вызывается как `bun p2-alloc.ts` напрямую; `MemoryCache` держит cleanup `setInterval`, поэтому `main()` завершается явным `process.exit(0)` (иначе процесс висит после печати и коллектор падает с таймаутом).
+
 ## [1.4.0] - 2026-08-15
 
 ### 🚀 New Features

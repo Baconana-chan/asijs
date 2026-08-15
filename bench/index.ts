@@ -242,7 +242,7 @@ function printResults(testName: string, results: BenchResult[]) {
     const bar = "█".repeat(Math.round(Number(percent) / 5));
     const errMark = r.errors > 0 ? " ⚠️" : "";
     console.log(
-      `${r.name.padEnd(25)} ${r.rps.toLocaleString().padStart(10)} req/s ` +
+      `${r.name.padEnd(25)} ${r.rps.toLocaleString("en-US").padStart(10)} req/s ` +
       `(${r.avgMs.toFixed(4)}ms) ${bar} ${percent}%${errMark}`
     );
   }

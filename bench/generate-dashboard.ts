@@ -208,9 +208,18 @@ function generateDashboard(
 
   <h2>📈 Historical Trends</h2>
   <div class="chart-card">
-    <h3>RPS Over Time (Top 5 Frameworks)</h3>
+    <h3>Avg Score vs Best — all categories (%)</h3>
     <div class="chart-container">
       <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+  <div class="chart-card">
+    <h3>RPS by Category
+      <select id="trendGroupSelect"
+        style="background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:4px 8px;margin-left:8px;font-size:13px;"></select>
+    </h3>
+    <div class="chart-container">
+      <canvas id="groupTrendChart"></canvas>
     </div>
   </div>
 
@@ -350,6 +359,41 @@ function generateDashboard(
       tableContainer.innerHTML = html;
     }
 
+    // Trend helpers
+    // Allocation groups measure bytes/req — lower is better
+    function isLowerBetter(groupName) {
+      return /alloc/i.test(groupName);
+    }
+
+    /**
+     * Normalized score for a framework in one snapshot:
+     * average of (rps / groupBest * 100) across ALL groups the framework
+     * appears in. For lower-is-better groups (allocations) the ratio is
+     * inverted (groupBest / rps), so 100% always means "best in category".
+     * Returns null when the framework is absent from every group.
+     */
+    function frameworkScore(snap, name) {
+      let sum = 0, count = 0;
+      snap.groups.forEach(function(g) {
+        if (g.results.length < 2) return; // need a best to compare against
+        const found = g.results.find(function(r) { return r.name === name });
+        if (!found || found.rps <= 0) return;
+        const best = g.results.reduce(function(acc, r) {
+          if (r.rps <= 0) return acc;
+          return isLowerBetter(g.name)
+            ? Math.min(acc, r.rps)
+            : Math.max(acc, r.rps);
+        }, isLowerBetter(g.name) ? Infinity : -Infinity);
+        if (best === Infinity || best === -Infinity || best <= 0) return;
+        const ratio = isLowerBetter(g.name)
+          ? best / found.rps
+          : found.rps / best;
+        sum += ratio * 100;
+        count++;
+      });
+      return count > 0 ? { score: sum / count, categories: count } : null;
+    }
+
     // Trend chart
     if (HISTORY.length > 1) {
       // Collect top framework names across history
@@ -374,19 +418,16 @@ function generateDashboard(
         .slice(0, 5)
         .map(function(e) { return e[0] });
 
-      // Build datasets: for each framework, RPS over time
-      const datasets = topNames.map(function(name) {
-        const data = [];
-        HISTORY.forEach(function(snap) {
-          // Find first group's result for this name (use simple GET benchmark)
-          let rps = null;
-          for (const g of snap.groups) {
-            const found = g.results.find(function(r) { return r.name === name });
-            if (found) { rps = found.rps; break; }
-          }
-          data.push(rps);
-        });
+      const labels = HISTORY.map(function(snap) {
+        return snap.commit.slice(0, 7);
+      });
 
+      // Dataset 1: normalized score over time (all categories)
+      const scoreDatasets = topNames.map(function(name) {
+        const data = HISTORY.map(function(snap) {
+          const s = frameworkScore(snap, name);
+          return s ? +s.score.toFixed(1) : null;
+        });
         return {
           label: name,
           data: data,
@@ -398,14 +439,10 @@ function generateDashboard(
         };
       });
 
-      const labels = HISTORY.map(function(snap) {
-        return snap.commit.slice(0, 7);
-      });
-
       const trendCtx = document.getElementById('trendChart').getContext('2d');
       new Chart(trendCtx, {
         type: 'line',
-        data: { labels: labels, datasets: datasets },
+        data: { labels: labels, datasets: scoreDatasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -420,13 +457,22 @@ function generateDashboard(
                 title: function(items) {
                   const snap = HISTORY[items[0].dataIndex];
                   return snap.commit.slice(0, 7) + ' — ' + fmtTime(snap.timestamp);
+                },
+                label: function(item) {
+                  const name = item.dataset.label;
+                  const snap = HISTORY[item.dataIndex];
+                  const s = frameworkScore(snap, name);
+                  if (!s) return ' ' + name + ': n/a';
+                  return ' ' + name + ': ' + s.score.toFixed(1) + '%' +
+                    ' (avg of ' + s.categories + ' groups)';
                 }
               }
             }
           },
           scales: {
             y: {
-              beginAtZero: true,
+              min: 0,
+              max: 100,
               ticks: { callback: function(v) { return fmt(v) }, color: '#8b949e' },
               grid: { color: '#21262d' }
             },
@@ -437,11 +483,115 @@ function generateDashboard(
           }
         }
       });
+
+      // Dataset 2: raw RPS for a user-selected category
+      // Collect all group names seen across history for the dropdown
+      const allGroupNames = [];
+      const seenGroups = new Set();
+      HISTORY.forEach(function(snap) {
+        snap.groups.forEach(function(g) {
+          if (!seenGroups.has(g.name)) {
+            seenGroups.add(g.name);
+            allGroupNames.push(g.name);
+          }
+        });
+      });
+
+      // Prefer the simple GET group as the default selection
+      const defaultGroup =
+        allGroupNames.find(function(n) { return n.indexOf('GET / (simple') === 0 }) ||
+        allGroupNames[0] || '';
+
+      const select = document.getElementById('trendGroupSelect');
+      if (select) {
+        allGroupNames.forEach(function(gn) {
+          const opt = document.createElement('option');
+          opt.value = gn;
+          opt.textContent = gn;
+          select.appendChild(opt);
+        });
+        select.value = defaultGroup;
+      }
+
+      function buildGroupTrend(groupName) {
+        return topNames.map(function(name) {
+          const data = HISTORY.map(function(snap) {
+            // Only results within the selected group, not the first match anywhere
+            for (const g of snap.groups) {
+              if (g.name !== groupName) continue;
+              const found = g.results.find(function(r) { return r.name === name });
+              return found ? found.rps : null;
+            }
+            return null;
+          });
+          return {
+            label: name,
+            data: data,
+            borderColor: getColor(name),
+            backgroundColor: getColor(name) + '33',
+            tension: 0.3,
+            fill: false,
+            pointRadius: 3,
+          };
+        });
+      }
+
+      let groupChart = null;
+      function renderGroupTrend() {
+        const groupName = select ? select.value : defaultGroup;
+        const gCtx = document.getElementById('groupTrendChart').getContext('2d');
+        if (groupChart) groupChart.destroy();
+        groupChart = new Chart(gCtx, {
+          type: 'line',
+          data: { labels: labels, datasets: buildGroupTrend(groupName) },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'nearest' },
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: '#8b949e', padding: 16 }
+              },
+              tooltip: {
+                callbacks: {
+                  title: function(items) {
+                    const snap = HISTORY[items[0].dataIndex];
+                    return snap.commit.slice(0, 7) + ' — ' + fmtTime(snap.timestamp);
+                  },
+                  label: function(item) {
+                    const name = item.dataset.label;
+                    if (item.raw === null) return ' ' + name + ': n/a';
+                    return ' ' + name + ': ' + fmt(item.raw) + ' req/s';
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: { callback: function(v) { return fmt(v) }, color: '#8b949e' },
+                grid: { color: '#21262d' }
+              },
+              x: {
+                ticks: { color: '#8b949e' },
+                grid: { display: false }
+              }
+            }
+          }
+        });
+      }
+
+      renderGroupTrend();
+      if (select) select.addEventListener('change', renderGroupTrend);
     } else {
       document.getElementById('trendChart').parentElement.innerHTML =
         '<p style="color:var(--muted);text-align:center;padding:3rem">' +
         'Need at least 2 benchmark runs to show trends. ' +
         'Run <code>bun run bench:collect</code> again after making changes.</p>';
+      document.getElementById('groupTrendChart').parentElement.innerHTML =
+        '<p style="color:var(--muted);text-align:center;padding:3rem">' +
+        'Need at least 2 benchmark runs to show trends.</p>';
     }
 
     document.getElementById('footerTime').textContent = new Date().toLocaleString();
