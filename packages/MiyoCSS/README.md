@@ -26,6 +26,9 @@ bun add miyocss
 miyocss info            # resolve config + token stats + validity check
 miyocss info --json     # machine-readable output
 miyocss info --config path --cwd dir
+miyocss build dist              # scan HTML, write one hashed miyocss.<hash>.css
+miyocss build dist --rewrite    # …and swap inline <style> tags for a <link>
+miyocss build dist --out assets --name app --json
 ```
 
 `info` is a quick smoke over the config: finds `miyocss.config.{ts,js,mjs,cjs,json}`, validates it with the same TypeBox schemas (invalid → errors with a path, exit 1, fallback to defaults) and prints token stats plus an approximate utility surface (on defaults — **2354 classes**).
@@ -84,6 +87,39 @@ const config = defineConfig({
 Tailwind-style semantics: `theme.*` replaces a group, `extend.theme.*` deep-merges on top (including on top of your `theme`). Nested palettes flatten into `blue-500`, and a nested `DEFAULT` collapses to the parent name: `{ primary: { DEFAULT: "#6d28d9" } }` → class `primary`.
 
 Defaults are baked in: 4px-base spacing (0–96), 18 colors × 10 shades, typography, radius, shadows, `sm–2xl` breakpoints. See the resolved config: `resolveDefaultConfig()` / `resolveConfig(config)`.
+
+## Purge-to-file (1.2 — CDN / file-server cache)
+
+Inline `<style>` per page is exact but doesn't cache well. Purge every used
+class into **one content-hashed CSS file** — immutable on a CDN:
+
+```ts
+import { PurgeCache, purgeToFile, purgeDirectory } from "miyocss";
+
+// accumulate across many renders
+const cache = new PurgeCache(config);
+// …for each page:
+cache.add(collectClasses(pageTree));
+// one immutable file, pruned of stale siblings
+const { href } = purgeToFile(cache, { dir: "dist" }); // miyocss.a1b2c3d4e5.css
+```
+
+For static / SSG output — scan the HTML directory, share one stylesheet, and
+replace inline `<style data-miyocss>` tags with a single `<link>`:
+
+```ts
+import { purgeSsg } from "miyocss/asi"; // after asi build --ssg
+const { href, classes, files } = purgeSsg({ dir: "dist", config: myConfig });
+```
+
+Or from the CLI (works with any framework's HTML output):
+
+```sh
+miyocss build dist --rewrite   # → dist/miyocss.<hash>.css, inline styles → <link>
+```
+
+The content hash **is** the invalidation: the filename changes exactly when the
+CSS changes, so CDNs can cache `miyocss.<hash>.css` forever.
 
 ## Utility generation
 

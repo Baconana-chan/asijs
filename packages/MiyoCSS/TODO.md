@@ -4,7 +4,7 @@
 >
 > SSR-first CSS + SVG фреймворк. Утилиты собираются **во время рендеринга**, а не сканированием файлов; SVG — first-class, а не «добавка».
 > Имя нейтральное намеренно: пакет применим к любому SSR-фреймворку (AsiJS, Hono, Elysia, Fastify, plain Node) — это не «AsiCSS».
-> Факты на текущий момент: 183 теста (0.1–1.1), репо — `packages/MiyoCSS/`.
+> Факты на текущий момент: 209 тестов (0.1–1.2), репо — `packages/MiyoCSS/`.
 
 ---
 
@@ -131,11 +131,15 @@
 
 > **Контракт переопределения (зафиксировано):** кастомные утилиты резолвятся ПЕРЕД встроенными — пользовательский `flex` (static) перекрывает встроенный. Матчеры применяются после статических (всех — и кастомных, и встроенных).
 
-### 1.2 — purge-to-file (кэш для CDN/файлообменника)
-- [ ] Сборка использованных классов за N запросов → статический `miyocss.css`
-- [ ] Хэш-имя файла (content hash), инвалидация
-- [ ] Интеграция с SSG AsiJS (`asi build --ssg` → один CSS на выходе)
-- [ ] `miyocss build <dir>` CLI: сборка без SSR (для SPA/чистого статики)
+### 1.2 — purge-to-file (кэш для CDN/файлообменника) ✅
+- [x] **`PurgeCache`** — накопитель классов за N рендеров/страниц: `add(classes)` / `addFromHtml(html)`, `css()`, `hash()`, `reset()`; принимает `ResolvedConfig` или `MiyoConfig`
+- [x] **Content hash** — `hashCss()` (SHA-256, 10 hex): имя `miyocss.<hash>.css` меняется ровно когда меняется CSS → **иммутабельный кэш** для CDN/файлообменника; инвалидация = новый хэш = новый файл
+- [x] `purgeToFile()` — запись одного хэшированного CSS в каталог + **прунинг** устаревших `name.*.css`-соседей; `prune: false` — оставить историю
+- [x] `collectClassesFromHtml()` — сканирование `class="…"` атрибутов готового HTML (для SPA/статики без SSR-дерева); `findHtmlFiles()` — рекурсивный обход, пропуск `node_modules`/`.git`
+- [x] `purgeDirectory({ dir, out, rewrite })` — обход HTML-файлов, одна общая CSS + **`rewrite: true` заменяет inline `<style data-miyocss>` на `<link rel="stylesheet" href=…>`** (весь сайт на одном кэшируемом файле)
+- [x] **SSG-интеграция**: `miyocss/asi` → `purgeSsg({ dir, config })` — пост-процессинг `asi build --ssg`-вывода (rewrite включён по умолчанию)
+- [x] **CLI `miyocss build <dir>`** — флаги `--out`, `--name`, `--no-minify`, `--rewrite`, `--config`, `--cwd`, `--json`; авто-поиск `miyocss.config.*` в сканируемом каталоге
+- [x] 26 тестов (`test/purge.test.ts`): кэш, хэш, HTML-скан, `purgeToFile` (+прунинг, иммутабельность), `purgeDirectory` (+rewrite), CLI e2e через spawn; пакет — 209/209, typecheck чистый, build проходит
 
 ### 1.3 — SVG-ядро (first-class)
 - [ ] `svg()`-хелперы: `<svg>`, path, circle, rect, line, polyline, polygon, g, defs

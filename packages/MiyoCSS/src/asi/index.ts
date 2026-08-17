@@ -60,9 +60,15 @@ import {
   injectStyleIntoHtml,
   resolveConfig,
   resolveDefaultConfig,
+  purgeDirectory,
   stream as coreStream,
 } from "../core";
-import type { ResolvedConfig, MiyoConfig } from "../core";
+import type {
+  ResolvedConfig,
+  MiyoConfig,
+  PurgeResult,
+  PurgeDirectoryOptions,
+} from "../core";
 
 // ============================================================================
 // <StyleSheet /> placeholder
@@ -244,6 +250,39 @@ export async function html(
  * TTFB cost is negligible. Without a placeholder, behaves like the core
  * `stream()` (injects into `<head>`, buffers only up to `</head>`).
  */
+// ============================================================================
+// purgeSsg — one CSS file for an `asi build --ssg` output (TODO 1.2)
+// ============================================================================
+
+/** Options for `purgeSsg` — same as the core `purgeDirectory` minus `config`. */
+export type PurgeSsgOptions = Omit<PurgeDirectoryOptions, "config"> & {
+  /** MiyoCSS config (0.2 `defineConfig` shape) — default: built-in tokens. */
+  config?: MiyoConfig;
+};
+
+/**
+ * Post-process an `asi build --ssg` output directory into one hashed CSS file.
+ *
+ * Walks every HTML file, collects the utility classes that were actually
+ * rendered, writes `miyocss.<hash>.css` and — with `rewrite: true` (default) —
+ * replaces the inline `<style data-miyocss>` tags with a single `<link>`, so
+ * the whole static site shares one immutable, CDN-cacheable stylesheet.
+ *
+ * @example
+ * ```ts
+ * // after: asi build --ssg
+ * const { href, classes, files } = purgeSsg({ dir: "dist", config: myConfig });
+ * ```
+ */
+export function purgeSsg(options: PurgeSsgOptions): PurgeResult {
+  const config = options.config ? resolveConfig(options.config) : undefined;
+  return purgeDirectory({
+    ...options,
+    config,
+    rewrite: options.rewrite ?? true,
+  });
+}
+
 export function stream(
   element: unknown,
   options: HtmlOptions = {},

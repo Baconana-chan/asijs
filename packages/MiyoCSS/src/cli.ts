@@ -14,7 +14,7 @@
  * schemas used at runtime, resolves tokens and prints statistics.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -24,6 +24,7 @@ import {
   resolveConfig,
   resolveDefaultConfig,
   staticUtilityNames,
+  purgeDirectory,
   type MiyoConfig,
   type ResolvedConfig,
 } from "./core";
@@ -298,6 +299,84 @@ export function formatInfo(info: InfoStats, json: boolean): string {
   return lines.join("\n");
 }
 
+// ===== miyocss build <dir> =====
+
+export interface BuildStats {
+  dir: string;
+  out: string;
+  files: number;
+  classes: number;
+  cssFile: string;
+  cssHref: string;
+  hash: string;
+  size: number;
+  rewritten: number;
+  pruned: number;
+}
+
+/** Scan HTML files, collect used classes and write one hashed CSS file. */
+export async function buildStatic({
+  dir,
+  out,
+  name,
+  minify,
+  rewrite,
+  config,
+}: {
+  dir: string;
+  out?: string;
+  name?: string;
+  minify?: boolean;
+  rewrite?: boolean;
+  config?: string;
+}): Promise<BuildStats> {
+  // Explicit --config is resolved by the caller (relative to cwd); when absent,
+  // fall back to conventional names in the scan dir.
+  const file = config ? (existsSync(resolve(config)) ? resolve(config) : null) : findConfigFile(dir);
+  const loaded = file ? await loadUserConfig(file) : undefined;
+  const raw = loaded?.config;
+  const resolved = raw === undefined ? resolveDefaultConfig() : resolveConfig(raw);
+
+  const result = purgeDirectory({
+    dir,
+    out,
+    name,
+    minify,
+    rewrite: rewrite ?? false,
+    config: resolved,
+  });
+
+  return {
+    dir,
+    out: result.file,
+    files: result.files,
+    classes: result.classes,
+    cssFile: result.file,
+    cssHref: result.href,
+    hash: result.hash,
+    size: result.size,
+    rewritten: result.files,
+    pruned: result.pruned,
+  };
+}
+
+function formatBuild(stats: BuildStats, json: boolean): string {
+  if (json) return JSON.stringify(stats, null, 2);
+  return [
+    `miyocss build — v${VERSION}`,
+    "",
+    `  Directory     ${stats.dir}`,
+    `  HTML files    ${stats.files}`,
+    `  Unique classes ${stats.classes}`,
+    `  CSS file      ${stats.cssHref} (${(stats.size / 1024).toFixed(1)} KB)`,
+    `  Hash          ${stats.hash}`,
+    `  Pruned stale  ${stats.pruned}`,
+    "",
+    "  Link this file from your pages:",
+    `    <link rel="stylesheet" href="${stats.cssHref}">`,
+  ].join("\n");
+}
+
 // ===== Entry =====
 
 function isMain(): boolean {
@@ -321,27 +400,27 @@ async function main(): Promise<void> {
         "",
         "Usage:",
         "  miyocss info [options]",
+        "  miyocss build <dir> [options]",
         "",
         "Options:",
         "  --config <path>  Use a specific config file",
         "  --cwd <dir>      Run as if in another directory",
+        "  --out <dir>      Output directory for the CSS (build only)",
+        "  --name <stem>    CSS filename stem, default miyocss (build only)",
+        "  --no-minify      Keep readable CSS (build only)",
+        "  --rewrite        Replace inline <style data-miyocss> with a <link> (build only)",
         "  --json           Machine-readable JSON output",
         "  --help           Show this help",
         "",
-        "The info command resolves the config, validates it with TypeBox",
-        "and prints token statistics. A fast smoke check of the setup.",
+        "info: resolves the config, validates it with TypeBox and prints",
+        "token statistics. build: scans <dir> for HTML, collects every used",
+        "utility class and writes one content-hashed miyocss.<hash>.css.",
       ].join("\n"),
     );
     return;
   }
 
   const command = args[0] ?? "info";
-  if (command !== "info") {
-    console.error(`miyocss: unknown command "${command}" — only "info" is implemented`);
-    process.exitCode = 1;
-    return;
-  }
-
   const cwdIndex = args.indexOf("--cwd");
   const cwd = cwdIndex !== -1 && args[cwdIndex + 1]
     ? resolve(args[cwdIndex + 1])
@@ -354,6 +433,39 @@ async function main(): Promise<void> {
       : undefined;
 
   const json = args.includes("--json");
+
+  if (command === "build") {
+    const dir = resolve(cwd, args[1] ?? ".");
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+      console.error(`miyocss: build dir not found: ${dir}`);
+      process.exitCode = 1;
+      return;
+    }
+    const outIndex = args.indexOf("--out");
+    const out = outIndex !== -1 && args[outIndex + 1]
+      ? resolve(cwd, args[outIndex + 1])
+      : undefined;
+    const nameIndex = args.indexOf("--name");
+    const name = nameIndex !== -1 ? args[nameIndex + 1] : undefined;
+    const minify = !args.includes("--no-minify");
+    const rewrite = args.includes("--rewrite");
+    const stats = await buildStatic({
+      dir,
+      out,
+      name,
+      minify,
+      rewrite,
+      config: explicitConfig ? resolve(cwd, explicitConfig) : undefined,
+    });
+    console.log(formatBuild(stats, json));
+    return;
+  }
+
+  if (command !== "info") {
+    console.error(`miyocss: unknown command "${command}" — try "info" or "build"`);
+    process.exitCode = 1;
+    return;
+  }
 
   const info = await collectInfo({ cwd, config: explicitConfig });
   console.log(formatInfo(info, json));

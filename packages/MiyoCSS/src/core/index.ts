@@ -68,3 +68,14 @@ export {
 } from "./ssr";
 
 export type { MiyoElement, SsrOptions, SsrRenderer } from "./ssr";
+
+export {
+  PurgeCache,
+  hashCss,
+  collectClassesFromHtml,
+  purgeToFile,
+  purgeDirectory,
+  findHtmlFiles,
+} from "./purge";
+
+export type { PurgeResult, PurgeToFileOptions, PurgeDirectoryOptions } from "./purge";
