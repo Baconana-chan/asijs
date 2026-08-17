@@ -519,6 +519,7 @@ export interface BatchActionCall {
   input: unknown;
 }
 
+/** Result of one batched server action. */
 export interface BatchActionResult {
   action: string;
   success: boolean;

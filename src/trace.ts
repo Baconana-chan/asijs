@@ -29,6 +29,7 @@ import type { Middleware } from "./types";
 
 // ===== Types =====
 
+/** Per-request trace info (request ID, route pattern, timing, status). */
 export interface TraceInfo {
   /** Unique request ID */
   requestId: string;
@@ -64,6 +65,7 @@ export interface TraceInfo {
   }>;
 }
 
+/** Options for the tracing plugin (request ID header, logging, Server-Timing). */
 export interface TraceOptions {
   /**
    * Header name for request ID
@@ -134,6 +136,7 @@ export interface TraceOptions {
 
 // ===== Trace Context (W3C compatible) =====
 
+/** W3C-style trace context (trace/span IDs, sampling). */
 export interface TraceContext {
   traceId: string;
   spanId: string;
@@ -282,6 +285,7 @@ function defaultLogFormatter(info: TraceInfo): string {
 
 // ===== Timing Helpers =====
 
+/** A named timing mark used for Server-Timing output. */
 export interface TimingMark {
   name: string;
   start: number;
@@ -289,6 +293,7 @@ export interface TimingMark {
   description?: string;
 }
 
+/** Timing helper — collect named marks and emit Server-Timing headers. */
 export class Timing {
   private marks: Map<string, TimingMark> = new Map();
   private startTime: number;
@@ -527,6 +532,7 @@ export function trace(options: TraceOptions = {}): AsiPlugin {
 
 // ===== Metrics Helper =====
 
+/** Aggregated request metrics (counts by status, method, path). */
 export interface RequestMetrics {
   totalRequests: number;
   totalDuration: number;

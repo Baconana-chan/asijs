@@ -138,6 +138,121 @@ when data already conforms and the schema has no defaults) and falls back to
 full coercion only when needed. Compiled validators are cached in an LRU cache
 (`lruSchemaCache: true` by default, max 10000, O(1) eviction).
 
+## Response Serialization
+
+```typescript
+function compileSerializer(schema: TSchema): (value: unknown) => string;
+function compileResponseSerializer(response: ResponseSchema):
+  (value: unknown, status: number) => string | null;
+function wrapWithResponseSerializer(handler, options): Handler;
+function resetSerializerCache(): void;
+
+function serializeForCache(value: unknown): Uint8Array;   // V8.serialize
+function deserializeFromCache(bytes: Uint8Array): unknown;
+
+type ResponseSchema = TSchema | Record<string | number, TSchema>;
+interface ResponseSerializeOptions {
+  response?: ResponseSchema;                 // { 200, "2xx", default }
+  serializers?: Record<string, TSchema | Serializer>; // per content-type
+}
+```
+
+Pre-compiles a TypeBox / JSON Schema into a fast hand-rolled serialization
+function (like fast-json-stringify): field access is inlined, skipping
+`JSON.stringify`'s generic walk. Anything the codegen can't prove safe falls
+back to `JSON.stringify`.
+
+**Route integration** — declare a response schema and AsiJS serializes objects
+through the compiled path (both compiled and non-compiled routes):
+
+```typescript
+app.get("/users/:id", (ctx) => fetchUser(ctx.params.id), {
+  schema: {
+    response: Type.Object({           // single schema for all statuses
+      id: Type.String(),
+      name: Type.String(),
+    }),
+  },
+});
+
+app.post("/users", (ctx) => { /* ... */ return ctx.status(201).jsonResponse(user); }, {
+  schema: {
+    response: {                        // status-keyed: 200 / 2xx / default
+      "2xx": Type.Object({ id: Type.String() }),
+      "4xx": Type.Object({ error: Type.String() }),
+    },
+  },
+});
+
+// Per-content-type serializers — picked via the Accept header
+app.get("/api", handler, {
+  serializers: {
+    "application/vnd.api+json": Type.Object({ data: Type.Array(Type.Any()) }),
+  },
+});
+```
+
+- Status-keyed maps match exact codes, then `Nxx` patterns, then `default`.
+- Object results are pre-serialized into a `Response`; `ctx.status(...)` and
+  `ctx.setCookie(...)` are preserved (toResponseFast skips re-serialization).
+- Non-object results (strings, `Response`, streams) pass through untouched.
+- `serializeForCache`/`deserializeFromCache` are **binary** V8.serialize
+  helpers for internal caches — not for HTTP JSON.
+
+## Data Formats (JSON / YAML / custom)
+
+```typescript
+interface DataFormat {
+  name: string;
+  contentTypes: string[];   // e.g. ["application/yaml", "text/yaml"]
+  extensions: string[];     // e.g. [".yaml", ".yml"]
+  contentType: string;      // default MIME for responses
+  parse(text: string): unknown;
+  serialize(value: unknown): string;
+}
+
+function registerFormat(fmt: DataFormat): void;
+function getFormat(nameOrContentType: string): DataFormat | undefined;
+function listFormats(): DataFormat[];
+function registerYamlFormat(): DataFormat;
+function resetFormats(): void; // tests
+
+// Asi API
+app.setFormat("yaml" | DataFormat): this;
+app.getFormat(): DataFormat;
+
+// Context API
+await ctx.parseBody<T>(format?: string): Promise<T>;
+```
+
+JSON is registered natively (zero deps). YAML is a lazy adapter over the
+`yaml` package (`bun add yaml`) — loaded on first use, no import cost until
+you use it. Register custom formats for TOML, INI, or anything else.
+
+```typescript
+import { Asi, registerYamlFormat } from "asijs";
+
+registerYamlFormat();                        // enable YAML (also in negotiation)
+const app = new Asi({ format: "yaml" });     // default format = YAML
+
+app.post("/config", async (ctx) => {
+  const body = await ctx.parseBody();        // parses by Content-Type header
+  return body;                               // serialized to YAML by default
+});
+```
+
+- **Default format**: object responses, errors (500/400) and 404 bodies are
+  serialized in `setFormat()`'s format unless the `Accept` header asks for a
+  registered alternative. Strings/`Response`/`Blob`/null pass through
+  untouched.
+- **Accept negotiation**: with more than one format registered,
+  `Accept: application/yaml` returns YAML even when the default is JSON
+  (`bestMatch` from content negotiation).
+- **Request parsing**: `ctx.parseBody()` reads the `Content-Type` header;
+  pass a format name to force one. Unknown/absent Content-Type → JSON.
+- Compiled routes (`app.compile()`) and static-response precompute honor the
+  default format too.
+
 ## Database Layer
 
 ```typescript
@@ -383,4 +498,402 @@ function renderToStream(element): ReadableStream;
 function lifecycle(options?): AsiPlugin;
 function healthCheck(options?): AsiPlugin;
 class LifecycleManager;
+```
+
+## Plugins (createPlugin)
+
+```typescript
+// Plugin factory
+function createPlugin(config: AsiPluginConfig): AsiPlugin;
+
+interface AsiPluginConfig<TDecorate, TState> {
+  name: string;
+  setup?: (app: PluginHost) => void | Promise<void>;
+  decorate?: TDecorate;                // becomes ctx.<key> on every request
+  state?: TState;                      // shared state, exposed as ctx.state.<key>
+  dependencies?: string[];             // plugin names that must be registered first
+  onStart?: (app) => void | Promise<void>;
+  onStop?: (app) => void | Promise<void>;
+}
+
+// Registration
+app.plugin(plugin);                    // register a plugin
+app.use(plugin);                       // alias
+
+// Plugin registry
+function createPluginRegistry(): PluginRegistry;
+function getPluginRegistry(): PluginRegistry;
+function resetPluginRegistry(): void;
+```
+
+## OpenAPI
+
+```typescript
+// Plugin
+function openapi(options: OpenAPIOptions): AsiPlugin;
+
+interface OpenAPIOptions {
+  path?: string;                       // default: "/openapi" (JSON spec)
+  uiPath?: string;                     // default: "/docs" (Swagger UI)
+  title?: string;
+  version?: string;
+  description?: string;
+  servers?: string[];
+  securitySchemes?: Record<string, unknown>;
+}
+
+// Routes get documented automatically from validation schemas,
+// route options (tags, summary, deprecated, hidden) and JSDoc.
+
+// Utils
+function collectRoutes(app): OpenAPIRoute[];
+function generateSpec(app, options?): OpenAPISpec;
+function specToJSON(spec): string;
+
+// SDK / client generation
+function generateTypeScriptClient(spec, options?): string;
+
+// Docs exports (see also api-docs module)
+function exportToMarkdown(spec): string;
+function exportToHTML(spec, options?): string;
+function generatePortalHTML(spec, options?): string;
+```
+
+## MCP (Model Context Protocol)
+
+```typescript
+// Plugin — exposes AsiJS routes as MCP tools
+function mcp(options: MCPServerOptions): AsiPlugin;
+
+interface MCPServerOptions {
+  path?: string;                       // SSE endpoint, default: "/mcp"
+  name?: string;                       // server name
+  version?: string;
+  tools?: McpTool[];                   // extra tools beyond auto-discovered routes
+  auth?: (ctx) => boolean | Promise<boolean>;
+}
+
+// Low-level server
+function createMCPServer(options: MCPServerOptions): MCPServer;
+```
+
+## Circuit Breaker
+
+```typescript
+// Middleware — adds ctx.circuitBreaker(name, fn)
+function circuitBreaker(options: CircuitBreakerOptions): Middleware;
+
+// Presets
+function apiCircuitBreaker(name, overrides?): Middleware;
+function dbCircuitBreaker(name, overrides?): Middleware;
+function criticalCircuitBreaker(name, overrides?): Middleware;
+
+interface CircuitBreakerOptions {
+  name: string;
+  threshold?: number;                  // failures to trip, default: 5
+  windowMs?: number;                   // sliding window, default: 60000
+  recoveryTimeout?: number;            // time in OPEN before HALF_OPEN, default: 30000
+  timeout?: number;                    // per-call timeout ms
+  fallback?: <T>(name: string) => T | Promise<T>;
+  shouldTrip?: (error: Error) => boolean;
+  onStateChange?: (state, metrics) => void;
+}
+
+// Usage in handler
+ctx.circuitBreaker("payments-api", async () => { /* ... */ });
+
+// Global registry
+function getCircuitBreakerRegistry(): CircuitBreakerRegistry;
+function resetCircuitBreakerRegistry(): void;
+class CircuitBreakerRegistry;
+class CircuitBreakerError extends Error;   // { breakerName, circuitState }
+```
+
+## Serverless
+
+```typescript
+// Singleton optimizer
+const serverless = new ServerlessOptimizer();
+
+class ServerlessOptimizer {
+  bundleConfig(target, entry, overrides?): ServerlessBundleConfig;
+  buildCommand(targetOrConfig, entry?): string;
+  warmUp(app): void;                    // precompile routes outside request path
+}
+
+type ServerlessTarget = "cloudflare" | "lambda-edge" | "deno-deploy" | "vercel-edge" | "netlify-edge" | "bun";
+
+// Lazy dynamic import helper
+function lazyImport<T>(factory: () => Promise<T>): { get(): Promise<T>; loaded(): boolean };
+```
+
+## Session
+
+```typescript
+// Plugin — adds ctx.session to every request
+function sessions(options: SessionOptions): AsiPlugin;
+
+interface SessionOptions {
+  secret: string;                      // cookie signing (required for CookieStore)
+  name?: string;                       // cookie name, default: "session"
+  ttl?: number;                        // seconds, default: 86400
+  store?: SessionStore;                // custom store, default: memory
+  cookie?: CookieOptions;
+  generateId?: () => string;
+  onCreated?: (session) => void;
+}
+
+interface SessionStore {
+  get(sid: string): Promise<Record<string, unknown> | null>;
+  set(sid: string, data: Record<string, unknown>, ttl: number): Promise<void>;
+  delete(sid: string): Promise<void>;
+}
+
+// Usage in handler
+ctx.session.userId = 42;
+await ctx.session.save();
+ctx.session.destroy();
+```
+
+## Upload
+
+```typescript
+// Plugin — multipart parsing + storage
+function upload(options: UploadOptions): AsiPlugin;
+
+interface UploadOptions {
+  storage: "local" | "s3" | "r2";
+  dir?: string;                        // local base directory
+  maxSize?: number;                    // bytes
+  allowedMimeTypes?: string[];
+  filename?: (file) => string;         // custom filename generator
+  onUpload?: (file, ctx) => void | Promise<void>;
+}
+
+// Usage in handler
+const file = await ctx.file();         // single file
+const files = await ctx.files();       // multiple files
+
+// Storage adapters
+const uploadStorage = {
+  local: localStorage,
+  s3: s3Storage,
+  r2: r2Storage,
+};
+```
+
+## Migrate Express
+
+```typescript
+// Wrap Express middleware and handlers for use in AsiJS
+const expressPlugin = {
+  wrap(handler): Middleware;            // (req, res, next) => AsiJS middleware
+  chain(...middleware): Middleware;     // run Express middleware before handler
+  handler(handler): Handler;            // (req, res) => AsiJS handler
+  errorHandler(handler): ErrorHandler; // (err, req, res, next) => AsiJS onError
+};
+
+// Types
+interface ExpressReq;                    // minimal Express req shape
+interface ExpressRes;                    // minimal Express res shape
+```
+
+## Node Adapter (asijs/node)
+
+```typescript
+// Import from "asijs/node"
+function nodeAdapter(options?): ServerAdapter;
+
+interface NodeAdapterOptions {
+  tls?: {
+    key: string | Buffer;
+    cert: string | Buffer;
+    ca?: string | Buffer;
+  };
+  maxBodySize?: number;
+}
+
+interface ServerAdapter {
+  name: "node";
+  serve(app): Promise<Server>;
+  // ...
+}
+
+// Utils (preload HTTP/WS modules, non-blocking)
+function ensureHttp(): void;
+function isHttpReady(): boolean;
+```
+
+## Event Bus
+
+```typescript
+// In-memory pub/sub event bus
+class EventBus {
+  constructor(options?: EventBusOptions);
+
+  name: string;
+  on<T>(topic: string, handler: EventHandler<T>): () => void;   // returns unsubscribe
+  once<T>(topic: string, handler: EventHandler<T>): () => void;
+  off<T>(topic: string, handler: EventHandler<T>): void;
+  emit<T>(topic: string, payload: T): void;
+  clear(): void;
+  stats(): EventBusStats;                 // { topics, handlers, emitted }
+  has(topic: string): boolean;
+}
+
+interface EventBusOptions {
+  name?: string;
+  maxHandlersPerTopic?: number;            // default: 1000 (guards handler leaks)
+}
+
+// Redis bridge — distribute events across processes
+class RedisEventBusBridge {
+  constructor(options: RedisEventBusOptions, ioredis);
+  isConnected(): boolean;
+  onRemote(topic, handler): void;
+}
+
+// Usage
+const bus = new EventBus();
+const off = bus.on("user.created", (user) => { /* ... */ });
+bus.emit("user.created", { id: 42 });
+off();                                    // unsubscribe
+```
+
+## Structured Logger
+
+```typescript
+// JSON-lines logger with request lifecycle integration
+function createStructuredLogger(options?: StructuredLoggerOptions): StructuredLogger;
+function structuredLogger(options?: StructuredLoggerOptions): AsiPlugin;  // adds ctx.log
+
+// Ready-made instances
+const apiLogger: StructuredLogger;
+const webLogger: StructuredLogger;
+const workerLogger: StructuredLogger;
+
+interface StructuredLoggerOptions {
+  service?: string;                        // default: "asijs-app"
+  environment?: string;
+  version?: string;
+  exclude?: string[];                      // paths to skip, default: ["/health", "/ready", "/live", "/metrics"]
+  filter?: (info: StructuredLogEntry) => boolean;
+}
+
+type LogLevel = "debug" | "info" | "warn" | "error";
+
+// Usage
+ctx.log.info("user.created", { userId: 42 });
+ctx.log.error("payment.failed", { amount: 10, provider: "stripe" });
+```
+
+## Type Safety
+
+```typescript
+// Runtime response validation — catches schema drift in production
+function createResponseValidator(options?: ResponseValidationOptions);
+function getResponseValidator();
+function resetResponseValidator(): void;
+
+interface ResponseValidationOptions {
+  enabled?: boolean;
+  validate?: (schema, data, path) => void;  // custom checker
+}
+
+// Typed i18n — translation keys inferred from your dictionary
+function createTypedTranslator<T extends Record<string, unknown>>(dictionary: T);
+
+type TranslationKeys<T, Prefix = "">;      // dot-path key union
+
+// OpenAPI 3.1 document types (for custom spec builders)
+interface OpenAPI31Document;
+interface OpenAPI31Operation;
+interface OpenAPI31Parameter;
+interface OpenAPI31RequestBody;
+```
+
+## Web Infrastructure
+
+```typescript
+// Webhook signature verification (Stripe, GitHub, Svix + custom)
+function webhooks(options: WebhookOptions): Middleware;
+const webhookProviders: Record<string, WebhookProvider>;   // stripe, github, svix, …
+
+interface WebhookOptions {
+  secret: string | Record<string, string>;  // provider → secret mapping
+  provider?: WebhookProvider;
+  path?: string;                            // default: "/webhook/:provider"
+  allowedEvents?: string[];                 // e.g. ["checkout.session.completed"]
+  handler?: (event, payload, ctx) => Response | Promise<Response>;
+}
+
+// HTTP Range requests (video/audio streaming, resumable downloads)
+function rangeRequests(options?: RangeRequestOptions): Middleware;
+
+// Trust X-Forwarded-For / X-Forwarded-Proto
+function trustProxy(options?: TrustProxyOptions): Middleware;
+
+// Route by Host header (multi-tenant domains)
+function domainRouting(routes: DomainRoute[]): Middleware;
+function domainRoute(hostname, app): DomainRoute;
+```
+
+## Workspace v2 (createWorkspace)
+
+```typescript
+// Multi-app production workspace: sub-apps, shared bus, dashboard, OpenAPI
+function createWorkspace(options?: WorkspaceOptions): Workspace;
+class Workspace {
+  app(name: string, config: AsiConfig, setup: (app: Asi) => void): this;
+  appWith(config: WorkspaceAppConfig): this;   // full config: prefix, hostname, proxy…
+  listen(port?: number, callback?): Promise<unknown>;
+  getCollector(name: string): WorkspaceMetricsCollector | undefined;
+  getApps(): RegisteredApp[];
+  getBus(): EventBus | undefined;
+  getBusStats(): EventBusStats | null;
+}
+
+interface WorkspaceOptions {
+  port?: number;
+  hostname?: string;
+  dashboard?: boolean;                       // dashboard UI
+  dashboardPath?: string;
+  openapi?: boolean;                         // aggregated OpenAPI
+  openapiPath?: string;
+  metrics?: boolean;                         // default: true
+  metricsPath?: string;                      // default: "/__asi/metrics"
+  bus?: EventBus;                            // shared state bus
+  shutdownTimeoutMs?: number;                // default: 10_000
+  onError?: (error, request) => Response | Promise<Response>;
+  verbose?: boolean;
+}
+```
+
+## SPA Client (asijs/spa-client)
+
+```typescript
+// Client-side hydration for server-rendered islands
+function hydrate(
+  mountFn: (props: Record<string, unknown>, root: HTMLElement) => void,
+  defaultProps?: Record<string, unknown>,
+): void;
+
+function hydrateIslands(): void;             // hydrate all [data-island] roots
+function connectHMR(port: number): WebSocket; // dev hot-reload client
+function getPageProps<T = Record<string, unknown>>(): T | null;
+```
+
+## Redis Trace Bridge
+
+```typescript
+// Distributed tracing — W3C TraceContext propagation through Redis
+class RedisTraceBridge {
+  constructor(options: RedisTraceBridgeOptions, ioredis);
+  isConnected(): boolean;
+  onSpan(handler: SpanEventHandler): void;
+  propagateTraceContext(ctx: TraceContext | null): TraceContext;
+}
+
+function newTraceId(): string;               // 32 hex chars
+function newSpanId(): string;                // 16 hex chars
 ```

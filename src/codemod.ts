@@ -28,8 +28,10 @@ import { join, resolve, relative, extname } from "path";
 // Types
 // ========================================================================
 
+/** Framework being migrated from. */
 export type SourceFramework = "elysia" | "hono" | "fastify" | "express" | "koa";
 
+/** Options for `runCodemod` (framework, dry-run, include patterns). */
 export interface CodemodOptions {
   /** Source framework to migrate from */
   from: SourceFramework;
@@ -39,6 +41,7 @@ export interface CodemodOptions {
   verbose?: boolean;
 }
 
+/** One file processed by the codemod. */
 export interface CodemodFile {
   path: string;
   original: string;
@@ -46,6 +49,7 @@ export interface CodemodFile {
   applied: string[];
 }
 
+/** Result of a codemod run (files, transforms, errors). */
 export interface CodemodResult {
   files: CodemodFile[];
   total: number;

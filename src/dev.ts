@@ -20,6 +20,8 @@
  * ```
  */
 
+import { existsSync } from "fs";
+import { join } from "path";
 import { createPlugin, type AsiPlugin } from "./plugin";
 import type { Context } from "./context";
 import type { Middleware } from "./types";
@@ -29,6 +31,7 @@ import { HMRServer, type HMRServerOptions, hmrClientScript } from "./hmr";
 
 // ===== Types =====
 
+/** Options for dev mode (hot reload, playground, request inspector). */
 export interface DevModeOptions {
   /**
    * Enable dev dashboard at /__dev
@@ -109,6 +112,7 @@ export interface DevModeOptions {
 
 // ===== Request Inspector =====
 
+/** A captured request for the dev inspector. */
 export interface InspectedRequest {
   id: string;
   timestamp: Date;
@@ -629,6 +633,14 @@ export function devMode(options: DevModeOptions = {}): AsiPlugin {
         if (hmrServer?.isRunning) {
           console.log(`   ⚡ HMR: ws://localhost:${hmrServer.port}`);
         }
+        console.log("");
+      }
+
+      // Native modules hint (dev DX 2.3)
+      if (existsSync(join(process.cwd(), "native", "manifest.json"))) {
+        console.log(
+          `   🦀 Native module detected — use app.use(native({ hotReload: true })) for live reload`,
+        );
         console.log("");
       }
 

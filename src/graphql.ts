@@ -10,8 +10,10 @@
 import type { Context } from "./context";
 import { createPlugin, type AsiPlugin } from "./plugin";
 
+/** GraphQL variables map. */
 export type GraphQLVariables = Record<string, unknown>;
 
+/** A GraphQL request payload (query + variables + operation name). */
 export interface GraphQLRequestPayload<
   TVariables extends GraphQLVariables = GraphQLVariables,
 > {
@@ -21,10 +23,12 @@ export interface GraphQLRequestPayload<
   extensions?: Record<string, unknown>;
 }
 
+/** Builds the GraphQL context for each request. */
 export type GraphQLContextFactory<TContext> = (
   ctx: Context,
 ) => TContext | Promise<TContext>;
 
+/** Options for the GraphQL plugin (endpoint, schema, adapters). */
 export interface GraphQLPluginOptions<
   TResult = unknown,
   TContext = unknown,
@@ -48,6 +52,7 @@ export interface GraphQLPluginOptions<
   }) => TResult | Promise<TResult>;
 }
 
+/** Minimal shape of a GraphQL Yoga server (duck-typed for adapters). */
 export interface YogaLikeServer<TYogaContext = unknown> {
   fetch: (
     request: Request,
@@ -55,6 +60,7 @@ export interface YogaLikeServer<TYogaContext = unknown> {
   ) => Response | Promise<Response>;
 }
 
+/** Options for the GraphQL Yoga adapter. */
 export interface YogaGraphQLAdapterOptions<TYogaContext = unknown> {
   name?: string;
   path?: string;
@@ -63,6 +69,7 @@ export interface YogaGraphQLAdapterOptions<TYogaContext = unknown> {
   context?: GraphQLContextFactory<TYogaContext>;
 }
 
+/** A Mercurius-style execute request. */
 export interface MercuriusExecuteRequest<
   TContext = unknown,
   TVariables extends GraphQLVariables = GraphQLVariables,
@@ -73,6 +80,7 @@ export interface MercuriusExecuteRequest<
   context: TContext;
 }
 
+/** Minimal Mercurius executor shape (duck-typed). */
 export interface MercuriusExecutorLike<
   TResult = unknown,
   TContext = unknown,
@@ -83,6 +91,7 @@ export interface MercuriusExecutorLike<
   ) => TResult | Promise<TResult>;
 }
 
+/** Minimal Mercurius instance shape (duck-typed). */
 export interface MercuriusInstanceLike<
   TResult = unknown,
   TContext = unknown,
@@ -96,6 +105,7 @@ export interface MercuriusInstanceLike<
   ) => TResult | Promise<TResult>;
 }
 
+/** Options for the Mercurius adapter. */
 export interface MercuriusGraphQLAdapterOptions<
   TResult = unknown,
   TContext = unknown,

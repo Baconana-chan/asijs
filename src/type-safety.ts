@@ -17,6 +17,7 @@ import { OpenAPIGenerator, type DocumentedRoute } from "./openapi";
 // 1. Response Validation in Dev Mode
 // ============================================================================
 
+/** Options for response validation (enabled, statuses to skip). */
 export interface ResponseValidationOptions {
   /** Enable response validation (default: true in dev mode) */
   enabled?: boolean;
@@ -153,6 +154,7 @@ export function createResponseValidator(options: ResponseValidationOptions = {})
 // Singleton with defaults for dev mode
 let defaultValidator: ReturnType<typeof createResponseValidator> | null = null;
 
+/** Get the shared response-validator singleton. */
 export function getResponseValidator(): ReturnType<typeof createResponseValidator> {
   if (!defaultValidator) {
     defaultValidator = createResponseValidator({
@@ -163,6 +165,7 @@ export function getResponseValidator(): ReturnType<typeof createResponseValidato
   return defaultValidator;
 }
 
+/** Reset the shared response validator (useful in tests). */
 export function resetResponseValidator(): void {
   defaultValidator = null;
 }
@@ -293,6 +296,7 @@ export interface OpenAPI31Document {
   security?: Array<Record<string, string[]>>;
 }
 
+/** OpenAPI 3.1 operation shape used by the response validator. */
 export interface OpenAPI31Operation {
   operationId?: string;
   summary?: string;
@@ -305,6 +309,7 @@ export interface OpenAPI31Operation {
   deprecated?: boolean;
 }
 
+/** OpenAPI 3.1 parameter shape used by the response validator. */
 export interface OpenAPI31Parameter {
   name: string;
   in: "path" | "query" | "header" | "cookie";
@@ -318,12 +323,14 @@ export interface OpenAPI31Parameter {
   examples?: unknown[];
 }
 
+/** OpenAPI 3.1 request body shape used by the response validator. */
 export interface OpenAPI31RequestBody {
   description?: string;
   required?: boolean;
   content: Record<string, { schema: unknown }>;
 }
 
+/** OpenAPI 3.1 response shape used by the response validator. */
 export interface OpenAPI31Response {
   description: string;
   content?: Record<string, { schema: unknown }>;
@@ -331,6 +338,7 @@ export interface OpenAPI31Response {
 }
 
 // JSON Schema 2020-12 dialect URI
+/** JSON Schema dialect URI used in generated schemas. */
 export const JSON_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema";
 
 /**

@@ -33,6 +33,7 @@ import type { Middleware } from "./types";
 
 // ===== Types =====
 
+/** One sub-app registration (name, hostname/prefix routing, setup callback). */
 export interface WorkspaceAppConfig {
   name: string;
   config?: AsiConfig;
@@ -41,6 +42,7 @@ export interface WorkspaceAppConfig {
   setup: (app: Asi) => void;
 }
 
+/** Workspace options (port, dashboard, OpenAPI, metrics, shared event bus). */
 export interface WorkspaceOptions {
   port?: number;
   hostname?: string;
@@ -665,6 +667,7 @@ function buildSwaggerHTML(jsonUrl: string, title: string): string {
 
 // ===== Workspace Class =====
 
+/** Workspace — runs multiple AsiJS apps on one `Bun.serve()` with host/prefix routing. */
 export class Workspace {
   private apps: RegisteredApp[] = [];
   private options: Required<Omit<WorkspaceOptions, "bus">>;
@@ -919,6 +922,7 @@ export class Workspace {
   }
 }
 
+/** Create a Workspace (convenience factory over `new Workspace(options)`). */
 export function createWorkspace(options?: WorkspaceOptions): Workspace {
   return new Workspace(options);
 }

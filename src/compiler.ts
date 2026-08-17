@@ -9,6 +9,13 @@ import type { TSchema } from "@sinclair/typebox";
 import { TypeCompiler, type TypeCheck } from "@sinclair/typebox/compiler";
 import type { Handler, Middleware, RouteMethod } from "./types";
 import type { Context } from "./context";
+import { wrapWithResponseSerializer } from "./serialize";
+import type { ResponseSchema, Serializer } from "./serialize";
+import {
+  pickResponseFormat,
+  makeFormatResponse,
+  type DataFormat,
+} from "./formats";
 
 /** Скомпилированный роут */
 export interface CompiledRoute {
@@ -78,15 +85,46 @@ export function compileSchema<T extends TSchema>(schema: T): TypeCheck<T> {
 /**
  * Создать скомпилированный handler с встроенными middleware
  */
+export interface CompileSchemas {
+  body?: TSchema;
+  query?: TSchema;
+  params?: TSchema;
+  /** Response schema (single or status-keyed) → compiled serializer (3.2). */
+  response?: ResponseSchema;
+  /** Per-content-type serializers (3.2). */
+  serializers?: Record<string, TSchema | Serializer>;
+}
+
 export function compileHandler(
   handler: Handler,
   middlewares: Middleware[],
-  schemas?: {
-    body?: TSchema;
-    query?: TSchema;
-    params?: TSchema;
-  },
+  schemas?: CompileSchemas,
+  defaultFormat?: DataFormat | null,
 ): (ctx: Context) => Promise<Response> {
+  // Response serialization (3.2): wrap object results into pre-serialized
+  // Responses — toResponseFast passes them through, so every path benefits.
+  if (schemas?.response || (schemas?.serializers && Object.keys(schemas.serializers).length > 0)) {
+    handler = wrapWithResponseSerializer(handler, {
+      response: schemas.response,
+      serializers: schemas.serializers,
+    });
+  }
+
+  // Formats layer: thread the app default format into the fast converter.
+  const convert = (result: unknown, ctx: Context): Response => {
+    const fmt = defaultFormat ? pickResponseFormat(ctx, defaultFormat) : null;
+    if (fmt && result !== null && typeof result === "object" && !(result instanceof Response) && !(result instanceof Blob)) {
+      return makeFormatResponse(
+        fmt.serialize(result),
+        fmt,
+        ctx,
+        (ctx as any)._status || 200,
+        (ctx as any)._setCookies as string[] | undefined,
+      );
+    }
+    return toResponseFast(result, ctx);
+  };
+
   // Предкомпилируем валидаторы
   const validators = schemas
     ? {
@@ -104,7 +142,7 @@ export function compileHandler(
   if (middlewareCount === 0 && !validators) {
     return async (ctx: Context): Promise<Response> => {
       const result = await handler(ctx);
-      return toResponseFast(result, ctx);
+      return convert(result, ctx);
     };
   }
 
@@ -130,7 +168,7 @@ export function compileHandler(
       }
 
       if (validators.body) {
-        const body = await ctx.json();
+        const body = await ctx.parseBody();
         if (!validators.body.Check(body)) {
           return validationError("body", validators.body.Errors(body));
         }
@@ -138,14 +176,16 @@ export function compileHandler(
       }
 
       const result = await handler(ctx);
-      return toResponseFast(result, ctx);
+      return convert(result, ctx);
     };
   }
 
   // Flat middleware (без next) — inline execution без runtime loop
   if (flatMiddlewares) {
     // Pre-built inline chain: middleware calls written out directly, handler last
-    const chain = createInlineFlatChain(middlewares, handler);
+    const chain = createInlineFlatChain(middlewares, handler, {
+      toResponse: defaultFormat ? convert : undefined,
+    });
 
     // Без валидации — вернуть inline chain как есть (самый быстрый путь)
     if (!validators) return chain;
@@ -167,7 +207,7 @@ export function compileHandler(
       }
 
       if (validators.body) {
-        const body = await ctx.json();
+        const body = await ctx.parseBody();
         if (!validators.body.Check(body)) {
           return validationError("body", validators.body.Errors(body));
         }
@@ -194,7 +234,7 @@ export function compileHandler(
       }
 
       if (validators.body) {
-        const body = await ctx.json();
+        const body = await ctx.parseBody();
         if (!validators.body.Check(body)) {
           return validationError("body", validators.body.Errors(body));
         }
@@ -214,7 +254,7 @@ export function compileHandler(
       }
 
       const result = await handler(ctx);
-      return toResponseFast(result, ctx);
+      return convert(result, ctx);
     };
 
     return next();

@@ -22,6 +22,7 @@ import { join } from "path";
 // Types
 // ============================================================================
 
+/** Result of an update check (current/latest, up-to-date flag). */
 export interface UpdateCheck {
   /** Currently installed version (from package.json), or null */
   installed: string | null;
@@ -35,6 +36,7 @@ export interface UpdateCheck {
   message: string;
 }
 
+/** Options for `upgrade()` (target, dry-run, offline). */
 export interface UpgradeOptions {
   /** Project root (default: process.cwd()) */
   cwd?: string;
@@ -48,6 +50,7 @@ export interface UpgradeOptions {
   offline?: boolean;
 }
 
+/** Result of an upgrade (applied specifier, diff, warnings). */
 export interface UpgradeResult {
   /** Final package.json asijs specifier */
   newSpecifier: string;

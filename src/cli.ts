@@ -48,6 +48,7 @@ import { analyzeProject } from "./analyze";
 import { runDoctor } from "./doctor";
 import { checkForUpdates, upgradeProject } from "./upgrade";
 import { handleDb } from "./db/cli";
+import { handleNative } from "./native/cli";
 
 // ===== Colors =====
 const colors = {
@@ -1407,6 +1408,131 @@ Open http://localhost:3000 in multiple tabs to chat!
 `,
     },
   },
+
+  "vite-app": {
+    name: "Vite + AsiJS",
+    description: "AsiJS backend + Vite frontend on one port (asijs-vite)",
+    files: {
+      "index.html": `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + AsiJS</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+`,
+      "vite.config.ts": `import { defineConfig } from "vite";
+import { Asi } from "asijs";
+import { createVitePlugin } from "asijs-vite";
+
+// AsiJS backend: API routes + HMR bridge on the same port as Vite
+const app = new Asi();
+
+app.get("/api/hello", () => ({ message: "Hello from AsiJS via Vite! 🚀" }));
+app.get("/api/time", () => ({ time: new Date().toISOString() }));
+
+export default defineConfig({
+  plugins: [createVitePlugin(app, { apiPrefix: "/api", hmrBridge: true })],
+  server: {
+    port: 5173,
+  },
+});
+`,
+      "src/index.ts": `import { Asi } from "asijs";
+
+// Server entry for production builds (asi build).
+// In dev, the app is created in vite.config.ts and served by Vite.
+const app = new Asi();
+
+app.get("/api/hello", () => ({ message: "Hello from AsiJS!" }));
+
+app.listen(3000, () => {
+  console.log("🚀 AsiJS running at http://localhost:3000");
+});
+`,
+      "src/main.ts": `// Frontend entry — served & HMR'd by Vite
+const app = document.querySelector<HTMLDivElement>("#app")!;
+
+app.innerHTML = \`<h1>Vite + AsiJS</h1><p>Loading API…</p>\`;
+
+const res = await fetch("/api/hello");
+const data = await res.json();
+
+app.innerHTML = \`<h1>Vite + AsiJS</h1><p>\${data.message}</p><button id="btn">Refresh</button>\`;
+
+document.querySelector("#btn")!.addEventListener("click", async () => {
+  const r = await fetch("/api/time");
+  const t = await r.json();
+  app.innerHTML = \`<h1>Vite + AsiJS</h1><p>\${t.time}</p>\`;
+});
+`,
+      "package.json": (name: string) =>
+        JSON.stringify(
+          {
+            name,
+            version: "0.1.0",
+            type: "module",
+            scripts: {
+              dev: "vite",
+              build: "vite build",
+              preview: "vite preview",
+              "build:ssr": "bun build src/index.ts --outdir dist-ssr --target bun",
+            },
+            dependencies: {
+              asijs: "latest",
+            },
+            devDependencies: {
+              "@types/bun": "latest",
+              "asijs-vite": "latest",
+              typescript: "^5",
+              vite: "^8.0.0",
+            },
+          },
+          null,
+          2,
+        ),
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ESNext",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            skipLibCheck: true,
+            types: ["bun-types"],
+          },
+          include: ["src", "vite.config.ts"],
+        },
+        null,
+        2,
+      ),
+      ".gitignore": `node_modules
+dist
+dist-ssr
+.env
+*.log
+`,
+      "README.md": (name: string) => `# ${name}
+
+Vite + AsiJS starter — AsiJS backend and Vite frontend on a single port.
+
+## Getting Started
+
+\`\`\`bash
+bun install
+bun run dev
+\`\`\`
+
+Open http://localhost:5173 — the frontend is served by Vite (with HMR), and
+requests to \`/api/*\` are handled by AsiJS through the \`asijs-vite\` plugin.
+`,
+    },
+  },
 };
 
 type TemplateName = keyof typeof TEMPLATES;
@@ -1456,6 +1582,12 @@ async function startDevMode(args: string[]) {
   console.log(c.bold("🏗️  AsiJS Dev"));
   console.log("   Scanning for apps...");
   console.log();
+
+  // Native modules hint (dev DX 2.3)
+  if (existsSync(join(process.cwd(), "native", "manifest.json"))) {
+    console.log(`   🦀 Native module detected — use app.use(native({ hotReload: true })) for live reload`);
+    console.log();
+  }
 
   const apps = scanWorkspace({ cwd: process.cwd() });
 
@@ -1592,6 +1724,12 @@ async function main() {
   // Handle `asijs db <action>` — database layer (migrate/seed/studio)
   if (command === "db") {
     await handleDb(args.slice(1));
+    return;
+  }
+
+  // Handle `asijs native <action>` — native / polyglot modules
+  if (command === "native") {
+    await handleNative(args.slice(1));
     return;
   }
 
@@ -1737,6 +1875,7 @@ interface InspectResult {
   port: number;
   configPath: string | null;
   entryFile: string | null;
+  native: { name: string; lang: string; functions: string[] } | null;
 }
 
 async function handleInspect(args: string[]) {
@@ -1768,6 +1907,11 @@ async function handleInspect(args: string[]) {
   // === Plugins ===
   if (showAll || showPlugins) {
     printPlugins(result);
+  }
+
+  // === Native ===
+  if (showAll && result.native) {
+    printNative(result);
   }
 
   // === Size ===
@@ -1831,6 +1975,25 @@ async function inspectProject(): Promise<InspectResult> {
   if (existsSync(join(cwd, "asi.config.ts"))) configPath = "asi.config.ts";
   else if (existsSync(join(cwd, "asi.config.js"))) configPath = "asi.config.js";
 
+  // Detect native module (manifest.json in native/)
+  let nativeInfo: InspectResult["native"] = null;
+  try {
+    if (existsSync(join(cwd, "native", "manifest.json"))) {
+      const raw = JSON.parse(
+        readFileSync(join(cwd, "native", "manifest.json"), "utf-8"),
+      ) as { name?: string; lang?: string; functions?: Array<{ name?: string }> };
+      nativeInfo = {
+        name: raw.name ?? "native",
+        lang: raw.lang ?? "unknown",
+        functions: (raw.functions ?? [])
+          .map((f) => f.name ?? "")
+          .filter(Boolean),
+      };
+    }
+  } catch {
+    nativeInfo = null;
+  }
+
   return {
     routes,
     plugins,
@@ -1841,6 +2004,7 @@ async function inspectProject(): Promise<InspectResult> {
     port,
     configPath,
     entryFile: entryFile ? relativePath(entryFile) : null,
+    native: nativeInfo,
   };
 }
 
@@ -2001,6 +2165,17 @@ function printRoutes(result: InspectResult, verbose: boolean) {
   console.log();
 }
 
+function printNative(result: InspectResult) {
+  if (!result.native) return;
+  console.log(c.bold(c.cyan("  Native Module:")));
+  const n = result.native;
+  console.log(`    ${c.bold(n.name)} ${c.dim(`(${n.lang})`)} — ${n.functions.length} function(s)`);
+  for (const fn of n.functions) {
+    console.log(`      ${c.cyan(fn)}`);
+  }
+  console.log();
+}
+
 function printPlugins(result: InspectResult) {
   console.log(c.bold(c.cyan("  Plugins & Middleware:")));
   console.log();
@@ -2102,7 +2277,8 @@ function printSummaryLine(result: InspectResult) {
     `${wsCount > 0 ? ` · ${c.magenta(String(wsCount))} WebSocket` : ""}` +
     ` · ${c.bold(String(result.plugins.length))} plugins` +
     ` · ${result.globalMiddleware + result.pathMiddleware} middleware` +
-    ` · port ${c.cyan(String(result.port))}`,
+    ` · port ${c.cyan(String(result.port))}` +
+    (result.native ? ` · ${c.cyan(result.native.name)} native` : ``),
   );
   if (result.entryFile) {
     console.log(`    ${c.dim("Entry:")} ${c.cyan(result.entryFile)}`);
@@ -3045,6 +3221,7 @@ ${c.bold("Usage:")}
   bunx asijs upgrade [options]
   bunx asijs template <name>
   bunx asijs db migrate|seed|studio [options]
+  bunx asijs native scaffold|build|list|info [options]
 
 ${c.bold("Commands:")}
   create   Create a new AsiJS project
@@ -3059,6 +3236,7 @@ ${c.bold("Commands:")}
   upgrade  Check for and apply AsiJS updates (+ breaking-changes codemod)
   template Install a template into the current directory
   db       Database: migrate (--create/--down/--status), seed, studio GUI
+  native   Native modules: scaffold <lang>, build (cargo), list, info
 
 ${c.bold("Plugin Actions:")}
   search [query]   Search plugins in the official registry
@@ -3148,6 +3326,9 @@ ${c.bold("Examples:")}
   bunx asijs upgrade --codemod
   bunx asijs template api
   bunx asijs dev --inspect
+  bunx asijs native scaffold rust my-crypto
+  bunx asijs native build
+  bunx asijs native list
 `);
 }
 

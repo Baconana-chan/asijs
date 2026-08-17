@@ -14,6 +14,7 @@ import { createPlugin } from "./plugin";
 
 // ===== Types =====
 
+/** Options for the built-in MCP server (name, port, custom tools/resources). */
 export interface MCPServerOptions {
   /** Name of the MCP server */
   name?: string;
@@ -34,6 +35,7 @@ export interface MCPServerOptions {
   resources?: MCPResource[];
 }
 
+/** A custom tool exposed through MCP (name, description, input schema, handler). */
 export interface MCPTool {
   name: string;
   description: string;
@@ -41,6 +43,7 @@ export interface MCPTool {
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
+/** A resource exposed through MCP (uri, name, contents loader). */
 export interface MCPResource {
   uri: string;
   name: string;
@@ -49,6 +52,7 @@ export interface MCPResource {
   contents: () => Promise<string>;
 }
 
+/** JSON-RPC 2.0 request as received by the MCP server. */
 export interface MCPRequest {
   jsonrpc: "2.0";
   id: string | number;
@@ -56,6 +60,7 @@ export interface MCPRequest {
   params?: Record<string, unknown>;
 }
 
+/** JSON-RPC 2.0 response produced by the MCP server. */
 export interface MCPResponse {
   jsonrpc: "2.0";
   id: string | number;

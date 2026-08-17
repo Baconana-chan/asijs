@@ -93,9 +93,9 @@ const app = new Asi({
   decodeQuery: false,
 
   // Cache parsed query strings (QueryParseCache, LRU 512, O(1) eviction)
-  // Повторяющиеся query-строки не парсятся заново; результат возвращается
-  // как shallow copy (мутации ctx.query не портят кэш).
-  // Default: true | false отключает | число задаёт max
+  // Repeated query strings are not re-parsed; the result is returned
+  // as a shallow copy (ctx.query mutations don't poison the cache).
+  // Default: true | false disables | number sets max
   queryCache: true,
 });
 ```
@@ -373,35 +373,35 @@ try {
 
 ### Compiled Validation (2.2.5)
 
-Валидация по умолчанию использует **скомпилированные валидаторы**
-(`TypeCompiler`), которые генерируют плоский JS-код вместо интерпретации
-схемы — до **400× быстрее** интерпретированного `Value.Check`.
+Validation uses **compiled validators** by default
+(`TypeCompiler`), which generate flat JS code instead of interpreting
+the schema — up to **400× faster** than the interpreted `Value.Check`.
 
-`validateAndCoerce()` — двухстадийный:
+`validateAndCoerce()` is two-stage:
 
-1. **Fast path** — скомпилированный `Check` на сырых данных. Если данные
-   уже соответствуют схеме и в схеме нет `default` значений, `Convert` +
-   `Default` полностью пропускаются (данные возвращаются как есть, без
-   копирования).
-2. **Slow path** — полная коерция (`Convert` → `Default` → compiled
-   `Check`) с идентичной семантикой прежней реализации — вызывается
-   только когда данные не соответствуют схеме или нужно материализовать
-   `default`-значения.
+1. **Fast path** — a compiled `Check` on raw data. If the data already
+   matches the schema and the schema has no `default` values, `Convert` +
+   `Default` are skipped entirely (the data is returned as-is, without
+   copying).
+2. **Slow path** — full coercion (`Convert` → `Default` → compiled
+   `Check`) with semantics identical to the previous implementation —
+   called only when the data doesn't match the schema or `default` values
+   need to be materialized.
 
 ```typescript
 import { validate, validateAndCoerce, schemaHasDefaults } from "asijs";
 
-// Fast path: типизированные JSON body валидируются без Convert+Default
+// Fast path: typed JSON bodies are validated without Convert+Default
 const result = validateAndCoerce(schema, data);
 
-// schemaHasDefaults — анализ схемы на наличие default (кэшируется через WeakMap)
+// schemaHasDefaults — schema analysis for defaults (cached via WeakMap)
 if (schemaHasDefaults(schema)) {
-  // требуется материализация defaults
+  // default materialization required
 }
 ```
 
-Компилированные валидаторы кэшируются в **LRU-кэше** (по умолчанию
-включён, `lruSchemaCache: true`, max 10000; O(1) eviction):
+Compiled validators are cached in an **LRU cache** (enabled by default,
+`lruSchemaCache: true`, max 10000; O(1) eviction):
 
 ```typescript
 const app = new Asi({ lruSchemaCache: true });   // default
@@ -2008,32 +2008,32 @@ import { staticFiles } from "asijs";
 
 // Preload matching files into memory at startup
 app.use(staticFiles("./public", {
-  preload: true,                    // glob "**/*.{html,css,js,svg}" по умолчанию
-  // preload: ["**/*.html", "**/*.css"]  // явные паттерны (Bun.Glob)
+  preload: true,                    // glob "**/*.{html,css,js,svg}" by default
+  // preload: ["**/*.html", "**/*.css"]  // explicit patterns (Bun.Glob)
 
-  // TTL кэша в секундах — файл перечитывается с диска после истечения
+  // Cache TTL in seconds — the file is re-read from disk after expiry
   cacheTtl: 60,
 
-  cacheSmallFiles: true,            // кэшировать до cacheMaxFileSize (128KB)
+  cacheSmallFiles: true,            // cache files up to cacheMaxFileSize (128KB)
   cacheMaxFileSize: 128 * 1024,
   cacheMaxEntries: 512,
   cacheMaxBytes: 16 * 1024 * 1024,
 }));
 ```
 
-- **`preload`** — загружает файлы в память при старте (`Bun.Glob`); отдача из
-  памяти вообще без fs-вызовов (до **5.4×** быстрее: 4.3k → 23.2k req/s).
-- **`cacheTtl`** — TTL в секундах; ловит изменения файла, невидимые
-  size/mtime (MemoryCache-совместимая семантика).
-- Без `preload`/`cacheTtl` поведение прежнее: `cacheSmallFiles` валидирует
-  size/mtime с диска на каждый запрос, изменения подхватываются мгновенно.
+- **`preload`** — loads files into memory at startup (`Bun.Glob`); serving
+  from memory with no fs calls at all (up to **5.4×** faster: 4.3k → 23.2k req/s).
+- **`cacheTtl`** — TTL in seconds; catches file changes invisible to
+  size/mtime (MemoryCache-compatible semantics).
+- Without `preload`/`cacheTtl` the previous behavior holds: `cacheSmallFiles`
+  validates size/mtime from disk on every request, changes are picked up instantly.
 
 ---
 
 ## Database Layer (2.3)
 
-Zero-dependency database access: SQLite через `bun:sqlite` (built-in), PostgreSQL
-через lazy `import("postgres")`.
+Zero-dependency database access: SQLite via `bun:sqlite` (built-in), PostgreSQL
+via lazy `import("postgres")`.
 
 ```typescript
 import { Asi, Database } from "asijs";
@@ -2043,31 +2043,31 @@ const db = new Database({ url: "file:./app.db" });
 db.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)");
 const rows = db.query("SELECT * FROM users");
 
-// Через Asi config — app.db lazy + auto-migration
+// Via Asi config — app.db lazy + auto-migration
 const app = new Asi({
   database: {
     url: "file:./app.db",
     migrationsDir: "./migrations",
-    autoMigrate: true,   // pending-миграции при первом app.db
-    autoSeed: true,      // seed.sql / seed.ts после миграций
+    autoMigrate: true,   // pending migrations on first app.db access
+    autoSeed: true,      // seed.sql / seed.ts after migrations
   },
 });
 ```
 
-### Миграции
+### Migrations
 
 ```bash
 asi db migrate                 # apply pending
 asi db migrate --status        # applied vs pending
 asi db migrate --down          # rollback last
 asi db migrate --create "add posts"  # scaffold migrations/001_add_posts.sql
-asi db seed [file]             # .sql или .ts модуль
+asi db seed [file]             # .sql or .ts module
 asi db studio                  # GUI: http://localhost:5500
 ```
 
-Конвенция файлов миграций: `001_create_users.sql` (up-only) или
+Migration file convention: `001_create_users.sql` (up-only) or
 `001_create_users.up.sql` + `001_create_users.down.sql` (reversible).
-Прогресс отслеживается в таблице `__migrations`.
+Progress is tracked in the `__migrations` table.
 
 ---
 

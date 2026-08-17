@@ -22,6 +22,7 @@ import type { AsiPlugin, PluginHooks } from "./plugin";
 // Types
 // ============================================================================
 
+/** A plugin node in the dependency graph (name, deps, status, hooks). */
 export interface PluginNode {
   name: string;
   plugin: AsiPlugin | null;
@@ -31,6 +32,7 @@ export interface PluginNode {
   metadata: PluginMetadata;
 }
 
+/** Lifecycle state of a plugin in the graph. */
 export type PluginStatus =
   | "registered"  // Added to graph, not yet initialized
   | "pending"     // Waiting for dependencies
@@ -39,17 +41,20 @@ export type PluginStatus =
   | "initialized"
   | "error";
 
+/** Plugin metadata carried through the graph. */
 export interface PluginMetadata {
   version?: string;
   description?: string;
   lazy: boolean;
 }
 
+/** A dependency edge between two plugins. */
 export interface PluginGraphEdge {
   from: string;
   to: string;
 }
 
+/** Full graph snapshot: nodes, edges, init order, cycle info. */
 export interface PluginGraphInfo {
   nodes: PluginNode[];
   edges: PluginGraphEdge[];
@@ -58,6 +63,7 @@ export interface PluginGraphInfo {
   cyclePath: string[] | null;
 }
 
+/** One queued plugin awaiting initialization. */
 export interface PluginInitQueueItem {
   name: string;
   plugin: AsiPlugin;
@@ -69,6 +75,7 @@ export interface PluginInitQueueItem {
 // Cycle detection error
 // ============================================================================
 
+/** Thrown when plugin dependencies form a cycle. */
 export class CyclicDependencyError extends Error {
   constructor(public readonly cycle: string[]) {
     super(
@@ -78,6 +85,7 @@ export class CyclicDependencyError extends Error {
   }
 }
 
+/** Thrown when a plugin depends on an unregistered plugin. */
 export class MissingDependencyError extends Error {
   constructor(
     public readonly plugin: string,
@@ -94,6 +102,7 @@ export class MissingDependencyError extends Error {
 // PluginDependencyManager
 // ============================================================================
 
+/** Resolves plugin dependencies: graph, cycle detection, topological init order. */
 export class PluginDependencyManager {
   private nodes = new Map<string, PluginNode>();
   private adjacency = new Map<string, Set<string>>();

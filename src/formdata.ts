@@ -82,6 +82,7 @@ export const FORMDATA_SCHEMA_SYMBOL = Symbol("FormDataSchema");
  * FileSchema({ maxSize: 10_000_000, mimeTypes: ["image/*", "application/pdf"] })
  * ```
  */
+/** TypeBox schema for a file field in multipart validation. */
 export function FileSchema(
   options: FileSchemaOptions = {},
 ): TSchema & { [FILE_SCHEMA_SYMBOL]: FileSchemaOptions } {
@@ -180,11 +181,13 @@ export function isFormDataSchema(
 
 // ===== FormData Validator =====
 
+/** One multipart field validation error. */
 export interface FormDataValidationError {
   field: string;
   message: string;
 }
 
+/** Result of multipart validation (parsed fields/files + errors). */
 export interface FormDataValidationResult<T = Record<string, unknown>> {
   success: boolean;
   data?: T;

@@ -1,0 +1,14 @@
+{
+  "name": "ssr-bench-sveltekit",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-node": "^5.5.7",
+    "@sveltejs/kit": "^2.70.2",
+    "svelte": "^5.56.9",
+    "vite": "^7.0.0"
+  }
+}

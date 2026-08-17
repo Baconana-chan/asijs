@@ -1,13 +1,15 @@
 # TODO.md — AsiJS Roadmap
 
-> **Текущая версия**: v1.3.0-pre · **Runtime**: Bun + Node.js + Edge · **Статус**: Pre-release audit completed
+> **Текущая версия**: v1.5.0 · **Runtime**: Bun + Node.js + Edge · **Статус**: v1.5.0 готов (незакоммичен)
 >
-> Документ разбит на **4 приоритетных уровня** от P0 (критично сейчас) до P3 (backlog).
-> Факты: **1373 тестов**, `tsc --noEmit` чисто, **0 падающих**, CI/CD auto-publish.
+> Документ разбит на **6 приоритетных уровней** от P0 (критично сейчас) до P5 (Platform Era).
+> Факты: **2036 тестов**, `tsc --noEmit` чисто, **0 падающих**, CI/CD auto-publish.
+>
+> 📌 **Отдельный роадмап**: [TODO_native.md](./TODO_native.md) — Native / Polyglot модули (`asi native`, bun:ffi, sidecar-языки, контракт-платформа).
 
 ---
 
-## Актуальное состояние (July 2026 · v1.3.0-pre)
+## Актуальное состояние (Aug 2026 · v1.5.0)
 
 | Аспект | Состояние | Подробности |
 |--------|-----------|-------------|
@@ -57,7 +59,7 @@
 | Framework Adapters (3.8) | ✅ 33 теста | @asijs/next, @asijs/astro, @asijs/remix, @asijs/sveltekit + docs |
 | TypeScript types | ✅ Чисто | `tsc --noEmit` — 0 ошибок |
 | CI/CD | ✅ Auto-publish | 2 workflows: main (npm+JSR+ESLint на `v*`), eco (VS Code + ESLint на `eco-*`) |
-| Тесты | ✅ **1373/1373** проходят | Все тесты зелёные, 0 падающих |
+| Тесты | ✅ **2036/2036** проходят | Все тесты зелёные, 0 падающих |
 | Документация | 🔶 Хорошая | VitePress, 23 страницы, поиск, gh-pages |
 | Benchmark dashboard | 🔶 Локально | Dashboard генерируется, но нет CI-публикации на gh-pages |
 
@@ -193,6 +195,13 @@
 
 ### 2.2 — Performance Optimisations (benchmark-driven, v1.3.0 data)
 
+**SSR-категория (Node-first фреймворки)** ✅ базовая версия:
+
+- [x] **`bench/ssr.ts`** — production-серверы на портах (C=32 concurrent fetch), 100-row таблица: AsiJS (JSX + string template) vs Hono vs **Astro** (@astrojs/node standalone) vs **SvelteKit** (@sveltejs/adapter-node) vs **Nuxt** (nitro `bun` preset); приложения в `bench/frameworks/*`, сборка — `bun run bench:ssr:build`
+- [x] **Интеграция** — `bench:collect` подхватывает SSR-группу если билды есть (graceful skip); CI-флаг `run_ssr_frameworks` (opt-in, добавляет ~1–2 мин на push); README + dashboard
+- [ ] **Next.js + Remix** — их билд-тулчейн требует Node (`next build` / `remix build` не запускаются под Bun): нужен `actions/setup-node` в CI или docker-шаг; кандидаты на следующий заход
+- [ ] **K6-нагрузка для SSR** — портовые бенчи через `fetch` чувствительны к клиентскому шуму (Windows/AV); k6-сценарий по тем же роутам даст более стабильные абсолютные цифры
+
 **Текущие бенчмарки** (v1.3.0, AsiJS vs Elysia vs Hono):
 
 | # | Сценарий | AsiJS | vs Elysia | Разрыв | Статус |
@@ -312,9 +321,11 @@
 
 ---
 
-## P3 🔵 — v1.5.0: Competitive Strategy
+## P3 🔵 — v1.5.0: Competitive Strategy ✅ (закрыто)
 
 *Стратегия: закрыть gaps с конкурентами + удвоить на уникальных фичах.*
+
+> **Статус**: выполнено 3.2 (serialization), 3.2b (formats), 3.5 (vite), 3.6 (MCP v2 + runtime bridge + workflows), 3.7 (RSC), 3.8 (GraphQL v2). Невыполненное (3.1 tiny, 3.3 derive, 3.4 edge, остатки 3.6) перенесено в [P4.5](#p45--перенесено-из-p3-v15--v16-backlog).
 
 ### Конкурентный анализ (mid-2026)
 
@@ -333,125 +344,95 @@
 
 ---
 
-### 3.1 — `asijs/tiny`: Minimal Bundle Entry
-
-**Зачем**: Hono доминирует на edge с bundle 14KB. AsiJS `dist/index.js` весит значительно больше из-за всех встроенных модулей.
-
-- [ ] **`asijs/tiny`** — entry point только с:
-  - Роутинг (Trie-only, без Radix tree)
-  - Basic Context (без query/body парсинга до обращения)
-  - Response helpers (json/text/html/redirect)
-  - Middleware chain (flat-only, без next())
-  - **Без**: OpenAPI, SSG, Circuit Breaker, Sentry, Scheduler, Metrics, RPC, Plugin system, Security headers
-- [ ] **Lazy import всех тяжёлых модулей** — уже есть serverless оптимизация, расширить на все модули
-- [ ] **Tree-shakeable exports** — `package.json` exports map с granular entry points
-- [ ] **Benchmark**: сверить bundle size vs Hono/tiny (цель: < 30KB)
-- [ ] **Документация**: когда использовать `asijs` vs `asijs/tiny`
-
-**Impact**: 🔥 High · **Effort**: 🟡 Medium · **Уникальность**: ❌ Hono has it
+### 3.1 — ~~`asijs/tiny`~~ → перенесено в [4.5](#45--asijs-tiny-minimal-bundle-entry)
 
 ### 3.2 — JSON Schema Response Serialization
 
-**Зачем**: Fastify получает 2-3x ускорение на сериализации через pre-compiled JSON Schema. AsiJS использует `Response.json()` — каждая сериализация проходит через JSON.stringify + V8 hidden class allocation.
+**Зачем**: AsiJS использовал `Response.json()` на каждый ответ. С response-схемой роут сериализует через pre-compiled специализированный путь — **e2e через AsiJS: 117k vs 84k ops/s (×1.4)**.
 
-- [ ] **`compileSerializer(schema)`** — pre-compile TypeBox/JSON Schema → fast serialization function:
-  ```typescript
-  const serialize = compileSerializer(Type.Object({
-    id: Type.Number(),
-    name: Type.String(),
-  }));
-  // serialize → inline: `{"id":${obj.id},"name":"${obj.name}"}`
-  ```
-- [ ] **Integration with `app.compile()`** — создавать сериализаторы для `response` схем в compiled mode
-- [ ] **Content-Type negotiation** — выбирать сериализатор под content-type (JSON, JSON:API, msgpack)
-- [ ] **Benchmark**: сверить vs Fastify serialization (цель: < 10% разрыв)
-- [ ] **Use `V8.serialize`** — для complex объектов где JSON Schema compiler не даёт выигрыша
+- [x] **`compileSerializer(schema)`** — pre-compile TypeBox/JSON Schema → fast serialization function (`src/serialize.ts`):
+  - codegen: все-required объекты — прямая конкатенация без промежуточных массивов; optional — parts-array с пропуском пустых; ключи и строки экранируются нативно через JSON.stringify-литералы
+  - fallback на `JSON.stringify` для не-кодгенируемых схем (union объектов, record) — как fast-json-stringify
+  - кэш по identity схемы (resetSerializerCache)
+- [x] **Integration with `app.compile()`** — `schema.response` (одиночная или статусно-ключевая `{200, "2xx", default}`) + `serializers` (content-type) — обёртка `wrapWithResponseSerializer` в `wrapHandler` (non-compiled) и `compileHandler` (compiled); объектные результаты → pre-serialized Response (toResponseFast пропускает), статус и Set-Cookie сохраняются
+- [x] **Content-Type negotiation** — `pickContentType` по Accept-заголовку: `serializers: { "application/vnd.api+json": schema }`
+- [x] **Benchmark** — `bench/serialize.ts` (bun run bench:serialize). Честный вывод: на Bun чистый кодген ≈ 60–90% нативного `JSON.stringify` (у Bun он крайне быстрый), НО end-to-end через AsiJS schema-роут быстрее plain-JSON на **×1.4** (специализированный compiled-путь вместо generic Response.json). Сравнение с Fastify недоступно без fastify-зависимости — зафиксирован e2e-выигрыш против собственного plain-пути
+- [x] **`V8.serialize`** — `serializeForCache`/`deserializeFromCache` для внутренних кэшей (binary, НЕ для HTTP JSON — задокументировано); на large-объектах на паритете с JSON.stringify
 
 **Impact**: 🔥 High · **Effort**: 🟡 Medium · **Уникальность**: ❌ Fastify has it
 
-### 3.3 — Derive Middleware Pattern (Elysia-style)
+### 3.2b — Data Formats (JSON / YAML / custom) ✅
 
-**Зачем**: Elysia's `derive` — не middleware в обычном смысле, а flat Map объектов. Это позволяет Elysia получать **545k rps** на 5 middleware (AsiJS: 189k).
+**Зачем**: AI/LLM-клиенты и конфиг-системы часто предпочитают YAML/TOML/INI вместо JSON; TOON (token-optimized) — emerging формат для LLM. Слой форматов делает «формат по умолчанию» одной настройкой вместо ручного парсинга в каждом хендлере.
 
-- [ ] **`ctx.derive(key, factory)`** — вычисляет значение один раз, кэширует на весь request:
-  ```typescript
-  app.derive("user", async (ctx) => authenticate(ctx));
-  app.derive("db", () => new Database());
-  // В handler'е:
-  // ctx.derived.user — уже посчитано, без overhead
-  ```
-- [ ] **Compile-time derive** — `app.compile()` определяет derive-зависимости и генерирует flat chain:
-  - derive A → derive B (зависит от A) → handler (использует A и B)
-  - Результат: одна flat async функция без intermediate объектов
-- [ ] **Backwards compatibility** — derive middleware работает как обычный middleware для не-compiled режима
-- [ ] **Performance benchmark**: цель 350k+ rps на 5 middleware (сейчас 189k)
+- [x] **`DataFormat` интерфейс + registry** — `registerFormat()` / `getFormat()` / `listFormats()`; JSON нативный (zero-dep), YAML lazy через `yaml` пакет (`createRequire`, без import-коста до первого использования); кастомные форматы (TOML/INI/…) регистрируются в 3 строки
+- [x] **`ctx.parseBody(format?)`** — парсинг тела по `Content-Type` (JSON/YAML/custom), явный формат через аргумент; lazy + кэш (один парсинг на запрос); несуществующий `ctx.body()` из доков заменён на реальный метод (свойство `ctx.body` — валидированное тело, конфликт имён)
+- [x] **`asi.setFormat()` + опция `format`** — объектные ответы, ошибки (500/400) и 404-тела сериализуются в формат по умолчанию; строки/Response/Blob/null проходят без изменений; compiled-роуты (`app.compile()`) и static-precompute уважают формат
+- [x] **Accept-negotiation** — через существующий `bestMatch()`: с зарегистрированным >1 форматом `Accept: application/yaml` отвечает YAML даже при JSON-дефолте; fast-path остаётся нулевым при одном JSON
+- [x] **Format-aware route validation** — body-валидация роутов читает тело через `ctx.parseBody()` вместо `ctx.json()` (wrapHandler + compiled-путь в compiler.ts): TOON/YAML-тела валидируются TypeBox-схемами без изменений
+- [x] **TOON-адаптер как пакет `toon-asijs`** — поверх официального `@toon-format/toon` SDK: `createToonFormat()` (чистый, работает без AsiJS), `getToonFormat()` (кэшированный синглтон), `registerToonFormat()` (ленивая загрузка asijs, идемпотентная); MIME `application/toon` (+ `text/toon`, `application/x-toon`), расширение `.toon`; `setFormat("toon")`, `ctx.parseBody()` по Content-Type, Accept-negotiation, ошибки/404 в TOON — из коробки; ~30–60% меньше токенов чем JSON для LLM-клиентов
+- [x] **Тесты + доки** — 27 тестов форматов + 21 юнит-тест пакета (round-trip, опции indentSize/delimiter/strict, ошибки, синглтон) + 13 интеграционных (регистрация → setFormat → parseBody → negotiation → ошибки/404 → compiled-роуты); README пакета, docs/packages/toon.md, vitepress, таблица пакетов, publish-packages.sh
 
-**Impact**: 🔥 High · **Effort**: 🟡 Medium · **Уникальность**: ❌ Elysia has it
+**Impact**: 🟠 Medium · **Effort**: 🟢 Low · **Уникальность**: ❌ у всех есть (но как first-class слой — редкий)
 
-### 3.4 — Edge-Native Bundle (WinterCG+)
+### 3.3 — ~~Derive Pattern~~ → перенесено в [4.6](#46--derive-pattern-per-request-memoized-context)
 
-**Зачем**: Hono доминирует на edge благодаря полному WinterCG compliance (Request/Response-only). AsiJS уже поддерживает 6 edge платформ, но не имеет pure-Web-API entry point.
+### 3.4 — ~~Edge-Native Bundle~~ → перенесено в [4.7](#47--edge-native-bundle-wintercg)
 
-- [ ] **`asijs/edge`** — entry point без Bun-зависимостей:
-  - Только Web API: Request, Response, Fetch, URL, Headers
-  - No `Bun.file()`, `Bun.write()`, `Bun.serve()`
-  - No `process.env` (edge-readiness)
-  - No `crypto.subtle` (где недоступно)
-- [ ] **Platform-specific fallbacks**:
-  - Cloudflare Workers: `crypto.subtle` → Web Crypto API
-  - Lambda@Edge: `Bun.file()` → fs.readFileSync fallback
-  - Deno: Deno.readFile() для статики
-- [ ] **`asi build --target wintercg`** — сборка без Bun-зависимостей
-- [ ] **Test suite**: прогон всех тестов на 3+ edge рантаймах (CI matrix)
-
-**Impact**: 🔥 High · **Effort**: 🟡 Medium · **Уникальность**: ❌ Hono has it
-
-### 3.5 — @asijs/vite: Vite 8 / Rolldown Dev Server
+### 3.5 — asijs-vite: Vite 8 / Rolldown Dev Server
 
 **Зачем**: H3/Nitro интегрируется с Vite как dev server. AsiJS имеет свой `asi dev` с hot reload, но не может быть dev server для Vite-проектов.
 
-- [ ] **`@asijs/vite`** — AsiJS как dev server для Vite приложений:
+- [x] **`asijs-vite`** — AsiJS как dev server для Vite приложений: `packages/asijs-vite` (vitePlugin + middleware, единый порт)
   - AsiJS handles API routes (как backend)
   - Vite handles HMR/frontend (как frontend)
   - Единый порт через Vite proxy → AsiJS
-- [ ] **HMR bridge** — Vite HMR → AsiJS HMRServer (WebSocket)
-- [ ] **Rolldown integration** — AsiJS SSR bundle через Rolldown (faster than esbuild)
-- [ ] **Пример**: `asi create vite-app` — шаблон AsiJS + Vite 8
+- [x] **HMR bridge** — Vite HMR → AsiJS HMRServer (WebSocket) — `attachHmrBridge` (full-reload)
+- [x] **Rolldown integration** — AsiJS SSR bundle через Rolldown (faster than esbuild) — `ssrBuild()` с fallback на Bun.build
+- [x] **Пример**: `asi create vite-app` — шаблон AsiJS + Vite 8
+
+> **Реализовано** (16 тестов, typecheck, vitepress build OK). Доки: [`docs/packages/vite.md`](/packages/vite).
 
 **Impact**: 🔥 High · **Effort**: 🔴 High · **Уникальность**: ✅ Unique (Vite + AsiJS combo)
 
-### 3.6 — MCP v2 + Agent Runtime
+### 3.6 — MCP v2 + Agent Runtime ✅ (частично → остатки в 4.8)
 
 **Зачем**: MCP — уникальная территория AsiJS. Ни один конкурент не имеет встроенной MCP-интеграции. Это opening в AI ecosystem.
 
-- [ ] **MCP v2** — перенесено из v1.4 (готово к реализации, ждёт v1.4.1)
-  - `packages/mcp-asijs/` — выделенный пакет
-  - stdio transport (Claude Desktop, Cursor, Zed)
-  - Protocol v2025-05: Prompts, Sampling, Roots, Progress
-- [ ] **Agent Runtime** — выполнение AI агентов на AsiJS:
+- [x] **MCP v2** — `packages/mcp-asijs/` (выделенный пакет):
+  - stdio transport (Claude Desktop, Cursor, Zed) + HTTP transport (`createMCPPlugin`, `mountHTTP`)
+  - Protocol v2025-05: Prompts (`prompts.ts`), Resources (`resources.ts`), Tools (`tools.ts`, toYAML), Pagination (cursor)
+  - `MCPServer`, `createMCPServer`, `mcp()` — авто-маунт tools/resources из AsiJS приложения
+  - **Runtime bridge** — `AsiRuntimeBridge`: live-доступ AI-ассистентов к роутам, плагинам (dependency graph), middleware, circuit breakers, WS rooms, hot reload, SSG, serverless stats, rate limiter
+  - **Workflow engine** — `runWorkflow()` / `createBuiltinWorkflows()`: HTTP/code/delay/log шаги, прогресс-нотификации, отмена
+- [ ] **Agent Runtime** — выполнение AI агентов на AsiJS (перенесено в [4.8](#48--mcp-agent-runtime-ctxagent--workflow-editor--tool-marketplace)):
   - `ctx.agent({ goal: "проанализируй роуты", tools: [...] })`
   - LLM-agnostic: Anthropic, OpenAI, Ollama (local)
   - Agent → Tool → AsiJS handler → Response cycle
-- [ ] **Workflow engine** — визуальный редактор цепочек AI → API → DB
-- [ ] **Tool Marketplace** — `asi agent install <tool>`
+- [ ] **Workflow engine (визуальный редактор)** — перенесено в [4.8](#48--mcp-agent-runtime-ctxagent--workflow-editor--tool-marketplace)
+- [ ] **Tool Marketplace** — `asi agent install <tool>` (перенесено в [4.8](#48--mcp-agent-runtime-ctxagent--workflow-editor--tool-marketplace))
 
 **Impact**: 🔥 High · **Effort**: 🔴 High · **Уникальность**: ✅ **Unique** 🔑
 
-### 3.7 — `@asijs/react`: React Server Components
+### 3.7 — `asijs-react`: React Server Components
 
-- [ ] RSC rendering pipeline на AsiJS
-- [ ] Server/client component границы
-- [ ] Streaming SSR + hydration
-- [ ] `createRSCHandler()` — адаптер для React 19 RSC
+- [x] RSC rendering pipeline на AsiJS — `packages/asijs-react` (createRSCHandler: HTML shell + Flight + клиентский bootstrap)
+- [x] Server/client component границы — `"use client"` + `moduleRef` + `buildClientManifest`
+- [x] Streaming SSR + hydration — push-based stream chain, hydrateRoot bootstrap
+- [x] `createRSCHandler()` — адаптер для React 19 RSC (plain handler + `createRscPlugin` для AsiJS)
+
+> **Реализовано** (24 теста, typecheck, build OK; react — optional peer, без него descriptive-ошибки). Доки: [`docs/packages/react.md`](/packages/react). Известное ограничение: полноценная client-side навигация требует бандлера с `react-server-dom-webpack` (см. asijs-vite).
 
 **Impact**: 🟡 Medium · **Effort**: 🔴 High · **Уникальность**: ❌ Next.js has it
 
 ### 3.8 — GraphQL Plugin v2
 
-- [ ] **Code-first** — TypeBox → GraphQL schema
-- [ ] **Subscription support** — через WebSocket
-- [ ] **Federation support** — Apollo Federation
-- [ ] **Performance** — DataLoader, query complexity analysis
+- [x] **Code-first** — TypeBox → GraphQL schema — `packages/graphql-asijs` (defineSchema → SDL + resolvers)
+- [x] **Subscription support** — graphql-ws WebSocket транспорт (createGraphQLWSTransport)
+- [x] **Federation support** — Apollo Federation subgraph (federationSubgraph: `_service`, `_entities`, @key)
+- [x] **Performance** — DataLoader (батчинг+кэш) + query complexity analysis (depth-weighted, validation rules)
+
+> **Реализовано** (42 теста, typecheck, build OK; graphql — optional peer, деградация с descriptive-ошибкой). Доки: [`docs/packages/graphql.md`](/packages/graphql). Бонус: в ядро добавлен `PluginHost.ws()` — плагины теперь могут регистрировать WebSocket-роуты. Gateway-side федерация не входит (пакет отдаёт стандартный subgraph).
 
 **Impact**: 🟡 Medium · **Effort**: 🟡 Medium · **Уникальность**: ⚠️ Yoga/Hesli exist
 
@@ -459,7 +440,7 @@
 
 ## P4 🟣 — Experiments & Ecosystem (v1.6+)
 
-### 4.1 — @asijs/nest: NestJS-style Decorators
+### 4.1 — asijs-nest: NestJS-style Decorators
 
 - [ ] `@Controller()`, `@Get()`, `@Post()`, `@Param()`, `@Body()`, `@Query()`
 - [ ] `@Injectable()`, `@Module()` — DI на AsiJS
@@ -496,6 +477,83 @@
 - [ ] **Nightly benchmarks** — каждую ночь прогон benchmark suite, авто-коммит результатов
 - [ ] **Regression detection** — alert если RPS упал >5%
 - [ ] **Branch comparison** — benchmark diff между PR и main
+
+---
+
+## P4.5 🟣 — Перенесено из P3 (v1.5 → v1.6+ backlog)
+
+> Секции P3, не успевшие в v1.5.0, перенесены сюда без изменений текста (v1.6+).
+
+### 4.5 — `asijs/tiny`: Minimal Bundle Entry
+
+**Зачем**: Hono доминирует на edge с bundle 14KB. AsiJS `dist/index.js` весит значительно больше из-за всех встроенных модулей.
+
+- [ ] **`asijs/tiny`** — entry point только с:
+  - Роутинг (Trie-only, без Radix tree)
+  - Basic Context (без query/body парсинга до обращения)
+  - Response helpers (json/text/html/redirect)
+  - Middleware chain (flat-only, без next())
+  - **Без**: OpenAPI, SSG, Circuit Breaker, Sentry, Scheduler, Metrics, RPC, Plugin system, Security headers
+- [ ] **Lazy import всех тяжёлых модулей** — уже есть serverless оптимизация, расширить на все модули
+- [ ] **Tree-shakeable exports** — `package.json` exports map с granular entry points
+- [ ] **Benchmark**: сверить bundle size vs Hono/tiny (цель: < 30KB)
+- [ ] **Документация**: когда использовать `asijs` vs `asijs/tiny`
+
+**Impact**: 🔥 High · **Effort**: 🟡 Medium · **Уникальность**: ❌ Hono has it
+
+### 4.6 — Derive Pattern: per-request memoized context (Elysia-style)
+
+**Зачем**: `derive` — не «быстрый middleware». У Elysia это flat-мапа вычисляемых значений, которую компилятор инлайнит в одну функцию — там нет цепочки вызовов и `next()`. В бенчмарках строку Elysia корректно подписывать как «5 derive», а не «5 middleware» (это сравнение разных архитектур: derive-map против реальной middleware-цепочки).
+
+Ценность фичи — **две независимые части**: (1) DX — per-request мемоизация вычислений (у AsiJS есть только статический `app.decorate`, per-request «посчитай один раз» отсутствует); (2) perf — compile-time инлайнинг, единственный оставшийся приём, способный реально закрыть гэп на микро-сценариях.
+
+- [ ] **`ctx.derive(key, factory)`** — DX-фича (первично): вычисляет значение один раз, мемоизирует на весь request:
+  ```typescript
+  app.derive("user", async (ctx) => authenticate(ctx));
+  app.derive("db", () => new Database());
+  // В handler'е:
+  // ctx.derived.user — уже посчитано один раз, без повторного вызова
+  ```
+  - Отличие от `decorate`: `decorate` — статический app-level (значение одно на всё приложение), `derive` — ленивый + per-request кэш (WeakMap/флаг на ctx)
+  - Интеграция с плагинами: плагин может регистрировать derive (`derive: { user: (ctx) => ... }` рядом с `decorate`)
+- [ ] **Compile-time derive** — perf-фича (вторично): `app.compile()` инлайнит нужные derive прямо в flat-функцию роуты:
+  - derive A → derive B (зависит от A) → handler (использует A и B)
+  - Результат: `const user = await authenticate(ctx); ...` без вызова middleware-функций — поверх уже готового фундамента (2.2.1 flattening + context pool)
+- [ ] **Backwards compatibility** — derive работает как обычный middleware для не-compiled режима (и как fallback, если инлайнинг невозможен)
+- [ ] **Performance benchmark (честный, derive-to-derive)**: новый сценарий `AsiJS (5 derive)` vs `Elysia (5 derive)` — не «5 middleware». Цель: порядок Elysia (сотни k rps) на том же железе; НЕ ставить цель вроде «350k на 5 middleware» — это некорректно, т.к. 170–236k у AsiJS это честная middleware-цепочка, а не derive
+
+**Impact**: 🔥 High (DX) · **Effort**: 🟡 Medium · **Уникальность**: ⚠️ Elysia has it, но как DX-примитив отсутствует у AsiJS/Hono (у Hono — только `c.set/get`)
+
+### 4.7 — Edge-Native Bundle (WinterCG+)
+
+**Зачем**: Hono доминирует на edge благодаря полному WinterCG compliance (Request/Response-only). AsiJS уже поддерживает 6 edge платформ (`src/edge.ts`, `./edge` export), но не имеет pure-Web-API entry point.
+
+- [ ] **`asijs/edge`** — entry point без Bun-зависимостей:
+  - Только Web API: Request, Response, Fetch, URL, Headers
+  - No `Bun.file()`, `Bun.write()`, `Bun.serve()`
+  - No `process.env` (edge-readiness)
+  - No `crypto.subtle` (где недоступно)
+- [ ] **Platform-specific fallbacks**:
+  - Cloudflare Workers: `crypto.subtle` → Web Crypto API
+  - Lambda@Edge: `Bun.file()` → fs.readFileSync fallback
+  - Deno: Deno.readFile() для статики
+- [ ] **`asi build --target wintercg`** — сборка без Bun-зависимостей
+- [ ] **Test suite**: прогон всех тестов на 3+ edge рантаймах (CI matrix)
+
+**Impact**: 🔥 High · **Effort**: 🟡 Medium · **Уникальность**: ❌ Hono has it
+
+### 4.8 — MCP Agent Runtime: `ctx.agent()` + Workflow Editor + Tool Marketplace
+
+**Зачем**: MCP v2 (пакет mcp-asijs) реализован — protocol, transports, tools, resources, prompts, runtime bridge, workflow engine. Осталось замкнуть цикл «AI-агент исполняется на AsiJS».
+
+- [ ] **Agent Runtime** — выполнение AI агентов на AsiJS:
+  - `ctx.agent({ goal: "проанализируй роуты", tools: [...] })`
+  - LLM-agnostic: Anthropic, OpenAI, Ollama (local)
+  - Agent → Tool → AsiJS handler → Response cycle
+- [ ] **Workflow engine — визуальный редактор** — UI для цепочек AI → API → DB поверх `runWorkflow()` (web-редактор или MCP-инструмент)
+- [ ] **Tool Marketplace** — `asi agent install <tool>`
+
+**Impact**: 🔥 High · **Effort**: 🔴 High · **Уникальность**: ✅ **Unique** 🔑
 
 ---
 

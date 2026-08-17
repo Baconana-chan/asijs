@@ -28,6 +28,7 @@ import type { Middleware, AfterHandler } from "./types";
 
 // ===== Types =====
 
+/** Cache TTL — seconds as a number, or strings like `"30s"`, `"1h"`, `"7d"`. */
 export type TTL =
   | number
   | `${number}s`
@@ -35,6 +36,7 @@ export type TTL =
   | `${number}h`
   | `${number}d`;
 
+/** HTTP cache-control options (TTL, stale-while-revalidate, private, vary, custom key). */
 export interface CacheOptions {
   /**
    * Time-to-live for cache
@@ -93,6 +95,7 @@ export interface CacheOptions {
   vary?: string[];
 }
 
+/** Options for the ETag middleware (weak tags, custom generator, skip list, min size). */
 export interface ETagOptions {
   /**
    * Weak ETag (W/"...")
@@ -117,6 +120,7 @@ export interface ETagOptions {
   minSize?: number;
 }
 
+/** Options for the response-cache plugin (default TTL + path patterns to cache). */
 export interface CachePluginOptions {
   /**
    * Default TTL for cached responses
@@ -379,6 +383,7 @@ interface CacheEntry<T> {
   etag?: string;
 }
 
+/** In-memory cache store with TTL + ETag support — used by the cache plugin and dedup. */
 export class MemoryCache<T = unknown> {
   private store = new Map<string, CacheEntry<T>>();
   private cleanupInterval: Timer | null = null;

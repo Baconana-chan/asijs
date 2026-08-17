@@ -40,12 +40,14 @@ export interface CodegenOptions {
   defaultHeaders?: Record<string, string>;
 }
 
+/** Result of a codegen pass (generated code + applied transforms). */
 export interface CodegenResult {
   code: string;
   clientName: string;
   operations: CodegenOperation[];
 }
 
+/** One operation being codegen'd (method, path, schema). */
 export interface CodegenOperation {
   method: string;
   path: string;

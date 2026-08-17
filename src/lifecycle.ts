@@ -34,8 +34,10 @@ import type { Asi } from "./asi";
 
 // ===== Types =====
 
+/** A function called on graceful shutdown. */
 export type ShutdownHandler = () => void | Promise<void>;
 
+/** Options for the lifecycle manager (shutdown handlers, timeout). */
 export interface LifecycleOptions {
   /**
    * Handlers to run on shutdown (in order)
@@ -75,6 +77,7 @@ export interface LifecycleOptions {
 
 // ===== Lifecycle Manager =====
 
+/** Manages app lifecycle: startup hooks and graceful shutdown. */
 export class LifecycleManager {
   private shutdownHandlers: ShutdownHandler[] = [];
   private isShuttingDown = false;

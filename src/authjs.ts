@@ -51,6 +51,7 @@ import type { Context } from "./context";
 // Types
 // ============================================================================
 
+/** Authenticated user shape. */
 export interface AuthUser {
   id: string | number;
   email?: string;
@@ -59,12 +60,14 @@ export interface AuthUser {
   [key: string]: unknown;
 }
 
+/** A user session (user + expiry + token). */
 export interface AuthSession {
   user: AuthUser;
   expiresAt: number;
   token: string;
 }
 
+/** JWT claims used by the auth plugin. */
 export interface AuthJWT {
   sub: string | number;
   email?: string;
@@ -74,6 +77,7 @@ export interface AuthJWT {
   exp?: number;
 }
 
+/** Normalized OAuth provider profile. */
 export interface OAuthProfile {
   id: string;
   email?: string;
@@ -82,6 +86,7 @@ export interface OAuthProfile {
   provider: string;
 }
 
+/** An auth provider — OAuth, credentials or JWT. */
 export interface AuthProvider {
   id: string;
   name: string;
@@ -96,6 +101,7 @@ export interface AuthProvider {
   profile?: (profile: Record<string, unknown>) => OAuthProfile;
 }
 
+/** Options for the auth plugin (providers, session strategy, callbacks). */
 export interface AuthjsOptions {
   /** Secret for JWT signing/encryption */
   secret: string;
@@ -123,6 +129,7 @@ export interface AuthjsOptions {
   csrfProtection?: boolean;
 }
 
+/** Auth state attached to the request context. */
 export interface AuthContext {
   /** Current user session, or null if not authenticated */
   session: AuthSession | null;
@@ -194,6 +201,7 @@ function generateCSRFToken(): string {
 // Provider definitions
 // ============================================================================
 
+/** Built-in provider presets (github, google, credentials). */
 export const authProviders = {
   github(config: { clientId: string; clientSecret: string }): AuthProvider {
     return {

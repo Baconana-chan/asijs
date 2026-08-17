@@ -32,6 +32,7 @@ import type { Context } from "./context";
 
 // ===== Types =====
 
+/** Rate-limiting options (max, window, algorithm, store, custom handler/skip). */
 export interface RateLimitOptions {
   /** Maximum number of requests in the window */
   max: number;
@@ -88,6 +89,7 @@ export interface RateLimitOptions {
   statusCode?: number;
 }
 
+/** Rate-limit result: limit, remaining, reset time and retry-after. */
 export interface RateLimitInfo {
   /** Total requests allowed in window */
   limit: number;
@@ -99,6 +101,7 @@ export interface RateLimitInfo {
   retryAfter: number;
 }
 
+/** Storage abstraction for rate-limit counters (increment / reset / cleanup). */
 export interface RateLimitStore {
   /** Increment the counter and get current info */
   increment(key: string, windowMs: number, max: number): Promise<RateLimitInfo>;
@@ -115,6 +118,7 @@ interface SlidingWindowEntry {
   startTime: number;
 }
 
+/** In-memory sliding-window rate-limit store. */
 export class MemoryStore implements RateLimitStore {
   private store = new Map<string, SlidingWindowEntry>();
   private cleanupInterval: Timer | null = null;
@@ -188,6 +192,7 @@ interface TokenBucketEntry {
   lastRefill: number;
 }
 
+/** Token-bucket rate-limit store with burst support. */
 export class TokenBucketStore implements RateLimitStore {
   private store = new Map<string, TokenBucketEntry>();
   private cleanupInterval: Timer | null = null;

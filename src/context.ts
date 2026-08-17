@@ -1,5 +1,14 @@
+/**
+ * Request context — the object passed to every handler and middleware.
+ *
+ * Wraps the incoming `Request` with lazy query/body/cookies parsing, typed
+ * params, response helpers (`status`, `json`, `html`, `setHeader`, `cookie`,
+ * ...), file uploads, and `ContextPool` for zero-allocation request cycles.
+ */
+
 import type { NegotiateHandlers, NegotiateOptions } from "./negotiate";
 import { negotiateResponse } from "./negotiate";
+import { formatForContentType, getFormat, jsonFormat } from "./formats";
 import type { StreamJsonOptions, StreamNDJsonOptions } from "./json-stream";
 import {
   createJsonStream,
@@ -369,6 +378,39 @@ export class Context<
     return this._body as unknown as T;
   }
 
+  /**
+   * Получить body, распарсенный по Content-Type запроса (или по явному
+   * формату): JSON, YAML и любые зарегистрированные `registerFormat()`.
+   *
+   * `format` — имя формата ("yaml") или MIME ("application/yaml"); без него
+   * формат выбирается из заголовка `Content-Type`. Неизвестный/отсутствующий
+   * Content-Type → JSON (как `json()`).
+   *
+   * @example
+   * ```ts
+   * app.post("/config", async (ctx) => {
+   *   const body = await ctx.parseBody();     // по Content-Type
+   *   const raw = await ctx.parseBody("yaml"); // принудительно YAML
+   *   return body;
+   * });
+   * ```
+   */
+  async parseBody<T = TBody>(format?: string): Promise<T> {
+    if (!this._bodyParsed) {
+      const fmt = format
+        ? getFormat(format) ?? jsonFormat
+        : formatForContentType(this.request.headers.get("content-type")) ?? jsonFormat;
+      if (fmt.name === "json") {
+        this._body = (await this.request.json()) as TBody;
+      } else {
+        const text = await this.request.text();
+        this._body = fmt.parse(text) as TBody;
+      }
+      this._bodyParsed = true;
+    }
+    return this._body as unknown as T;
+  }
+
   /** Получить body как текст */
   async text(): Promise<string> {
     if (!this._bodyParsed) {
@@ -711,8 +753,11 @@ const CONTEXT_CORE_KEYS = new Set<string>([
   "_headers",
 ]);
 
+// Shared placeholder request used to reset pooled contexts on release
+const PLACEHOLDER_REQUEST = new Request("http://localhost/");
+
 /**
- * ContextPool — Recycler for zero-allocation request cycles.
+ * ContextPool — recycler for zero-allocation request cycles.
  *
  * Pre-allocated `Context` objects are acquired per request and released back
  * to the pool when the response is produced. This removes the per-request
@@ -726,9 +771,6 @@ const CONTEXT_CORE_KEYS = new Set<string>([
  * - Automatic shrink — a lazy timer trims the pool back to `size` after the
  *   pool has been idle over `shrinkIntervalMs`
  */
-// Shared placeholder request used to reset pooled contexts on release
-const PLACEHOLDER_REQUEST = new Request("http://localhost/");
-
 export class ContextPool {
   private pool: Context[] = [];
   private readonly size: number;

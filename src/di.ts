@@ -4,17 +4,22 @@
 
 import { createPlugin, type AsiPlugin } from "./plugin";
 
+/** A class constructor type. */
 export type ClassType<T = unknown> = new (...args: any[]) => T;
 
+/** What a provider can be registered under (class, string or symbol). */
 export type InjectionToken<T = unknown> = ClassType<T> | string | symbol;
 
+/** Provider lifetime: singleton (shared) or transient (new per resolve). */
 export type ProviderScope = "singleton" | "transient";
 
+/** Provider backed by a pre-built value. */
 export interface ValueProvider<T = unknown> {
   provide: InjectionToken<T>;
   useValue: T;
 }
 
+/** Provider backed by a class instantiation. */
 export interface ClassProvider<T = unknown> {
   provide: InjectionToken<T>;
   useClass: ClassType<T>;
@@ -22,6 +27,7 @@ export interface ClassProvider<T = unknown> {
   scope?: ProviderScope;
 }
 
+/** Provider backed by a factory function. */
 export interface FactoryProvider<T = unknown> {
   provide: InjectionToken<T>;
   useFactory: (...deps: unknown[]) => T | Promise<T>;
@@ -29,20 +35,24 @@ export interface FactoryProvider<T = unknown> {
   scope?: ProviderScope;
 }
 
+/** Union of all provider forms (value / class / factory). */
 export type Provider<T = unknown> =
   | ClassType<T>
   | ValueProvider<T>
   | ClassProvider<T>
   | FactoryProvider<T>;
 
+/** Module metadata (imports, providers, exports). */
 export interface ModuleMetadata {
   imports?: ModuleType[];
   providers?: Provider[];
   exports?: InjectionToken[];
 }
 
+/** A module is a class with `@Module` metadata. */
 export type ModuleType<T = unknown> = ClassType<T>;
 
+/** Decorator options for `@Injectable`. */
 export interface InjectableOptions {
   scope?: ProviderScope;
 }
@@ -114,6 +124,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
   };
 }
 
+/** Dependency injection container — providers, resolution and scopes. */
 export class DIContainer {
   private providers = new Map<InjectionToken, NormalizedProvider>();
 
@@ -194,12 +205,14 @@ export class DIContainer {
   }
 }
 
+/** `@Module({ imports, providers, exports })` class decorator. */
 export function Module(metadata: ModuleMetadata): ClassDecorator {
   return (target) => {
     moduleMetadata.set(target as unknown as ModuleType, metadata);
   };
 }
 
+/** `@Injectable({ scope })` class decorator. */
 export function Injectable(options: InjectableOptions = {}): ClassDecorator {
   return (target) => {
     injectableMetadata.set(target as unknown as ClassType, {
@@ -208,10 +221,12 @@ export function Injectable(options: InjectableOptions = {}): ClassDecorator {
   };
 }
 
+/** Read `@Module` metadata attached to a class. */
 export function getModuleMetadata(target: ModuleType): ModuleMetadata {
   return moduleMetadata.get(target) ?? {};
 }
 
+/** Options for creating a DI container (providers, scope defaults). */
 export interface CreateContainerOptions {
   providers?: Provider[];
 }
@@ -253,6 +268,7 @@ export function createContainerFromModule(
   return container;
 }
 
+/** Options for the DI plugin (state key for the root container). */
 export interface ModulePluginOptions {
   /** State key to store root container */
   containerKey?: string;

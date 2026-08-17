@@ -1,0 +1,51 @@
+{
+  "name": "toon-asijs",
+  "version": "1.0.0",
+  "description": "TOON (Token-Oriented Object Notation) adapter for AsiJS — token-optimized LLM format as a native DataFormat: ctx.parseBody() and setFormat() understand TOON out of the box",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --external asijs --external @toon-format/toon",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "keywords": [
+    "asijs",
+    "toon",
+    "toon-format",
+    "llm",
+    "ai",
+    "token",
+    "format",
+    "serialization",
+    "yaml",
+    "json",
+    "data"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@toon-format/toon": "^4.1.1"
+  },
+  "peerDependencies": {
+    "asijs": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "asijs": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "asijs": "file:../..",
+    "typescript": "^5.0.0"
+  }
+}

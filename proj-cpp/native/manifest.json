@@ -1,0 +1,14 @@
+{
+  "name": "test_cpp",
+  "lang": "cpp",
+  "functions": [
+    {
+      "name": "add",
+      "params": {
+        "a": "number",
+        "b": "number"
+      },
+      "returns": "number"
+    }
+  ]
+}

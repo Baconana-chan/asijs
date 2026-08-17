@@ -29,6 +29,7 @@
 
 // ===== Types =====
 
+/** Anything renderable as a JSX child. */
 export type JSXChild =
   | string
   | number
@@ -38,23 +39,28 @@ export type JSXChild =
   | JSXElement
   | JSXChild[];
 
+/** Children prop type (single child or array). */
 export type JSXChildren = JSXChild | JSXChild[];
 
+/** Props of any JSX element (children + arbitrary HTML attributes). */
 export interface JSXProps {
   children?: JSXChildren;
   [key: string]: unknown;
 }
 
+/** A component function — receives props, returns an element (may be async). */
 export type JSXComponent<P extends Record<string, unknown> = JSXProps> = (
   props: P,
 ) => JSXElement | Promise<JSXElement>;
 
+/** A JSX element: tag/component + props. */
 export interface JSXElement {
   type: string | JSXComponent<any>;
   props: JSXProps;
   key?: string | number;
 }
 
+/** Anything `renderToString` / `renderToStream` can render. */
 export type JSXNode =
   | JSXElement
   | string
@@ -78,7 +84,9 @@ export function jsx<P extends Record<string, unknown> = JSXProps>(
   return { type, props: props as JSXProps, key };
 }
 
+/** JSX factory for static children (same as `jsx`). */
 export const jsxs = jsx;
+/** JSX factory for dev-mode transforms (same as `jsx`). */
 export const jsxDEV = jsx;
 
 /**

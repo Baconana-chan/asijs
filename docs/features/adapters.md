@@ -2,14 +2,25 @@
 
 AsiJS provides adapters for popular meta-frameworks, allowing you to use AsiJS routing within Next.js, Astro, Remix, and SvelteKit projects.
 
+> **Each adapter has a dedicated reference page with full API, options, and integration details:**
+>
+> | Adapter | Package | Detailed docs |
+> |---------|---------|----------------|
+> | Next.js | `asijs-next` | [→ `/packages/next`](/packages/next) |
+> | Astro | `asijs-astro` | [→ `/packages/astro`](/packages/astro) |
+> | Remix | `asijs-remix` | [→ `/packages/remix`](/packages/remix) |
+> | SvelteKit | `asijs-sveltekit` | [→ `/packages/sveltekit`](/packages/sveltekit) |
+
+This page is a quick-start overview. For the full picture — every export, all options, session/cookie integration, streaming, and performance notes — see the per-package pages linked above.
+
 ## Available Adapters
 
 | Adapter | Package | Framework | Integration Point |
 |---------|---------|-----------|-------------------|
-| Next.js | [`asijs-next`](/api-reference#next) | Next.js 14+ / 15+ | App Router (`route.ts`), Pages Router (`pages/api`) |
-| Astro | [`asijs-astro`](/api-reference#astro) | Astro 4+ / 5+ | Server endpoints (`pages/`), Middleware (`onRequest`) |
-| Remix | [`asijs-remix`](/api-reference#remix) | Remix 2+ | Resource routes (loaders/actions) |
-| SvelteKit | [`asijs-sveltekit`](/api-reference#sveltekit) | SvelteKit 2+ | Server hooks (`hooks.server.ts`), API routes (`+server.ts`) |
+| Next.js | `asijs-next` | Next.js 14+ / 15+ | App Router (`route.ts`), Pages Router (`pages/api`) |
+| Astro | `asijs-astro` | Astro 4+ / 5+ | Server endpoints (`pages/`), Middleware (`onRequest`) |
+| Remix | `asijs-remix` | Remix 2+ | Resource routes (loaders/actions) |
+| SvelteKit | `asijs-sveltekit` | SvelteKit 2+ | Server hooks (`hooks.server.ts`), API routes (`+server.ts`) |
 
 ## Installation
 

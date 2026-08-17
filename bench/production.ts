@@ -2,7 +2,9 @@
  * Production-Oriented Benchmarks for AsiJS
  * 
  * These benchmarks test real-world scenarios:
- * 1. Middleware Overhead - 5 middleware chain
+ * 1. Middleware Overhead - AsiJS/Hono: real 5-middleware chain; Elysia: 5 flat derives
+ *    (Elysia's `derive` is NOT middleware — it's a compile-time-flattened map of
+ *    per-request values, so its row is an apples-to-oranges reference, not a 1:1 chain)
  * 2. Complex Validation - deeply nested objects
  * 3. File Upload / Multipart Parsing - 1MB and 5MB files
  * 4. Static File Serving - large files
@@ -109,6 +111,8 @@ function printResults(testName: string, results: BenchResult[]) {
 
 // ============================================================================
 // Benchmark 1: Middleware Overhead
+// NOTE: Elysia's "5 derive" is a compile-time-flattened value map, not a
+// middleware chain — kept as an architecture reference, not a 1:1 comparison.
 // ============================================================================
 
 function createMiddlewareAsiApp() {
@@ -201,11 +205,14 @@ async function benchMiddleware() {
   const createReq: RequestFactory = () => new Request("http://localhost/");
 
   const results: BenchResult[] = [];
+  // NOTE: Elysia's row is a flat derive-map (compiled into one function), NOT a
+  // middleware chain — AsiJS/Hono rows are real sequential middleware. The numbers
+  // are not directly comparable; see TODO.md 3.3 for the honest derive-to-derive target.
   results.push(await runBench("AsiJS (5 middleware)", (r) => asiApp.handle(r), createReq));
-  results.push(await runBench("Elysia (5 derive)", (r) => elysiaApp.handle(r), createReq));
+  results.push(await runBench("Elysia (5 derive, flat map)", (r) => elysiaApp.handle(r), createReq));
   results.push(await runBench("Hono (5 middleware)", (r) => honoApp.fetch(r), createReq));
 
-  printResults("1. Middleware Overhead (5 middleware chain)", results);
+  printResults("1. Middleware Overhead (AsiJS/Hono: real chain; Elysia: flat derive map)", results);
 }
 
 // ============================================================================
@@ -249,7 +256,7 @@ function createComplexValidationAsiApp() {
   const schema = Type.Object({
     user: Type.Object({
       name: Type.String(),
-      email: Type.String({ format: "email" }),
+      email: Type.String(),
       profile: Type.Object({
         age: Type.Number({ minimum: 0, maximum: 150 }),
         address: Type.Object({
@@ -295,7 +302,7 @@ function createComplexValidationElysiaApp() {
       body: t.Object({
         user: t.Object({
           name: t.String(),
-          email: t.String({ format: "email" }),
+          email: t.String(),
           profile: t.Object({
             age: t.Number({ minimum: 0, maximum: 150 }),
             address: t.Object({

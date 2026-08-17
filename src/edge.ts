@@ -296,6 +296,7 @@ export function cloudflare(
  * export const config = { runtime: 'edge' };
  * ```
  */
+/** Adapt an AsiJS app for Vercel Edge (Web-standard handler). */
 export function vercelEdge(
   app: AsiApp,
   options: AdapterOptions = {},
@@ -484,6 +485,7 @@ function requestToFetch(
  * export const handler = lambdaEdge(app);
  * ```
  */
+/** Adapt an AsiJS app for AWS Lambda (streaming response). */
 export function lambdaEdge(
   app: AsiApp,
   options: AdapterOptions = {},
@@ -582,6 +584,7 @@ export function lambdaEdge(
  * export const config = { path: '/api/*' };
  * ```
  */
+/** Adapt an AsiJS app for Netlify Edge Functions. */
 export function netlifyEdge(
   app: AsiApp,
   options: AdapterOptions = {},

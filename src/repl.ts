@@ -46,6 +46,7 @@ const c = {
 // AsiJS REPL Class
 // ============================================================================
 
+/** Options for the REPL (commands, sandbox, state). */
 export interface ReplOptions {
   /** Port for the REPL test server (0 = no server) */
   port?: number;
@@ -57,6 +58,7 @@ export interface ReplOptions {
   preload?: string[];
 }
 
+/** Result of a REPL command execution. */
 export interface ReplResult {
   /** The raw output for programmatic use */
   output: string;
@@ -68,6 +70,7 @@ export interface ReplResult {
 
 type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 
+/** Interactive REPL with sandboxed execution and AsiJS helpers. */
 export class AsiRepl {
   public app: Asi;
   private rl: Interface | null = null;

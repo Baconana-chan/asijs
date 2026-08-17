@@ -1,0 +1,12 @@
+{
+  "name": "ssr-bench-astro",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "astro build"
+  },
+  "dependencies": {
+    "@astrojs/node": "^11.1.2",
+    "astro": "^7.2.2"
+  }
+}

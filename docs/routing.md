@@ -109,7 +109,7 @@ export function get(ctx) {
 }
 
 export function post(ctx) {
-  const body = await ctx.body();
+  const body = await ctx.parseBody();
   return { created: true, ...body };
 }
 

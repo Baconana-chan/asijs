@@ -21,6 +21,7 @@ type AsiApp = {
 // Types
 // ============================================================================
 
+/** Options for `mockContext()` (method, url, headers, body, params, …). */
 export interface MockContextOptions {
   /** HTTP method */
   method?: string;
@@ -40,6 +41,7 @@ export interface MockContextOptions {
   store?: Record<string, unknown>;
 }
 
+/** Options for `testClient()` (base URL, default headers, timeout). */
 export interface TestClientOptions {
   /** Base URL for requests */
   baseUrl?: string;
@@ -49,6 +51,7 @@ export interface TestClientOptions {
   timeout?: number;
 }
 
+/** Typed test response (status, headers, parsed json/text helpers). */
 export interface TestResponse<T = unknown> {
   /** Response status code */
   status: number;
@@ -70,6 +73,7 @@ export interface TestResponse<T = unknown> {
   ok: boolean;
 }
 
+/** Test client API — chainable `.get()` / `.post()` / … with `auth`, `header` and `ws`. */
 export interface TestClient {
   /** Make GET request */
   get: <T = unknown>(
@@ -111,6 +115,7 @@ export interface TestClient {
   header: (key: string, value: string) => TestClient;
 }
 
+/** Per-request options of the test client. */
 export interface RequestOptions {
   /** Request headers */
   headers?: Record<string, string>;

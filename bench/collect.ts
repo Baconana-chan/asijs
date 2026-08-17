@@ -179,6 +179,26 @@ async function main() {
     console.error("  ❌ P2 benchmarks failed:", e);
   }
 
+  // SSR frameworks — only when production builds exist
+  // (run: bun run bench:ssr:build to build sveltekit/astro/nuxt apps)
+  const ssrBuilds = [
+    join(__dirname, "frameworks", "sveltekit", "build", "index.js"),
+    join(__dirname, "frameworks", "astro", "dist", "server", "entry.mjs"),
+    join(__dirname, "frameworks", "nuxt", ".output", "server", "index.mjs"),
+  ];
+  if (ssrBuilds.some(existsSync)) {
+    try {
+      const ssrGroups = await runBenchScript("ssr.ts", "SSR Benchmarks");
+      allGroups.push(...ssrGroups);
+    } catch (e) {
+      console.error("  ❌ SSR benchmarks failed:", e);
+    }
+  } else {
+    console.log(
+      "  ⏭️  SSR benchmarks skipped (no framework builds — run: bun run bench:ssr:build)",
+    );
+  }
+
   // Build snapshot
   const snapshot: BenchmarkSnapshot = {
     timestamp: new Date().toISOString(),

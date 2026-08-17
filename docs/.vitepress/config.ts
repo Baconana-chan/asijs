@@ -20,6 +20,26 @@ export default defineConfig({
       { text: "Getting Started", link: "/getting-started" },
       { text: "Guide", link: "/routing" },
       { text: "API", link: "/api-reference" },
+      { text: "CLI", link: "/cli" },
+      {
+        text: "Packages",
+        items: [
+          { text: "Overview", link: "/packages/" },
+          { text: "Next.js", link: "/packages/next" },
+          { text: "Astro", link: "/packages/astro" },
+          { text: "Remix", link: "/packages/remix" },
+          { text: "SvelteKit", link: "/packages/sveltekit" },
+          { text: "MCP", link: "/packages/mcp" },
+          { text: "OpenTelemetry", link: "/packages/opentelemetry" },
+          { text: "ESLint", link: "/packages/eslint" },
+          { text: "VS Code", link: "/packages/vscode" },
+          { text: "Vite Dev Server", link: "/packages/vite" },
+          { text: "React (RSC)", link: "/packages/react" },
+          { text: "GraphQL", link: "/packages/graphql" },
+          { text: "MiyoCSS", link: "/packages/miyocss" },
+          { text: "TOON", link: "/packages/toon" },
+        ],
+      },
       {
         text: "Resources",
         items: [
@@ -63,6 +83,7 @@ export default defineConfig({
           { text: "Observability", link: "/features/observability" },
           { text: "Scheduler", link: "/features/scheduler" },
           { text: "Graceful Shutdown", link: "/features/lifecycle" },
+          { text: "Native Modules", link: "/features/native" },
         ],
       },
       {
@@ -76,6 +97,25 @@ export default defineConfig({
         ],
       },
       {
+        text: "Packages",
+        items: [
+          { text: "Overview", link: "/packages/" },
+          { text: "Next.js Adapter", link: "/packages/next" },
+          { text: "Astro Adapter", link: "/packages/astro" },
+          { text: "Remix Adapter", link: "/packages/remix" },
+          { text: "SvelteKit Adapter", link: "/packages/sveltekit" },
+          { text: "MCP Server", link: "/packages/mcp" },
+          { text: "OpenTelemetry", link: "/packages/opentelemetry" },
+          { text: "ESLint Plugin", link: "/packages/eslint" },
+          { text: "VS Code Extension", link: "/packages/vscode" },
+          { text: "Vite Dev Server", link: "/packages/vite" },
+          { text: "React (RSC)", link: "/packages/react" },
+          { text: "GraphQL", link: "/packages/graphql" },
+          { text: "MiyoCSS", link: "/packages/miyocss" },
+          { text: "TOON", link: "/packages/toon" },
+        ],
+      },
+      {
         text: "Migration",
         items: [
           { text: "Overview", link: "/migration/" },
@@ -85,6 +125,7 @@ export default defineConfig({
         text: "Reference",
         items: [
           { text: "API Reference", link: "/api-reference" },
+          { text: "CLI Reference", link: "/cli" },
           { text: "Benchmarks", link: "/benchmarks/" },
         ],
       },

@@ -18,6 +18,7 @@ import { resolve } from "path";
 
 // ===== Types =====
 
+/** Context for the pretty dev-mode error page. */
 export interface DevErrorPageContext {
   /** HTTP status code */
   status: number;
@@ -35,6 +36,7 @@ export interface DevErrorPageContext {
   suggestions?: string[];
 }
 
+/** One parsed stack frame for display. */
 export interface StackFrame {
   /** Function name */
   function: string;
@@ -50,6 +52,7 @@ export interface StackFrame {
   codeContext?: CodeContext;
 }
 
+/** Source snippet around an error location. */
 export interface CodeContext {
   /** Lines before the error */
   before: Array<{ line: number; content: string }>;

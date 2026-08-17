@@ -1,0 +1,35 @@
+{
+  "name": "asijs-vite",
+  "version": "1.0.0",
+  "description": "Vite 8 / Rolldown dev server for AsiJS — run AsiJS API routes and Vite frontend on one port, with HMR bridge and Rolldown SSR builds",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --external asijs --external vite",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "keywords": ["asijs", "vite", "rolldown", "dev-server", "hmr", "ssr", "adapter"],
+  "license": "MIT",
+  "peerDependencies": {
+    "asijs": "latest",
+    "vite": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

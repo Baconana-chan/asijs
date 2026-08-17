@@ -42,8 +42,10 @@ import { createPlugin, type AsiPlugin } from "./plugin";
 
 // ===== Types =====
 
+/** Cron expression string (e.g. `"0 * * * *"` for hourly) — see `Job.schedule`. */
 export type CronExpression = string;
 
+/** A scheduled job: cron/interval schedule + handler, with retry and timeout options. */
 export interface Job {
   /** Unique job name */
   name: string;
@@ -73,6 +75,7 @@ export interface Job {
   };
 }
 
+/** Runtime status of a scheduled job (last run, next run, counters). */
 export interface JobStatus {
   name: string;
   lastRun: Date | null;
@@ -84,6 +87,7 @@ export interface JobStatus {
   isRunning: boolean;
 }
 
+/** Scheduler options (jobs, verbose logging, global error handler). */
 export interface SchedulerOptions {
   /** Jobs to schedule */
   jobs?: Job[];
@@ -297,6 +301,7 @@ export function getNextRun(cron: ParsedCron, from: Date = new Date()): Date {
 
 // ===== Scheduler =====
 
+/** Scheduler — cron + interval jobs with status tracking, retry and timeouts. */
 export class Scheduler {
   private jobs: Map<string, Job> = new Map();
   private intervals: Map<string, Timer> = new Map();
@@ -705,6 +710,7 @@ export function cron(
 
 // ===== Common Schedules =====
 
+/** Preset cron expressions: `everyMinute`, `every5Minutes`, `everyHour`, … */
 export const schedules = {
   /** Every minute */
   everyMinute: "* * * * *",

@@ -35,6 +35,7 @@ import type { Middleware } from "./types";
 
 // ===== Types =====
 
+/** Data captured for one request log line. */
 export interface RequestLogInfo {
   /** HTTP method */
   method: string;
@@ -58,8 +59,10 @@ export interface RequestLogInfo {
   contentType?: string;
 }
 
+/** Log output formats. */
 export type LogFormat = "dev" | "json" | "short" | "tiny";
 
+/** Options for the request logger middleware. */
 export interface RequestLoggerOptions {
   /**
    * Log format

@@ -1,6 +1,6 @@
 {
   "name": "asijs",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Bun-first web framework — fast, type-safe, simple",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -40,6 +40,11 @@
       "types": "./dist/edge.d.ts",
       "import": "./dist/edge.js",
       "default": "./dist/edge.js"
+    },
+    "./native": {
+      "types": "./dist/native/index.d.ts",
+      "import": "./dist/native/index.js",
+      "default": "./dist/native/index.js"
     },
     "./testing": {
       "types": "./dist/testing.d.ts",
@@ -122,11 +127,14 @@
     "dev": "bun run --hot index.ts",
     "start": "bun run index.ts",
     "test": "bun test",
-    "bench": "bun --cwd bench run index.ts",
-    "bench:production": "bun --cwd bench run production.ts",
-    "bench:fullstack": "bun --cwd bench run fullstack.ts",
+    "bench": "cd bench && bun run index.ts",
+    "bench:production": "cd bench && bun run production.ts",
+    "bench:serialize": "cd bench && bun run serialize.ts",
+    "bench:fullstack": "cd bench && bun run fullstack.ts",
     "bench:collect": "cd bench && bun run collect.ts",
     "bench:dashboard": "cd bench && bun run generate-dashboard.ts",
+    "bench:ssr": "cd bench && bun run ssr.ts",
+    "bench:ssr:build": "bash bench/scripts/build-ssr-frameworks.sh",
     "build": "bun run build:js && bun run build:types",
     "build:js": "bun build src/index.ts src/cli.ts src/jsx-runtime.ts src/jsx-dev-runtime.ts src/i18n.ts src/edge.ts src/testing.ts src/database.ts src/rpc.ts src/client.ts src/workspace.ts src/metrics.ts src/codemod.ts src/spa.ts src/spa-client.ts src/structured-logger.ts src/sentry.ts src/json-stream.ts src/redis.ts src/serverless.ts --outdir dist --entry-naming '[name].js' --target node --minify --external @sinclair/typebox --splitting && bun build src/runtime/node/index.ts --outdir dist/runtime/node --target node --external @sinclair/typebox --external ws --external ioredis --splitting",
     "build:types": "tsc --project tsconfig.build.json",
@@ -182,6 +190,7 @@
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
     "ioredis": "^5.11.1",
-    "ws": "^8.21.1"
+    "ws": "^8.21.1",
+    "yaml": "^2.9.0"
   }
 }

@@ -24,6 +24,7 @@ import type { Context } from "./context";
 
 // ===== Types =====
 
+/** One parsed entry of an Accept header (type/subtype, quality, params). */
 export interface AcceptEntry {
   type: string;
   subtype: string;
@@ -31,6 +32,7 @@ export interface AcceptEntry {
   params: Record<string, string>;
 }
 
+/** Per-format response handlers for content negotiation (json/html/xml/text/…). */
 export interface NegotiateHandlers {
   json?: unknown | (() => unknown | Promise<unknown>);
   html?: string | (() => string | Promise<string>);
@@ -39,6 +41,7 @@ export interface NegotiateHandlers {
   [key: string]: unknown | (() => unknown | Promise<unknown>);
 }
 
+/** Options for `negotiateResponse` (default type, charset inclusion). */
 export interface NegotiateOptions {
   defaultType?: string;
   includeCharset?: boolean;
@@ -46,6 +49,7 @@ export interface NegotiateOptions {
 
 // ===== Accept Header Parsing =====
 
+/** Parse an Accept header into quality-sorted entries. */
 export function parseAccept(acceptHeader: string): AcceptEntry[] {
   if (!acceptHeader) return [];
 
@@ -105,6 +109,7 @@ function matchesAccept(type: string, entry: AcceptEntry): boolean {
   return false;
 }
 
+/** Pick the best supported MIME type for an Accept header (default fallback). */
 export function bestMatch(
   acceptHeader: string | null | undefined,
   supported: string[],
@@ -145,6 +150,7 @@ function responseContentType(mimeType: string, includeCharset: boolean): string 
 
 // ===== Response Builder =====
 
+/** Build a Response for the best matching format — 406 when nothing matches. */
 export async function negotiateResponse(
   ctx: Pick<Context, "header">,
   handlers: NegotiateHandlers,

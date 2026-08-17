@@ -18,6 +18,7 @@ import { Asi } from "./asi";
 // 1. Webhooks Receiver — Signature Verification
 // ============================================================================
 
+/** A webhook signature-verification provider (Stripe, GitHub, Svix, …). */
 export interface WebhookProvider {
   name: string;
   /** Header containing the signature */
@@ -28,6 +29,7 @@ export interface WebhookProvider {
   verify: (payload: string, signature: string, secret: string) => boolean | Promise<boolean>;
 }
 
+/** Options for webhook verification (provider, secret, events). */
 export interface WebhookOptions {
   /** Webhook secret (or mapping provider→secret) */
   secret: string | Record<string, string>;
@@ -42,6 +44,7 @@ export interface WebhookOptions {
 }
 
 // Built-in providers
+/** Built-in webhook providers (stripe, github, svix, …). */
 export const webhookProviders: Record<string, WebhookProvider> = {
   stripe: {
     name: "stripe",
@@ -226,6 +229,7 @@ export function webhooks(options: WebhookOptions): Middleware {
 // 2. Range Requests — Partial Content (206)
 // ============================================================================
 
+/** Options for HTTP Range request support (multipart ranges, cache). */
 export interface RangeRequestOptions {
   /** Maximum chunk size in bytes (default: 1MB) */
   maxChunkSize?: number;
@@ -320,6 +324,7 @@ export function rangeRequests(options: RangeRequestOptions = {}): Middleware {
 // 3. Trust Proxy — X-Forwarded-For → Real IP
 // ============================================================================
 
+/** Options for trusting proxy headers (X-Forwarded-For, Proto, Host). */
 export interface TrustProxyOptions {
   /** Number of trusted proxies (default: 1) */
   count?: number;
@@ -384,6 +389,7 @@ export function trustProxy(options: TrustProxyOptions = {}): Middleware {
 // 4. Subdomain Routing
 // ============================================================================
 
+/** A host → app routing rule. */
 export interface DomainRoute {
   hostname: string;
   app: Asi;
@@ -463,6 +469,7 @@ export function domainRoute(
 // 5. Static index.html Auto-Serve
 // ============================================================================
 
+/** Options for serving `index.html` fallback (SPA history mode). */
 export interface IndexHtmlOptions {
   /** Directory to serve index.html from (default: "./public") */
   root?: string;
@@ -534,6 +541,7 @@ export function indexHtmlFallback(options: IndexHtmlOptions = {}): Middleware {
 // 6. HTTP/2 Server Push Hints
 // ============================================================================
 
+/** One HTTP/2 server-push hint (rel, href, as). */
 export interface PushHint {
   /** URL of the resource to push */
   url: string;
@@ -541,6 +549,7 @@ export interface PushHint {
   as: string;
 }
 
+/** Options for HTTP/2 server push. */
 export interface ServerPushOptions {
   /** Push hints keyed by request path */
   hints?: Record<string, PushHint[]>;

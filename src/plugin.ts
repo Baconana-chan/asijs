@@ -37,6 +37,7 @@
 
 import type { Middleware, BeforeHandler, AfterHandler } from "./types";
 import type { Context } from "./context";
+import type { WebSocketHandlers } from "./asi";
 
 /** Plugin configuration */
 export interface AsiPluginConfig<
@@ -121,6 +122,11 @@ export interface PluginHost {
     path: string,
     handler: (ctx: Context) => unknown,
     options?: unknown,
+  ): PluginHost;
+  ws(
+    path: string,
+    handlers: WebSocketHandlers,
+    options?: { beforeUpgrade?: (request: Request) => boolean | Promise<boolean> },
   ): PluginHost;
   use(middleware: Middleware): PluginHost;
   use(path: string, middleware: Middleware): PluginHost;

@@ -1,0 +1,42 @@
+{
+  "name": "graphql-asijs",
+  "version": "1.0.0",
+  "description": "GraphQL Plugin v2 for AsiJS — code-first TypeBox schema, HTTP + WebSocket subscriptions, Apollo Federation subgraphs, DataLoader & query complexity",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --external asijs --external graphql --external @sinclair/typebox",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "keywords": ["asijs", "graphql", "apollo", "federation", "subscriptions", "websocket", "typebox", "dataloader", "plugin"],
+  "license": "MIT",
+  "peerDependencies": {
+    "asijs": "latest",
+    "graphql": ">=16.0.0",
+    "@sinclair/typebox": ">=0.30.0"
+  },
+  "peerDependenciesMeta": {
+    "asijs": {
+      "optional": true
+    },
+    "graphql": {
+      "optional": true
+    },
+    "@sinclair/typebox": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

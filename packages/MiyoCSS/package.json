@@ -1,0 +1,67 @@
+{
+  "name": "miyocss",
+  "version": "0.1.0",
+  "description": "SSR-first CSS + SVG framework — utilities collected at render time (no build step, zero false positives), SVG as first-class citizen. Framework-agnostic: works with AsiJS, Hono, Elysia, Fastify, plain Node.",
+  "keywords": [
+    "css",
+    "svg",
+    "ssr",
+    "tailwind",
+    "utility",
+    "styles",
+    "styling",
+    "charts",
+    "icons",
+    "bun"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./asi": {
+      "types": "./dist/asi/index.d.ts",
+      "import": "./dist/asi/index.js",
+      "default": "./dist/asi/index.js"
+    },
+    "./svg": {
+      "types": "./dist/svg/index.d.ts",
+      "import": "./dist/svg/index.js",
+      "default": "./dist/svg/index.js"
+    }
+  },
+  "bin": {
+    "miyocss": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "info": "bun run src/cli.ts info"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48"
+  },
+  "peerDependencies": {
+    "asijs": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "asijs": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "asijs": "file:../..",
+    "typescript": "^5.0.0"
+  }
+}

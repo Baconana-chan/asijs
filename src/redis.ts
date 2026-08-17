@@ -35,6 +35,7 @@ import type { RateLimitStore, RateLimitInfo } from "./ratelimit";
 // Types
 // ============================================================================
 
+/** Redis connection options (host/port/password, url, key prefix, TLS). */
 export interface RedisConnectionOptions {
   /** Redis host (default: "localhost") */
   host?: string;
@@ -225,6 +226,7 @@ export class RedisRateLimitStore implements RateLimitStore {
 // Redis Queue — Background Job Queue
 // ============================================================================
 
+/** A job in the Redis-backed background queue (id, type, data, retries). */
 export interface RedisQueueJob<T = unknown> {
   /** Unique job ID */
   id: string;
@@ -244,6 +246,7 @@ export interface RedisQueueJob<T = unknown> {
   lastError?: string;
 }
 
+/** Options for the Redis background queue (connection, prefix, retries, polling). */
 export interface RedisQueueOptions {
   /** Redis connection options */
   redis?: RedisConnectionOptions;
@@ -257,10 +260,12 @@ export interface RedisQueueOptions {
   verbose?: boolean;
 }
 
+/** Handler for a Redis queue job type. */
 export interface RedisQueueHandler<T = unknown> {
   (job: RedisQueueJob<T>): Promise<void>;
 }
 
+/** Metrics of the Redis queue (processed/completed/failed + waiting). */
 export interface RedisQueueMetrics {
   /** Total jobs processed */
   processed: number;

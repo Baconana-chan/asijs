@@ -35,9 +35,11 @@
 - ❄️ **Serverless Optimisation** — Warm start emulation, lazy imports, bundle config for 6 platforms
 - 🗺️ **Radix Tree Router** — Up to 2× faster for 1M+ routes
 - 💾 **Schema Cache LRU** — Bounded memory for TypeBox compiled validators
+- ⚙️ **Response Serialization (3.2)** — `schema.response` pre-compiles TypeBox → fast serializer (status-keyed `{200, "2xx", default}` + per-content-type `serializers` via Accept negotiation); e2e ×1.4 vs plain JSON
 
 ### API & Documentation
 - 📄 **OpenAPI / Swagger** — Auto-generated OpenAPI 3.0/3.1, Swagger UI, security schemes
+- 🔄 **Data Formats** — `app.setFormat("yaml")` + `registerFormat()`: JSON native, YAML lazy (bun add yaml), custom formats (TOML/INI/…); `ctx.parseBody()` parses by Content-Type, responses/errors/404 serialize in the default format with Accept-negotiation; **TOON** (token-optimized LLM format) via the [`toon-asijs`](packages/toon-asijs) package — `registerToonFormat()` + `setFormat("toon")` out of the box
 - 📖 **API Docs Portal** — Full documentation portal: sidebar search, code samples (curl/Python/JS/Go), try-it-out proxy, dark/light theme
 - 🔄 **API Versioning** — URL/Header/Combined strategies, fallback, deprecation headers (`Sunset`, `Deprecation`)
 - 📝 **API Changelog** — Snapshot/diff between API versions, Markdown/HTML export for CI/CD
@@ -81,6 +83,7 @@
 - 🧩 **asijs-opentelemetry** — OpenTelemetry automatic instrumentation
 - 📋 **ESLint Plugin** — `eslint-plugin-asijs` with 4 rules: no-duplicate-route, no-missing-handler, validate-schema, no-unused-route
 - 🎨 **VS Code Extension** — Snippets, route explorer, hover provider, debug config, template explorer, create wizard
+- 🦀 **Native / Polyglot Modules** — `asi native scaffold <lang>` + `ctx.native` — write functions in Rust/Go/C/C++/Zig/Nim/Haskell (via `bun:ffi`), Python/Ruby/PHP (sidecar via `Bun.spawn` + JSON-RPC) or **Lua (embedded interpreter via dlopen liblua — no compilation, no IPC)**; AsiJS generates stubs and typed wrappers — zero manual glue, no WASM. Zig requires 0.15–0.17; older versions will not work
 
 ### Migration
 - 🔄 **Express → AsiJS** — `expressPlugin.wrap(mw)`, codemod with 22 rules, CLI: `asi integrate ./app.js`
@@ -131,7 +134,7 @@ app.get("/", () => "Hello, AsiJS! 👋");
 
 // With validation
 app.post("/users", async (ctx) => {
-  const body = await ctx.body();
+  const body = await ctx.parseBody();
   return { id: 1, ...body };
 }, {
   schema: {
@@ -446,6 +449,15 @@ export const { GET, POST, PUT, DELETE } = createNextHandler(app);
 | `trustProxy()` | Real IP extraction from X-Forwarded-For | v1.2 |
 | `domainRouting()` | Subdomain-based routing | v1.2 |
 | `serverPush()` | Link preload headers | v1.2 |
+| `native()` | Native modules — Rust/Go/C/C++/Zig/Nim/Haskell via `bun:ffi`, Python/Ruby/PHP via sidecar, Lua via dlopen → `ctx.native.*` | v1.5 |
+
+### Core API (v1.5)
+
+| API | Description |
+|-----|-------------|
+| `app.setFormat("yaml" / DataFormat)` + `format` option | Default response format: objects, errors & 404 serialize in it; `ctx.parseBody()` parses by `Content-Type` |
+| `registerFormat()` / `listFormats()` | Data formats layer — JSON native, YAML lazy, TOON via `toon-asijs`, custom formats in 3 lines |
+| `schema.response` + `serializers` | JSON Schema response serialization: status-keyed `{200, "2xx", default}` + per-content-type with Accept negotiation |
 
 ### Plugin Ordering & Dependencies
 
@@ -477,6 +489,12 @@ app.pluginInfo();           // Visualize dependency graph
 | `asijs-sveltekit` | SvelteKit handle hook + server/universal handlers | 8 ✅ |
 | `asijs-opentelemetry` | Full OTel: spans, metrics, logs. 5 exporters | 22 ✅ |
 | `eslint-plugin-asijs` | 4 ESLint rules for AsiJS projects | ✅ |
+| `asijs-mcp` | MCP v2 server — tools, resources, prompts, workflows | 67 ✅ |
+| `asijs-react` | React Server Components — Flight, streaming SSR + hydration | 24 ✅ |
+| `asijs-vite` | AsiJS inside a Vite dev server — one port, HMR bridge | 16 ✅ |
+| `graphql-asijs` | Code-first GraphQL — TypeBox → SDL, WS subscriptions, Federation, DataLoader | 42 ✅ |
+| `toon-asijs` | TOON (token-optimized LLM format) as a native DataFormat | 21 ✅ |
+| `miyocss` | SSR-first utility CSS + SVG engine (framework-agnostic) | 129 ✅ |
 
 ### VS Code Extension — `asijs-code`
 
@@ -543,6 +561,7 @@ Numbers below are from the CI benchmark pipeline (GitHub Actions runner, bare me
 | File upload 1MB (multipart) | 5,093 req/s | 100.8% | 100.2% (ref) |
 | Static preload (in-memory cache, 2.2.7) | 77,898 req/s | — | AsiJS-only (1.26× vs own disk path) |
 | Upload + save to disk (256KB, streaming) | 538 req/s | — | AsiJS-only (streaming +28% vs buffered) |
+| Response serialization (3.2, compiled schema) | 117k ops/s | — | AsiJS-only (×1.4 vs own plain JSON path) |
 
 ### Competitive / Near-Parity
 
@@ -583,11 +602,15 @@ Where AsiJS loses to Hono, and exactly why. 13 of 18 categories AsiJS wins; thes
 | P0 Hot-Path | `bun run bench:p0` | concurrency, route scaling, static preload, array validation |
 | P1 API-Case | `bun run bench:p1` | query cache, 404, error path, large bodies |
 | P2 Features | `bun run bench:p2` | WebSocket pub/sub, cache layer, DB layer, allocations |
+| Serialization | `bun run bench:serialize` | compiled schema serializer vs plain JSON (codegen + e2e through AsiJS) |
+| SSR frameworks | `bun run bench:ssr` | **production servers on ports** (C=32 concurrent fetch): AsiJS (JSX + string) vs Hono vs Astro (standalone) vs SvelteKit (adapter-node) vs Nuxt (nitro bun) — 100-row table page |
+
+> **SSR frameworks methodology.** Port-based, production builds only — real TCP + HTTP stack, so numbers include server + network overhead (not just render cost, unlike the in-process JSX row above). Framework apps live in `bench/frameworks/*`; build once with `bun run bench:ssr:build` (installs SvelteKit/Astro/Nuxt — heavy, opt-in in CI via the `run_ssr_frameworks` workflow input). All competitors are pinned to **current latest majors** (astro 7, nuxt 4, sveltekit 2 + vite 7; hono 4.13 / elysia 1.4.29 in the core benches) so AsiJS never races year-old code. Next.js / Remix are a tracked follow-up: their build toolchains require Node (`next build` / `remix build`), which the Bun-only CI doesn't have.
 
 ### Benchmark Dashboard
 
 AsiJS includes an automated benchmark dashboard:
-- `bun run bench:collect` — run all benchmark suites (above)
+- `bun run bench:collect` — run all benchmark suites (above; skips SSR when framework builds are absent)
 - `bun run bench:dashboard` — generate Chart.js HTML dashboard
 - **Historical trends**: normalized avg score vs best across **all categories** (with lower-is-better groups inverted) + per-category RPS picker
 - Integrated into vitepress docs at `/benchmarks/`
@@ -625,6 +648,9 @@ asijs/
 │   ├── upload.ts               # File upload provider
 │   ├── auto-api.ts             # PostgREST-like auto API
 │   ├── codegen.ts              # OpenAPI client codegen
+│   ├── serialize.ts            # JSON Schema response serialization (3.2)
+│   ├── formats.ts              # Data formats layer: JSON/YAML/custom + TOON
+│   ├── native/                 # Native/polyglot modules (FFI + sidecars + Lua)
 │   └── plugins/
 │       ├── cors.ts             # CORS plugin
 │       └── static.ts           # Static files plugin
@@ -635,20 +661,26 @@ asijs/
 │   ├── astro-asijs/            # Astro adapter
 │   ├── remix-asijs/            # Remix adapter
 │   ├── sveltekit-asijs/        # SvelteKit adapter
-│   └── opentelemetry-asijs/    # OpenTelemetry integration
+│   ├── opentelemetry-asijs/    # OpenTelemetry integration
+│   ├── mcp-asijs/              # MCP v2 server
+│   ├── asijs-react/            # React Server Components
+│   ├── asijs-vite/             # Vite dev server
+│   ├── graphql-asijs/          # GraphQL plugin v2
+│   ├── toon-asijs/             # TOON format adapter
+│   └── MiyoCSS/                # SSR-first CSS + SVG framework
 ├── examples/                   # Example apps
-├── test/                       # 1373 tests
+├── test/                       # 2036 tests (2018 pass, 18 skip)
 │   ├── integration/            # Docker-based integration tests
 │   ├── e2e/                    # End-to-end tests
 │   └── k6/                     # k6 load testing scripts
-├── bench/                      # Benchmarks + dashboard
+├── bench/                      # Benchmarks + dashboard + SSR frameworks
 └── docs/                       # VitePress documentation site
 ```
 
 ## 🧪 Testing
 
 ```bash
-# Run all tests (1373 tests)
+# Run all tests (2036 tests)
 bun test
 
 # With coverage
@@ -669,7 +701,7 @@ bun run typecheck
 
 ### Test Quality
 
-- **1373 tests** — all passing, 0 failures
+- **2036 tests (2018 pass, 18 skip)** — 0 failures
 - **Integration tests** — Docker-based PostgreSQL, Redis, MinIO
 - **E2E tests** — Full cycle: auth → upload → CRUD → WebSocket
 - **Load tests** — k6 scenarios: auth flow, CRUD, WebSocket, file upload

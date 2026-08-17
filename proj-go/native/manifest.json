@@ -1,0 +1,14 @@
+{
+  "name": "test_go",
+  "lang": "go",
+  "functions": [
+    {
+      "name": "add",
+      "params": {
+        "a": "number",
+        "b": "number"
+      },
+      "returns": "number"
+    }
+  ]
+}

@@ -1,5 +1,26 @@
-// AsiJS — Bun-first Web Framework
-// Main entry point
+/**
+ * AsiJS — Bun-first web framework.
+ *
+ * Main entry point: re-exports the public API surface — the `Asi` application
+ * class, request `Context`, routing and validation helpers, middleware
+ * (CORS, auth, rate limiting, security headers, …), plugins (OpenAPI, MCP,
+ * WebSocket, scheduler, …), serverless adapters and CLI tooling.
+ *
+ * Everything exported here is stable, public API. Subpath imports like
+ * `asijs/node` (Node adapter) and `asijs/jsx` (JSX runtime) are documented
+ * separately.
+ *
+ * @example
+ * ```ts
+ * import { Asi, cors, openapi } from "asijs";
+ *
+ * const app = new Asi();
+ * app.plugin(cors());
+ * app.plugin(openapi({ title: "My API" }));
+ * app.get("/", () => "Hello from AsiJS!");
+ * await app.listen(3000);
+ * ```
+ */
 
 export { Asi } from "./asi";
 export type {
@@ -58,6 +79,38 @@ export {
   type RouteAnalysis,
   type CompileOptions,
 } from "./compiler";
+
+// Response serialization exports (3.2)
+export {
+  compileSerializer,
+  compileResponseSerializer,
+  wrapWithResponseSerializer,
+  resolveResponseSchema,
+  isResponseSchemaMap,
+  pickContentType,
+  serializeForCache,
+  deserializeFromCache,
+  resetSerializerCache,
+  type Serializer,
+  type ResponseSchema,
+  type ResponseSerializeOptions,
+} from "./serialize";
+
+// Data format layer (formats): JSON native + YAML lazy + custom formats
+export {
+  registerFormat,
+  getFormat,
+  listFormats,
+  registeredFormatCount,
+  resetFormats,
+  formatForContentType,
+  jsonFormat,
+  createYamlFormat,
+  registerYamlFormat,
+  pickResponseFormat,
+  makeFormatResponse,
+  type DataFormat,
+} from "./formats";
 
 // Plugin exports
 export { cors, type CorsOptions } from "./plugins/cors";
@@ -1075,3 +1128,41 @@ export {
   scaffoldPlugin,
   AWESOME_PLUGINS,
 } from "./plugin-registry";
+
+// ===== Native / Polyglot Modules =====
+export {
+  native,
+  loadNativeModule,
+  parseManifest,
+  validateManifest,
+  loadManifest,
+  writeManifest,
+  findNativeRoot,
+  detectLanguage,
+  generateCargoToml,
+  generateLibRs,
+  generateGoMod,
+  generateMainGo,
+  generateCLib,
+  generateCppLib,
+  generateBuildZig,
+  generateZigLib,
+  getGenerator,
+  supportedLanguages,
+  allGenerators,
+  generateTsWrapper,
+  defaultLibPathExpr,
+  platformLibExt,
+  resolveLibPath,
+  isStale,
+  markBuilt,
+  MANIFEST_FILE,
+  DEFAULT_SOURCE_DIR,
+  type NativeManifest,
+  type NativeFunction,
+  type NativeLanguage,
+  type NativeTypeName,
+  type NativeValue,
+  type NativeLoadOptions,
+  type NativeModule,
+} from "./native";

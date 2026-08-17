@@ -17,10 +17,12 @@ import type { AsiPlugin, PluginHost } from "./plugin";
 // Types
 // ============================================================================
 
+/** Translation messages — nested keys, with plural-rule objects. */
 export interface Translation {
   [key: string]: string | Translation | PluralRules;
 }
 
+/** Plural forms for a key (zero/one/two/few/many/other). */
 export interface PluralRules {
   zero?: string;
   one: string;
@@ -30,10 +32,12 @@ export interface PluralRules {
   other: string;
 }
 
+/** All translations, keyed by locale. */
 export interface Translations {
   [locale: string]: Translation;
 }
 
+/** i18n options (locales, translations, fallback, detection strategy). */
 export interface I18nOptions {
   /** Default locale */
   defaultLocale: string;
@@ -53,6 +57,7 @@ export interface I18nOptions {
   pathPrefix?: boolean;
 }
 
+/** Locale detection configuration (order of methods, cookie caching). */
 export interface LocaleDetection {
   /** Order of detection methods */
   order?: ("path" | "query" | "cookie" | "header")[];
@@ -60,6 +65,7 @@ export interface LocaleDetection {
   cacheInCookie?: boolean;
 }
 
+/** i18n context attached to requests (t, formatters, locale switching). */
 export interface I18nContext {
   /** Current locale */
   locale: string;
@@ -94,6 +100,7 @@ export interface I18nContext {
   isRTL: boolean;
 }
 
+/** Translate a key with params and plural count. */
 export type TranslateFunction = (
   key: string,
   params?: Record<string, string | number>,
@@ -125,6 +132,7 @@ const RTL_LOCALES = new Set([
 // I18n Class
 // ============================================================================
 
+/** I18n engine — locale detection, translations with plurals, Intl formatters. */
 export class I18n {
   private options: Required<I18nOptions>;
   private localeSet: Set<string>;

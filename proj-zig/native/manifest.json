@@ -1,0 +1,14 @@
+{
+  "name": "test_zig",
+  "lang": "zig",
+  "functions": [
+    {
+      "name": "add",
+      "params": {
+        "a": "number",
+        "b": "number"
+      },
+      "returns": "number"
+    }
+  ]
+}

@@ -44,6 +44,7 @@ import { createPlugin, type AsiPlugin } from "./plugin";
 // Types
 // ============================================================================
 
+/** A stored upload result (field, file name, mime, size, url, storage path). */
 export interface UploadedFile {
   /** Original form field name */
   fieldName: string;
@@ -61,6 +62,7 @@ export interface UploadedFile {
   storage: string;
 }
 
+/** Options for the upload plugin (storage, size limits, MIME whitelist, naming). */
 export interface UploadOptions {
   /** Storage backend */
   storage: UploadStorage;
@@ -80,6 +82,7 @@ export interface UploadOptions {
   streaming?: boolean;
 }
 
+/** Storage backend contract — implement `save` (buffered) and optionally `saveStream`. */
 export interface UploadStorage {
   name: string;
   save: (
@@ -236,6 +239,7 @@ function localStorage(uploadDir: string): UploadStorage {
 // S3 Storage (AWS S3 / Cloudflare R2 / MinIO)
 // ============================================================================
 
+/** Connection config for S3-compatible storage (AWS S3, Cloudflare R2, MinIO). */
 export interface S3StorageConfig {
   /** S3 endpoint (e.g., "https://s3.amazonaws.com") */
   endpoint: string;
@@ -530,6 +534,7 @@ export function upload(options: UploadOptions): AsiPlugin {
 // Exports
 // ============================================================================
 
+/** Storage factory — `upload.storage.local()`, `.s3()`, `.r2()`. */
 export const uploadStorage = {
   local: localStorage,
   s3: s3Storage,

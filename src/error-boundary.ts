@@ -372,6 +372,7 @@ export async function runErrorReporters(
 // errorBoundary middleware / plugin
 // ============================================================================
 
+/** Options for the error-boundary plugin (handling + retry/backoff). */
 export interface ErrorBoundaryPluginOptions extends ErrorReporterOptions {
   /** Whether to also handle errors globally via app.onError (default: true) */
   handleGlobalErrors?: boolean;
@@ -465,6 +466,7 @@ export function errorBoundary(options: ErrorBoundaryPluginOptions = {}): AsiPlug
 // Retry policies
 // ============================================================================
 
+/** Retry backoff strategies for async error handling. */
 export type BackoffStrategy = "fixed" | "exponential" | "linear";
 
 /** Options for `retry` */

@@ -1,0 +1,11 @@
+{
+  "name": "ssr-bench-nuxt",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build"
+  },
+  "dependencies": {
+    "nuxt": "^4.5.2"
+  }
+}

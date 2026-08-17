@@ -95,3 +95,16 @@ bench/node_modules/
 bench/bun.lock
 bench/bun.lockb
 bench/*.tgz
+
+# SSR benchmark framework apps (installed/built locally or in CI)
+bench/frameworks/*/node_modules/
+bench/frameworks/*/build/
+bench/frameworks/*/dist/
+bench/frameworks/*/.output/
+bench/frameworks/*/.svelte-kit/
+bench/frameworks/*/.nuxt/
+bench/frameworks/*/.nitro/
+bench/frameworks/*/.astro/
+bench/frameworks/*/.vite/
+bench/frameworks/*/bun.lock
+bench/frameworks/*/bun.lockb

@@ -26,6 +26,7 @@ import type { HealthChecks, HealthCheckFn } from "./health";
 // Types
 // ============================================================================
 
+/** Options for the health dashboard (path, refresh, checks). */
 export interface HealthDashboardOptions {
   /** URL path for the HTML dashboard (default: "/__health") */
   path?: string;
@@ -80,6 +81,7 @@ async function runNamedCheck(name: string, fn: HealthCheckFn): Promise<CheckSnap
 // Snapshot
 // ============================================================================
 
+/** A snapshot of health data rendered by the dashboard. */
 export interface HealthDashboardSnapshot {
   status: "healthy" | "degraded" | "unhealthy";
   timestamp: string;

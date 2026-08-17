@@ -32,6 +32,7 @@ import type { Context } from "./context";
 
 // ===== Types =====
 
+/** Options for response compression (encodings, threshold, content filter). */
 export interface CompressionOptions {
   /**
    * Enable brotli compression (if available).

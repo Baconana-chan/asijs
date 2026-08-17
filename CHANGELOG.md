@@ -5,216 +5,272 @@ All notable changes to AsiJS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - Unreleased
+
+- Lalala
+
+## [1.5.0] - 2026-08-17
+
+### 🚀 New Features
+
+**🦀 Native / Polyglot Modules (`src/native/`)** — write functions in other languages and call them from handlers without WASM:
+- **FFI languages** (via `bun:ffi`, zero manual glue): C, C++, Go, Rust, Zig, Nim, Haskell — `asi native scaffold <lang>` generates stubs + manifest + typed wrappers; `src/native/generate-*.ts` for each language, `ctx.native` runtime, watch mode (`asi native watch`)
+- **Sidecar languages** (via `Bun.spawn` + JSON-RPC): Python, Ruby, PHP
+- **Lua** — embedded interpreter via `dlopen(liblua)` (option A from the TODO: no compilation, no IPC)
+- End-to-end examples: `proj-{c,cpp,go,zig}` (real `cc`/`go build`/`zig build` builds), language table in `TODO_native.md`, toolchain installation guides
+- Tests: `test/native*.test.ts` (native, native-dev, native-langs, native-sidecar) — dlopen round-trips and spawn tests for real languages
+
+**🔄 Data Formats layer (`src/formats.ts`)** — "default format" as a single setting:
+- `DataFormat` interface + registry (`registerFormat` / `getFormat` / `listFormats`): JSON native (zero-dep), YAML lazy adapter via `yaml` (`createRequire`, no import cost), custom formats (TOML/INI/…) register in 3 lines
+- `ctx.parseBody(format?)` — parses the body by `Content-Type` (JSON/YAML/custom), explicit format via argument; lazy + cached (one parse per request); the non-existent `ctx.body()` promised by the docs was replaced with the real method (the `ctx.body` property is the validated body — a naming conflict)
+- `asi.setFormat()` + `format` option in `AsiConfig` — object responses, errors (500/400) and 404 bodies serialize in the default format; compiled routes (`app.compile()`) and static precompute respect the format
+- **Accept-negotiation** — via the existing `bestMatch()`: `Accept: application/yaml` answers YAML even with a JSON default; the fast path stays zero-cost with a single JSON format
+- **Format-aware route validation** — body validation reads the body via `ctx.parseBody()` instead of `ctx.json()` (wrapHandler + all three compiled paths in `compiler.ts`): TOON/YAML bodies validate against TypeBox schemas unchanged
+
+**⚙️ JSON Schema Response Serialization (`src/serialize.ts`, 3.2)** — response compilation like fast-json-stringify:
+- `compileSerializer(schema)` — pre-compiles TypeBox/JSON Schema → fast serializer (codegen): all-required objects concatenated directly, optional ones use a parts-array, non-codegenable schemas fall back to `JSON.stringify`; identity cache + `resetSerializerCache()`
+- `schema.response` — status-keyed serialization (`{200, "2xx", default}`) + per-content-type `serializers` with Accept negotiation; status and Set-Cookie preserved
+- `serializeForCache`/`deserializeFromCache` — V8.serialize binary helpers for internal caches
+- E2E benchmark: schema route **×1.4** faster than plain JSON through the real framework (specialized compiled path instead of generic `Response.json`)
+
+**📦 New packages:**
+- **`graphql-asijs`** (3.8) — GraphQL Plugin v2: code-first TypeBox → SDL (`defineSchema`), HTTP + WebSocket transports (full graphql-ws protocol), Apollo Federation subgraphs, `DataLoader` + query complexity. 42 tests + a real ws-e2e (client → ack → 3×next → complete)
+- **`asijs-react`** (3.7) — React Server Components for AsiJS: Flight, streaming SSR + hydration (24 tests)
+- **`asijs-vite`** (3.5) — AsiJS inside a Vite dev server: single port, HMR bridge, Rolldown SSR build (16 tests)
+- **`toon-asijs`** — TOON (Token-Oriented Object Notation, token-optimized LLM format) as a native DataFormat on top of the official `@toon-format/toon` SDK: `registerToonFormat()` → `setFormat("toon")`, `Content-Type: application/toon` parsing, Accept-negotiation, errors/404 in TOON (~30–60% fewer tokens than JSON). 21 unit tests + 13 integration tests
+- **`MiyoCSS`** — SSR-first CSS + SVG framework: design tokens (TypeBox + `defineConfig` with extend), utility generator on `resolveConfig()` (layout/flex/grid/spacing/typography/colors/borders/sizing + arbitrary values with validation), `hover:/focus:/md:/dark:` variants with composition, SSR build (`miyocss.render()`), `miyocss info` CLI. 129 tests
+
+### 🐛 Bug Fixes
+
+- **PluginHost: `ws()` for plugins** — plugins could not register WebSocket routes (only HTTP verbs were available). Added `ws` to the `PluginHost` interface + implementation in `_createPluginHost()` (required to mount `/graphql/ws` from the graphql plugin)
+- **Docs promised a non-existent `ctx.body()`** — the method did not exist on Context (the `ctx.body` property is the validated body). Replaced with the real `ctx.parseBody()` in README/docs/context.md/docs/routing.md
+- **Root benchmark scripts `bun --cwd bench run …`** — printed usage instead of running; fixed to `cd bench && bun run …` (bench, bench:production, bench:serialize, bench:fullstack)
+
+### 📊 Benchmarking
+
+- **SSR category: Node-first frameworks** — `bench/ssr.ts` + `bench/frameworks/{sveltekit,astro,nuxt}`: production servers on ports (C=32 concurrent fetch), 100-row table. AsiJS (JSX + string) vs Hono vs **Astro** (@astrojs/node standalone) vs **SvelteKit** (@sveltejs/adapter-node) vs **Nuxt** (nitro `bun` preset). Build with `bun run bench:ssr:build`, CI opt-in via the `run_ssr_frameworks` input; collect picks up the group (graceful skip without builds)
+- **Serialization bench** — `bench/serialize.ts` (bun run bench:serialize): honest result — on Bun, raw codegen ≈ 60–90% of native `JSON.stringify`, but the end-to-end schema route is ×1.4 faster than plain JSON
+- **Competitors updated to current versions** — so AsiJS never races year-old code: hono 4.13.2, elysia 1.4.29 (+ @elysiajs/* plugins), astro 7.2.2, nuxt 4.5.2, sveltekit 2.70.2 + vite 7
+- **Bench fixes surfaced by the update**: `elysia-rate-limit@5.1.0` is incompatible with elysia 1.4.x (removed internal `plugin.beforeHandle`) → inline limiter on the public `onBeforeHandle`; TypeBox 0.34 removed built-in formats → `format: "email"` removed from complex-validation schemas (AsiJS and Elysia identical)
+
+### 📚 Docs & DX
+
+- **Full package docs** — `docs/packages/*` (14 pages: next, astro, remix, sveltekit, mcp, opentelemetry, eslint, vscode, vite, react, graphql, toon, miyocss + overview) + vitepress nav/sidebar
+- **`docs/cli.md`** — complete CLI reference; **`docs/features/native.md`** — native modules guide
+- **Code-level JSDoc across the whole core** — every public module (Asi, Context, configs, plugins, utilities) got JSDoc with descriptions and examples
+- **README brought up to reality** — features (formats/TOON/serialize/native), package table (6 new), project structure, test count (2036), benchmarks
+
 ## [1.4.1] - 2026-08-15
 
 ### 🚀 Upload: Streaming Saves
 
-- **`upload({ streaming: true })`** — файлы сохраняются через новый `saveStream` (память O(chunk) вместо O(file)): `file.stream()` пишется чанками напрямую на диск через Bun FileSink (fallback — Node `createWriteStream`). Для файлообменников это убирает вторую полную копию файла в JS-памяти на каждый загружаемый файл. Реализовано для local (FileSink/Node-pipe) и S3/R2 (streaming PUT с `Content-Length` и `duplex: "half"` под Node). Если storage не реализует `saveStream` — middleware бесшовно падает на буферизованный путь.
-- **Размер-лимит проверяется дважды**: fast-reject по объявленному `file.size` из multipart-заголовков ДО чтения потока + mid-stream аборт по факту записанных байт (partial file удаляется — rejected upload не оставляет мусора на диске).
-- **Local storage: async-запись** — `writeFileSync` (блокировал event loop на весь диск-IO, ~220ms на 50MB) заменён на `writeFile` (fs/promises). Буферизованный путь тоже не блокирует больше.
-- **Benchmark `3c. File Upload + Save to Disk (256KB)`** — CI-бенчмарки upload меряли только multipart-парсинг; добавлен сценарий полного файлообменника (parse + persist). Локально: streaming 538 req/s vs buffered 421 req/s (**+28%**), при этом streaming сохраняет память.
-- **Fully-Loaded GET разбит на честные пары** — старый бенчмарк сравнивал AsiJS full-stack (CORS+security+ETag+cache+rateLimit, 5 слоёв) против Elysia bare `cors+rateLimit` (2 слоя) — «11.2%» выглядело как поражение, хотя объём работы несравним. Теперь две группы: `1a` — **одинаковый набор middleware** на обоих (AsiJS 49.4k vs Elysia 35.0k = **141%**), `1b` — full-stack 5 слоёв vs Hono 4 слоя (6.3k vs 3.4k = **1.8×**).
-- **README: Hono — основной конкурент, Elysia — reference** — AsiJS и Hono монолиты (всё в ядре), Elysia — микроядро (всё во внешних плагинах `@elysiajs/*`); сравнивать полные стеки этих архитектур некорректно (монолитное ядро «больше» микроядра по построению). Таблицы переставлены: колонка `vs Hono` — apples-to-apples (13 из 18 категорий AsiJS выигрывает), `vs Elysia` помечена `(ref)`. Known Gaps переписаны под Hono с конкретными механизмами отставания (404 body, structured 500, query-miss, static pipeline).
+- **`upload({ streaming: true })`** — files are saved through the new `saveStream` (memory O(chunk) instead of O(file)): `file.stream()` is written chunk-by-chunk to disk via Bun FileSink (fallback — Node `createWriteStream`). For file-sharing apps this removes a second full in-memory copy of each uploaded file. Implemented for local (FileSink/Node-pipe) and S3/R2 (streaming PUT with `Content-Length` and `duplex: "half"` under Node). If the storage doesn't implement `saveStream`, the middleware seamlessly falls back to the buffered path.
+- **Size limit is checked twice**: fast-reject by the declared `file.size` from multipart headers BEFORE reading the stream + mid-stream abort by the actual bytes written (the partial file is deleted — a rejected upload leaves no garbage on disk).
+- **Local storage: async writes** — `writeFileSync` (blocked the event loop for the whole disk IO, ~220ms per 50MB) replaced with `writeFile` (fs/promises). The buffered path no longer blocks either.
+- **Benchmark `3c. File Upload + Save to Disk (256KB)`** — CI upload benchmarks only measured multipart parsing; added a full file-sharing scenario (parse + persist). Locally: streaming 538 req/s vs buffered 421 req/s (**+28%**), and streaming also saves memory.
+- **Fully-Loaded GET split into honest pairs** — the old benchmark compared AsiJS full-stack (CORS+security+ETag+cache+rateLimit, 5 layers) against Elysia bare `cors+rateLimit` (2 layers) — "11.2%" looked like a loss even though the work done is incomparable. Now two groups: `1a` — **identical middleware set** on both (AsiJS 49.4k vs Elysia 35.0k = **141%**), `1b` — full-stack 5 layers vs Hono 4 layers (6.3k vs 3.4k = **1.8×**).
+- **README: Hono is the primary competitor, Elysia a reference** — AsiJS and Hono are monoliths (everything in the core), Elysia is a microkernel (everything in external `@elysiajs/*` plugins); comparing full stacks of these architectures is apples-to-oranges (a monolithic kernel is bigger than a microkernel by construction). Tables reordered: the `vs Hono` column is apples-to-apples (AsiJS wins 13 of 18 categories), `vs Elysia` is marked `(ref)`. Known Gaps rewritten against Hono with the concrete mechanisms behind each gap (404 body, structured 500, query-miss, static pipeline).
+- **README for every package** — `eslint-plugin-asijs`, `asijs-opentelemetry` and `vscode-asijs` had no README (a downside for npm pages and the Marketplace). Added: installation, usage examples, API/command/settings tables, presets and development. Now all 8 packages in `packages/` have a README.md.
 
 ### 🐛 Bug Fixes
 
-- **Packaging: dist paths** — `bun build` с несколькими entry points клал JS в `dist/src/*.js` (префикс `src/`), а `main`/`module`/`bin`/`exports` указывали на `dist/*.js` — npm ворнил «No bin file found at dist/cli.js», и у опубликованного пакета не работали main и CLI. Добавлен `--entry-naming '[name].js'`, вывод теперь совпадает с объявленными путями (`dist/index.js`, `dist/cli.js`, ...). Валидация через `npm pack --dry-run`: 0 warnings. **Важно: asijs@1.4.0 уже опубликован с этим багом — требуется перепубликация 1.4.1.**
-- **Silent mode теперь действительно молчит** — `console.error("[Asi Error]")` и логи ошибок в `handleError()`/`notFound()`/плагинных хуках не гейтились за `silent: true`, из-за чего тесты с намеренными throw печатали большие `[Asi Error]`-блоки. Все error-логи обёрнуты в `if (!silent)` (контракт «отключить все логи»).
-- **ioredis: слушатель `error` на клиенте** — при недоступном Redis печаталось `[ioredis] Unhandled error event` (в проде unhandled 'error' на EventEmitter может уронить процесс). Добавлен no-op слушатель: ошибки подключения/операций по-прежнему всплывают через rejected promises.
-- **scanWorkspace: детерминированные порты** — порты назначались **до** сортировки по имени, а порядок `readdirSync` зависит от ФС (на Linux — hash-порядок) → в CI на Ubuntu порты могли «поменяться местами» и упасть тест. Теперь порты назначаются **после** сортировки (`3000, 3001, ...` по алфавиту).
-- **buildSSG: `durationMs` не может быть 0** — `Math.round(...)` на быстрой машине (CI) давал 0 для сборки < 0.5ms → падал `expect(durationMs).toBeGreaterThan(0)`. Теперь `Math.max(1, ...)`.
-- **Context pool: устранена регрессия hot path** — A/B v1.3.0 vs v1.4.0 на одной машине показал, что дефолтный пул контекстов замедлял простой `GET /` на **83%** (микробенчмарк с контрольными фреймворками: Elysia/Raw Bun/Hono флэт ±5%, AsiJS -33%). Причины и фиксы в `src/context.ts`: (1) `_reset()` вызывался **дважды** (acquire + release) с полным сканом полей и 4 аллокациями — acquire теперь делает лёгкий `_rebind()` (release уже оставил контекст чистым); (2) скан `for..in` + `Set.has` для удаления middleware-свойств заменён на дешёвый подсчёт ключей с полным сканом только когда свойства реально добавлены. Итог: оверхед пула **+83% → ~7%**, `GET /` с пулом теперь быстрее v1.3.0.
-- **Middleware chain flattener: не применяется к роутам без middleware** — `flattenMiddleware` на роуте без middleware делал per-request кэш-лукап (Map.get + строка id) ради копии `executeHandler(len === 0)`, что стоило ~14%. Теперь флаттер используется только при `middlewares.length > 0`, без-middleware роуты идут через собственный fast-path `executeHandler`.
-- **Радикс-роутер: fresh params на статических роутах** — отмечено, что radix аллоцирует свежий `params` объект на каждый статический матч (наблюдаемая нестабильность/проседание на малых таблицах роутов vs trie) — кандидат на отдельную оптимизацию (общий замороженный пустой объект для статических роутов).
+- **Packaging: dist paths** — `bun build` with multiple entry points placed JS in `dist/src/*.js` (a `src/` prefix), while `main`/`module`/`bin`/`exports` pointed at `dist/*.js` — npm warned "No bin file found at dist/cli.js", and `main`/CLI were broken in the published package. Added `--entry-naming '[name].js'`; output now matches the declared paths (`dist/index.js`, `dist/cli.js`, ...). Validated via `npm pack --dry-run`: 0 warnings. **Important: asijs@1.4.0 was published with this bug — 1.4.1 must be republished.**
+- **Silent mode is now actually silent** — `console.error("[Asi Error]")` and error logs in `handleError()`/`notFound()`/plugin hooks were not gated behind `silent: true`, so tests with intentional throws printed large `[Asi Error]` blocks. All error logs are now wrapped in `if (!silent)` (the "disable all logging" contract).
+- **ioredis: `error` listener on the client** — an unavailable Redis printed `[ioredis] Unhandled error event` (in production an unhandled 'error' on an EventEmitter can crash the process). Added a no-op listener: connection/operation errors still surface via rejected promises.
+- **scanWorkspace: deterministic ports** — ports were assigned BEFORE sorting by name, and `readdirSync` order depends on the filesystem (hash order on Linux) → on Ubuntu CI ports could "swap places" and fail the test. Ports are now assigned AFTER sorting (`3000, 3001, ...` alphabetically).
+- **buildSSG: `durationMs` cannot be 0** — `Math.round(...)` on a fast machine (CI) gave 0 for builds under 0.5ms → `expect(durationMs).toBeGreaterThan(0)` failed. Now `Math.max(1, ...)`.
+- **Context pool: hot-path regression eliminated** — A/B v1.3.0 vs v1.4.0 on the same machine showed the default context pool slowed a simple `GET /` by **83%** (control frameworks in the microbenchmark: Elysia/Raw Bun/Hono flat ±5%, AsiJS -33%). Causes and fixes in `src/context.ts`: (1) `_reset()` ran **twice** (acquire + release) with a full field scan and 4 allocations — acquire now does a lightweight `_rebind()` (release already left the context clean); (2) the `for..in` scan + `Set.has` to remove middleware properties was replaced with a cheap key count, doing the full scan only when properties were actually added. Result: pool overhead **+83% → ~7%**, pooled `GET /` is now faster than v1.3.0.
+- **Middleware chain flattener: not applied to middleware-less routes** — `flattenMiddleware` on a route without middleware did a per-request cache lookup (Map.get + id string) just for a copy of `executeHandler(len === 0)`, costing ~14%. The flattener is now used only when `middlewares.length > 0`; middleware-less routes go through their own `executeHandler` fast path.
+- **Radix router: fresh params on static routes** — noted that radix allocates a fresh `params` object on every static match (observed instability/dip on small route tables vs trie) — a candidate for a separate optimization (a shared frozen empty object for static routes).
 
 ### 📊 Benchmarking
 
-- **P0 Hot-Path Benchmarks (`bench/p0.ts`)** — новые сценарии под 2.2-работу, подключены в CI-коллектор:
-  - **Concurrency** (C=10/100/1000 in-flight) — AsiJS vs Elysia vs Hono; показывает, где context pool реально окупается. На локальном прогоне при C=1000 AsiJS ≈ Elysia (191k vs 190k req/s).
-  - **Route Table Scaling** — radix vs trie при N=10/100/1000/10000 роутов (lookup последнего роута — worst case). Подтверждает: radix на малых таблицах нестабилен (fresh-params аллокация), на масштабе ≈ trie — нужна оптимизация из пункта выше.
-  - **Static: preload vs disk** — память vs диск: локально **4.9–5.3×** (2.2.7).
-  - **Array Validation (100 items) + Validation Error Path** — compiled-валидация: AsiJS > Elysia на валидном массиве и на error-path (invalid payload возвращает 400 у AsiJS, 422 у Elysia — expected-status учитывается, без ложных «errors»).
-- **Фикс парсера коллектора (locale)** — `toLocaleString()` в русской локали Windows даёт пробел как разделитель тысяч (`16 354`), а regex `\d[\d,]*` допускал только запятые → локальные прогоны коллектора парсили почти ноль строк (на CI/en-US всё работало). Теперь regex принимает пробел/NBSP, а вывод всех бенчмарков форсируется `toLocaleString("en-US")`. Итог: локально парсится **102/102** результатов (было 7).
-- **P1 API-Case Benchmarks (`bench/p1.ts`)** — вторые сценарии, подключены в CI-коллектор (7 групп):
-  - **Query Cache (2.2.6)** — повторяющиеся query-строки (hit) vs уникальные (miss) vs `queryCache: false`. Учтён глобальный синглтон кэша: hit/miss гоняются на кэшированном приложении, `queryCache: false` создаётся после (иначе `disableDefaultQueryCache()` убил бы кэш и для hit-замера). Локально: hit ≈ disabled (64.9k vs 64.5k) > miss (52k) — кэш даёт ~25% на повторяющихся query, overhead на hit минимален (shallow copy при hit).
-  - **404 Fast Path** — missing-route lookup: AsiJS vs Elysia vs Hono (ожидаемый статус 404, без ложных ошибок).
-  - **Error Path** — handler бросает ошибку → 500: AsiJS (`silent: true`, не логирует), Elysia/Hono с явным `onError` (500 без шума в stderr).
-  - **Large JSON Bodies (10KB/100KB, validated)** — compiled-валидация массивов на больших телах: AsiJS впереди Elysia на 10KB (7.1k vs 5.8k) и на 100KB (752 vs 609 req/s).
-- **P2 Feature Benchmarks (`bench/p2.ts` + `bench/p2-alloc.ts`)** — сценарии для фич, у которых не было бенчмарков вообще (8 групп, подключены в CI-коллектор):
-  - **WebSocket Pub/Sub** — broadcast через `RoomManager` на 1/10/100 клиентов (mock ws: `readyState` + `send`, без реального сервера).
-  - **Cache Layer** — `MemoryCache` set/get (2.3M ops/s get vs 940k set), ETag-миддлварь 200 vs 304 fast-path, response-cache HIT vs MISS (64k vs 17k ops/s).
-  - **Database Layer (2.3)** — sqlite in-memory CRUD: insert/select/update/delete + транзакция из 3 стейтментов (5.8k ops/s vs 56k delete).
-  - **Allocations** — RSS growth per request, измеряется в **изолированном subprocess** (`bench/p2-alloc.ts`): Bun не возвращает страницы ОС, поэтому последовательные in-process замеры занижали бы второй сценарий. Локально: bare GET 2.6–2.8 KB/req, GET + 2 middleware 3.9–4.1 KB/req.
-  - Парсер коллектора расширен: принимает `ops/s` и `bytes/req` помимо `req/s` (значение складывается в `rps`).
-- **Dashboard: исторические тренды со всех категорий** — раньше `RPS Over Time` брал абсолютный RPS только из первой группы, где находилось имя фреймворка (обычно `GET / (simple JSON)`) — несопоставимо между категориями (GET /: 800k, upload: 7k) и ломалось при изменении набора групп между прогонами. Теперь:
-  - **`Avg Score vs Best — all categories (%)`** — нормализованный score: для каждого снапшота и топ-5 фреймворков среднее `(rps / groupBest × 100)` по **всем** группам, где фреймворк присутствует. Lower-is-better группы (аллокации, bytes/req) инвертируются (`groupBest / rps`), так что 100% всегда = «лучший в категории». Тултип показывает число учтённых групп.
-  - **`RPS by Category`** — второй чарт с выпадающим селектором: просмотр сырого RPS по любой группе за всю историю (по умолчанию `GET / (simple JSON)`).
-  - Нюанс реализации: `bun run <script>` внутри другого bun-процесса зависает (вложенный spawn) — subprocess вызывается как `bun p2-alloc.ts` напрямую; `MemoryCache` держит cleanup `setInterval`, поэтому `main()` завершается явным `process.exit(0)` (иначе процесс висит после печати и коллектор падает с таймаутом).
+- **P0 Hot-Path Benchmarks (`bench/p0.ts`)** — new scenarios for the 2.2 work, wired into the CI collector:
+  - **Concurrency** (C=10/100/1000 in-flight) — AsiJS vs Elysia vs Hono; shows where the context pool actually pays off. In the local run at C=1000 AsiJS ≈ Elysia (191k vs 190k req/s).
+  - **Route Table Scaling** — radix vs trie at N=10/100/1000/10000 routes (last-route lookup — worst case). Confirms: radix is unstable on small tables (fresh-params allocation), ≈ trie at scale — needs the optimization above.
+  - **Static: preload vs disk** — memory vs disk: locally **4.9–5.3×** (2.2.7).
+  - **Array Validation (100 items) + Validation Error Path** — compiled validation: AsiJS > Elysia on valid arrays and on the error path (invalid payload returns 400 for AsiJS, 422 for Elysia — expected status is respected, no false "errors").
+- **Collector parser fix (locale)** — `toLocaleString()` in a Russian Windows locale uses a space as the thousands separator (`16 354`), and the regex `\d[\d,]*` only allowed commas → local collector runs parsed almost zero rows (CI/en-US worked fine). The regex now accepts space/NBSP, and all benchmark output is forced to `toLocaleString("en-US")`. Result: locally **102/102** results parse (was 7).
+- **P1 API-Case Benchmarks (`bench/p1.ts`)** — second batch, wired into the CI collector (7 groups):
+  - **Query Cache (2.2.6)** — repeated query strings (hit) vs unique (miss) vs `queryCache: false`. The global cache singleton is accounted for: hit/miss run on the cached app, `queryCache: false` is created afterwards (otherwise `disableDefaultQueryCache()` would kill the cache for the hit measurement too). Locally: hit ≈ disabled (64.9k vs 64.5k) > miss (52k) — the cache gives ~25% on repeated queries, hit overhead is minimal (shallow copy on hit).
+  - **404 Fast Path** — missing-route lookup: AsiJS vs Elysia vs Hono (expected status 404, no false errors).
+  - **Error Path** — handler throws → 500: AsiJS (`silent: true`, no logging), Elysia/Hono with explicit `onError` (500 without stderr noise).
+  - **Large JSON Bodies (10KB/100KB, validated)** — compiled validation on large bodies: AsiJS ahead of Elysia at 10KB (7.1k vs 5.8k) and at 100KB (752 vs 609 req/s).
+- **P2 Feature Benchmarks (`bench/p2.ts` + `bench/p2-alloc.ts`)** — scenarios for features that had no benchmarks at all (8 groups, wired into the CI collector):
+  - **WebSocket Pub/Sub** — broadcast through `RoomManager` with 1/10/100 clients (mock ws: `readyState` + `send`, no real server).
+  - **Cache Layer** — `MemoryCache` set/get (2.3M ops/s get vs 940k set), ETag middleware 200 vs 304 fast path, response-cache HIT vs MISS (64k vs 17k ops/s).
+  - **Database Layer (2.3)** — sqlite in-memory CRUD: insert/select/update/delete + a 3-statement transaction (5.8k ops/s vs 56k delete).
+  - **Allocations** — RSS growth per request, measured in an **isolated subprocess** (`bench/p2-alloc.ts`): Bun does not return OS pages, so sequential in-process measurements would understate the second scenario. Locally: bare GET 2.6–2.8 KB/req, GET + 2 middleware 3.9–4.1 KB/req.
+  - Collector parser extended: accepts `ops/s` and `bytes/req` in addition to `req/s` (value folded into `rps`).
+- **Dashboard: historical trends across all categories** — previously `RPS Over Time` took the absolute RPS only from the first group containing a framework name (usually `GET / (simple JSON)`) — incomparable across categories (GET /: 800k, upload: 7k) and broken when the group set changed between runs. Now:
+  - **`Avg Score vs Best — all categories (%)`** — normalized score: for each snapshot and top-5 framework, the mean of `(rps / groupBest × 100)` across **all** groups where the framework appears. Lower-is-better groups (allocations, bytes/req) are inverted (`groupBest / rps`), so 100% always means "best in category". The tooltip shows the number of groups counted.
+  - **`RPS by Category`** — a second chart with a dropdown: raw RPS per group across history (default `GET / (simple JSON)`).
+  - Implementation detail: `bun run <script>` inside another bun process hangs (nested spawn) — the subprocess is invoked as `bun p2-alloc.ts` directly; `MemoryCache` holds a cleanup `setInterval`, so `main()` exits via an explicit `process.exit(0)` (otherwise the process hangs after printing and the collector times out).
 
 ## [1.4.0] - 2026-08-15
 
 ### 🚀 New Features
 
 #### Async Error Boundary — Structured Error Handling
-- **`ctx.errorBoundary<T>(fn)`** — ловит ошибки в handler'е: `fallback` / `onError(classified)` / `rethrow`. Возвращает structured response при выходе ошибки из роута.
-- **Error classification** — `classifyError()`: business (4xx) vs system (5xx) vs fatal (crash) vs validation. Ошибки: `HttpError`, `BusinessError`, `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `SystemError`, `FatalError`. Structured body: `{ error, code, category, details, requestId }`.
-- **Error reporting pipeline** — `errorBoundary()` plugin: reporters hooks (Sentry/логгер/метрики), `minCategory` фильтр, `requestId` correlation, глобальный `onError` handler. Хелперы: `runErrorReporters`, `tryCatch`.
-- **Retry policies** — `retry(fn, { attempts, backoff: fixed|linear|exponential, jitter, shouldRetry, onRetry })` + `computeBackoff()`. Дефолтный `shouldRetry`: 5xx и сетевые ошибки. 26 тестов.
+- **`ctx.errorBoundary<T>(fn)`** — catches errors in the handler: `fallback` / `onError(classified)` / `rethrow`. Returns a structured response when an error escapes a route.
+- **Error classification** — `classifyError()`: business (4xx) vs system (5xx) vs fatal (crash) vs validation. Errors: `HttpError`, `BusinessError`, `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `SystemError`, `FatalError`. Structured body: `{ error, code, category, details, requestId }`.
+- **Error reporting pipeline** — `errorBoundary()` plugin: reporter hooks (Sentry/logger/metrics), `minCategory` filter, `requestId` correlation, global `onError` handler. Helpers: `runErrorReporters`, `tryCatch`.
+- **Retry policies** — `retry(fn, { attempts, backoff: fixed|linear|exponential, jitter, shouldRetry, onRetry })` + `computeBackoff()`. Default `shouldRetry`: 5xx and network errors. 26 tests.
 
 #### Observability Suite
-- **Structured logging v2 — OTel Logs Bridge** — `otelLogs()` plugin + `OTLPLogsExporter`: StructuredLogEntry → OTLP LogRecord (OTel semantic conventions: service.name, http.request.method, url.path, http.response.status_code, error.type...), батчинг (bufferSize) + периодический flush, экспорт в любой OTLP/HTTP collector (Grafana Loki, SigNoz, Honeycomb). Хелперы: `entryToOTLPLogRecord`, `levelToSeverityNumber/Text`, `createOTelLogger`. 4 теста.
-- **Distributed tracing — W3C TraceContext через Redis** — `RedisTraceBridge` + `createRedisTraceBridge()`: span-события (traceId/spanId/parentSpanId) публикуются в Redis pub/sub канал, другие инстансы подхватывают и продолжают трассу. `newTraceId()`/`newSpanId()` W3C-совместимые. 3 теста.
-- **Healthcheck dashboard** — `healthDashboard()` middleware: `GET /__health` — live HTML страница (статус всех компонентов: кастомные проверки, circuit breakers OPEN/CLOSED/HALF_OPEN, PID/uptime/RSS/heap, auto-refresh 5s) + `GET /__health.json` — JSON snapshot (200/503 по статусу). 5 тестов.
-- **Metrics dashboard** — `createGrafanaDashboard()` генерирует pre-built Grafana dashboard JSON (7 панелей: requests total/rps/avg, requests by status, latency p50/p90/p99, top paths, error rate) для импорта. 3 теста.
+- **Structured logging v2 — OTel Logs Bridge** — `otelLogs()` plugin + `OTLPLogsExporter`: StructuredLogEntry → OTLP LogRecord (OTel semantic conventions: service.name, http.request.method, url.path, http.response.status_code, error.type...), batching (bufferSize) + periodic flush, export to any OTLP/HTTP collector (Grafana Loki, SigNoz, Honeycomb). Helpers: `entryToOTLPLogRecord`, `levelToSeverityNumber/Text`, `createOTelLogger`. 4 tests.
+- **Distributed tracing — W3C TraceContext via Redis** — `RedisTraceBridge` + `createRedisTraceBridge()`: span events (traceId/spanId/parentSpanId) are published to a Redis pub/sub channel, other instances pick them up and continue the trace. `newTraceId()`/`newSpanId()` are W3C-compatible. 3 tests.
+- **Healthcheck dashboard** — `healthDashboard()` middleware: `GET /__health` — live HTML page (status of all components: custom checks, circuit breakers OPEN/CLOSED/HALF_OPEN, PID/uptime/RSS/heap, auto-refresh 5s) + `GET /__health.json` — JSON snapshot (200/503 by status). 5 tests.
+- **Metrics dashboard** — `createGrafanaDashboard()` generates a pre-built Grafana dashboard JSON (7 panels: requests total/rps/avg, requests by status, latency p50/p90/p99, top paths, error rate) for import. 3 tests.
 
 #### Workspace Mode
-- **Workspace dashboard v2** — реальный live-мониторинг multi-app на одном `Bun.serve()`:
-  - Per-app метрики: request rate (req/s), error rate, avg duration, total requests, WebSocket connections
+- **Workspace dashboard v2** — real live monitoring of multiple apps on one `Bun.serve()`:
+  - Per-app metrics: request rate (req/s), error rate, avg duration, total requests, WebSocket connections
   - Per-route: count, errors, error %, avg duration
-  - Circuit breaker status (OPEN/CLOSED/HALF_OPEN) из глобального registry
+  - Circuit breaker status (OPEN/CLOSED/HALF_OPEN) from the global registry
   - Process-level CPU/memory (PID, uptime, RSS, heap)
-  - `GET /__asi/workspace` — dashboard с auto-refresh 2s (inline polling script)
-  - `GET /__asi/metrics` — JSON endpoint для метрик
-  - Опция `metrics: false` отключает сбор и endpoint
-- **Shared state bus** — `EventBus` (emit/on/off/once, emitAsync, stats) + `createRedisEventBus()` для кросс-инстанс коммуникации через Redis. Передаётся в Workspace опцией `{ bus }`, каждый sub-app получает его через `app.getState("eventBus")`
-- **Graceful shutdown cascade** — `Workspace.stop()` в правильном порядке: drain WebSocket sub-app'ов → lifecycle shutdown каждого sub-app → остановка корневого `Bun.serve()` последним
-- **14 тестов** (dashboard v2, metrics, event-bus, shutdown cascade)
+  - `GET /__asi/workspace` — dashboard with auto-refresh 2s (inline polling script)
+  - `GET /__asi/metrics` — JSON endpoint for metrics
+  - `metrics: false` option disables collection and the endpoint
+- **Shared state bus** — `EventBus` (emit/on/off/once, emitAsync, stats) + `createRedisEventBus()` for cross-instance communication via Redis. Passed to Workspace via `{ bus }`, each sub-app receives it through `app.getState("eventBus")`
+- **Graceful shutdown cascade** — `Workspace.stop()` in the right order: drain WebSocket sub-apps → lifecycle shutdown of each sub-app → stop the root `Bun.serve()` last
+- **14 tests** (dashboard v2, metrics, event-bus, shutdown cascade)
 
 #### CLI v2 — Smarter Developer Tools
-- **`asi analyze`** — статический анализ проекта: dead routes (дубли method+path), path shadowing (статический после динамического), отсутствующая валидация на мутирующих роутах, дублирующийся middleware, bottleneck detection (redundant async, await без async, sync middleware с await). Флаги: `--info`, `--json`, `--cwd`. 8 тестов.
-- **`asi doctor`** — диагностика проекта: конфигурация (package.json, entry, config file), зависимости (asijs, typescript, dev script), TypeScript strict mode + module resolution, security best practices (rate limiting, валидация мутаций, security headers, hard-coded secrets, admin auth). Флаги: `--json`, `--cwd`. 3 теста.
-- **`asi upgrade`** — проверка последней версии через npm registry, сравнение semver, обновление specifier в package.json, опциональный codemod для breaking changes (`--codemod`). Флаги: `--dry-run`, `--offline`. 6 тестов.
-- **`asi template <name>`** — установка шаблона напрямую в текущую директорию (без VS Code), пропуская существующие файлы.
-- **`asi dev --inspect`** — DevTools hint: dashboard `/__dev`, OpenAPI `/__docs`, команды REPL/inspect/analyze/doctor.
+- **`asi analyze`** — static project analysis: dead routes (duplicate method+path), path shadowing (static after dynamic), missing validation on mutating routes, duplicate middleware, bottleneck detection (redundant async, await without async, sync middleware with await). Flags: `--info`, `--json`, `--cwd`. 8 tests.
+- **`asi doctor`** — project diagnostics: configuration (package.json, entry, config file), dependencies (asijs, typescript, dev script), TypeScript strict mode + module resolution, security best practices (rate limiting, mutation validation, security headers, hard-coded secrets, admin auth). Flags: `--json`, `--cwd`. 3 tests.
+- **`asi upgrade`** — checks the latest version via the npm registry, semver comparison, updates the specifier in package.json, optional codemod for breaking changes (`--codemod`). Flags: `--dry-run`, `--offline`. 6 tests.
+- **`asi template <name>`** — installs a template directly into the current directory (no VS Code), skipping existing files.
+- **`asi dev --inspect`** — DevTools hint: dashboard `/__dev`, OpenAPI `/__docs`, REPL/inspect/analyze/doctor commands.
 
 #### Performance Optimisations
-- **Middleware Loop: Inline Execution (2.2.1)** — `createInlineFlatChain()`: flat middleware chains (без `next()`) теперь компилируются в единую inline async функцию через runtime codegen (`new Function`) — вызовы middleware записаны напрямую, без runtime for-loop и closure-переходов. Fallback на sequential loop при недоступности codegen (CSP). Применяется и в `MiddlewareChainFlattener` (Strategy 1), и в `compileHandler()` compiler.ts.
-- **`flattenMiddleware: true` по дефолту** — MiddlewareChainFlattener включён по умолчанию (`@default true`), отключается явным `flattenMiddleware: false`. Скомпилированные цепочки делегируют конвертацию результата в `app.toResponse` (Set-Cookie, auto-escape работают в flattened-пути).
-- **Cache invalidation по identity** — кэш скомпилированных цепочек теперь сверяет `handler` + массив middleware по ссылке: повторная регистрация роута с тем же `method:path`, но другим handler'ом, больше не возвращает устаревший результат (collision hash тоже безопасен).
+- **Middleware Loop: Inline Execution (2.2.1)** — `createInlineFlatChain()`: flat middleware chains (no `next()`) are now compiled into a single inline async function via runtime codegen (`new Function`) — middleware calls written directly, no runtime for-loop or closure hops. Falls back to a sequential loop when codegen is unavailable (CSP). Applied both in `MiddlewareChainFlattener` (Strategy 1) and `compileHandler()` in compiler.ts.
+- **`flattenMiddleware: true` by default** — MiddlewareChainFlattener is on by default (`@default true`), disabled explicitly with `flattenMiddleware: false`. Compiled chains delegate result conversion to `app.toResponse` (Set-Cookie, auto-escape work in the flattened path).
+- **Identity-based cache invalidation** — the compiled-chain cache now compares `handler` + the middleware array by reference: re-registering a route with the same `method:path` but a different handler no longer returns a stale result (the collision hash is also safe).
 - **Router Hot Path: Inline Static Routing (2.2.2)**:
-  - **`router: "radix"` по дефолту** — RadixTreeRouter (compressed trie, sorted array + binary search) стал default-бэкендом; `"trie"` остаётся опцией. Path-based middleware (`use("/api", mw)`) теперь корректно применяется и в radix-пути.
-  - **Inline static bypass** — fully-static пути (`/`, `/health`) регистрируются в отдельной `Map<path, Map<method, route>>` и ищутся прямым lookup без parsePath и segment walk (в обоих роутерах: radix и trie).
-  - **Pre-parsed path cache** — `PathSegmentsCache` (LRU, 512 по умолчанию): `parsePath()` результат кэшируется по строке пути, общий синглтон `getDefaultPathCache()`/`resetDefaultPathCache()`. Повторяющиеся hot paths не аллоцируют сегменты каждый запрос.
-  - **String interning** — `internString()`: имена параметров (`:id`, `:userId`) интернируются — все роуты с одинаковым именем используют один string object.
-  - **12 тестов** (path cache, interning, static bypass, radix по дефолту, path middleware + radix, cookies/auto-escape через flattened chain)
+  - **`router: "radix"` by default** — RadixTreeRouter (compressed trie, sorted array + binary search) became the default backend; `"trie"` remains an option. Path-based middleware (`use("/api", mw)`) now applies correctly in the radix path too.
+  - **Inline static bypass** — fully static paths (`/`, `/health`) register in a separate `Map<path, Map<method, route>>` and are found by direct lookup without parsePath and segment walking (in both routers: radix and trie).
+  - **Pre-parsed path cache** — `PathSegmentsCache` (LRU, 512 by default): `parsePath()` results cached by path string, shared singleton `getDefaultPathCache()`/`resetDefaultPathCache()`. Repeated hot paths don't allocate segments per request.
+  - **String interning** — `internString()`: parameter names (`:id`, `:userId`) are interned — all routes with the same name share one string object.
+  - **12 tests** (path cache, interning, static bypass, radix by default, path middleware + radix, cookies/auto-escape via flattened chain)
 - **Context Pool: Zero-Allocation Request Cycle (2.2.3)**:
-  - **`ContextPool`** — Recycler pattern: пул из 1000 pre-allocated `Context` объектов, `acquire()`/`release()` с полным сбросом полей + удалением middleware-свойств (нет утечек между запросами), pool growth при исчерпании, автоматический shrink до target size после idle-интервала. `@default true`, отключается `contextPool: false`, настройка через `contextPool: { size, max, shrinkIntervalMs }`.
-  - **Интеграция в `handle()`** — lazy acquire из пула + гарантированный `release` в `finally` (все ветки: успех, 404, ошибки). Response-конвертация (Set-Cookie, auto-escape) работает через pooled-путь.
-  - **Lazy getters** — `query`, `body()`/`json()`/`formData()`/`arrayBuffer()`, `cookies`, `url` уже ленивые (не инициализируются в конструкторе) — подтверждено и покрыто тестами; `console.log` в `_setQuery()`/`_setBody()` отсутствует.
-  - **16 тестов** (pool: acquire/release/reset/growth/shrink/stats, изоляция между запросами, concurrent-безопасность, error path, 404, cookies)
+  - **`ContextPool`** — Recycler pattern: a pool of 1000 pre-allocated `Context` objects, `acquire()`/`release()` with full field reset + middleware-property cleanup (no leaks across requests), pool growth when exhausted, automatic shrink to target size after an idle interval. `@default true`, disabled with `contextPool: false`, tuned via `contextPool: { size, max, shrinkIntervalMs }`.
+  - **Integration in `handle()`** — lazy acquire from the pool + guaranteed `release` in `finally` (all branches: success, 404, errors). Response conversion (Set-Cookie, auto-escape) works through the pooled path.
+  - **Lazy getters** — `query`, `body()`/`json()`/`formData()`/`arrayBuffer()`, `cookies`, `url` are lazy (not initialized in the constructor) — confirmed and covered by tests; no `console.log` in `_setQuery()`/`_setBody()`.
+  - **16 tests** (pool: acquire/release/reset/growth/shrink/stats, per-request isolation, concurrent safety, error path, 404, cookies)
 - **Security Headers: Pre-built Response (2.2.4)**:
-  - **Pre-built static headers** — `buildSecurityHeaders()` компилирует конфиг в плоский массив пар один раз; `securityHeaders()` применяет их к каждому ответу одним tight-loop (без итерации конфига и пересборки строк заголовков на каждый запрос)
-  - **Nonce path detection** — `autoNonce` теперь только для HTML-capable запросов (Accept содержит text/html/*/* или пуст): JSON API не тратит crypto + не мутирует CSP; nonce вставляется в CSP только когда ответ реально `text/html`
-  - **HSTS без URL-аллокации** — проверка протокола через `request.url.startsWith("https://")` вместо создания `URL` объекта на каждый запрос
-  - **Без no-op hops** — skip-path wrapper не добавляется при пустом `skipPaths`; no-op xssScan middleware не добавляется без кастомных паттернов (сокращает цепочку с 6 до 3-4 middleware)
-  - **Результат бенчмарка**: overhead `security: true` 71% → **55%** (33.8k → 53.6k rps), `apiSecurityCore` 68.6% → **54%**
-  - **14 новых тестов** (buildSecurityHeaders, применение заголовков, HSTS http/https, nonce path detection, CSP-inject только HTML, цепочка middleware)
+  - **Pre-built static headers** — `buildSecurityHeaders()` compiles the config into a flat array of pairs once; `securityHeaders()` applies them to each response in a tight loop (no config iteration and no header-string rebuilding per request)
+  - **Nonce path detection** — `autoNonce` now only for HTML-capable requests (Accept contains text/html/*/* or is empty): JSON APIs don't spend crypto and don't mutate CSP; the nonce is injected into CSP only when the response is actually `text/html`
+  - **HSTS without URL allocation** — protocol check via `request.url.startsWith("https://")` instead of creating a `URL` object per request
+  - **No no-op hops** — the skip-path wrapper is not added for an empty `skipPaths`; no-op xssScan middleware is not added without custom patterns (chain shortened from 6 to 3–4 middleware)
+  - **Benchmark result**: overhead of `security: true` 71% → **55%** (33.8k → 53.6k rps), `apiSecurityCore` 68.6% → **54%**
+  - **14 new tests** (buildSecurityHeaders, header application, HSTS http/https, nonce path detection, CSP-inject only for HTML, middleware chain)
 - **Complex Validation: Compiled TypeBox (2.2.5)**:
-  - **Two-stage compiled validation** — `validateAndCoerce()`: 1) fast path — скомпилированный `TypeCompiler.Check` на сырых данных (когда данные уже соответствуют схеме и defaults нет, Convert+Default полностью пропускаются); 2) slow path — полная коерция (Convert → Default → compiled Check) с идентичной семантикой старой реализации. `validate()` полностью на скомпилированном чекере.
-  - **Schema analysis** — `schemaHasDefaults()` (кэш через WeakMap, cycle-safe): определяет, безопасен ли fast path; при наличии defaults `Value.Default` всё равно выполняется.
-  - **`lruSchemaCache: true` по дефолту** — LRU-кэш скомпилированных валидаторов включён по умолчанию (`@default true`, max 10000, настраивается числом), `false` возвращает простой Map.
-  - **O(1) LRU eviction** — `SchemaCacheLRU` переписан с массива + `indexOf`/`splice` (O(n) на каждый get) на Map с переупорядочиванием через `delete`+`set` — get/evict теперь O(1) даже при тысячах схем.
-  - **Результат бенчмарка** (полный request path через `app.handle()`, реалистичная user-схема): валидные body 30k → **51k req/s (+69%)**, coercion-путь без регрессии (~28k); чистый микробенчмарк compiled Check vs interpreted Value.Check — **433×**.
-  - **9 новых тестов** (fast path identity/mutation-free, коерция, defaults, ошибки, schemaHasDefaults nested/union/cycle, validate(), lruSchemaCache default-on / false)
+  - **Two-stage compiled validation** — `validateAndCoerce()`: 1) fast path — compiled `TypeCompiler.Check` on raw data (when data already matches the schema and there are no defaults, Convert+Default are skipped entirely); 2) slow path — full coercion (Convert → Default → compiled Check) with semantics identical to the old implementation. `validate()` is fully on the compiled checker.
+  - **Schema analysis** — `schemaHasDefaults()` (WeakMap cache, cycle-safe): decides whether the fast path is safe; `Value.Default` still runs when defaults exist.
+  - **`lruSchemaCache: true` by default** — the LRU cache of compiled validators is on by default (`@default true`, max 10000, configurable as a number), `false` returns a plain Map.
+  - **O(1) LRU eviction** — `SchemaCacheLRU` rewritten from array + `indexOf`/`splice` (O(n) per get) to a Map with reordering via `delete`+`set` — get/evict are now O(1) even with thousands of schemas.
+  - **Benchmark result** (full request path through `app.handle()`, realistic user schema): valid bodies 30k → **51k req/s (+69%)**, coercion path without regression (~28k); pure microbenchmark compiled Check vs interpreted Value.Check — **433×**.
+  - **9 new tests** (fast path identity/mutation-free, coercion, defaults, errors, schemaHasDefaults nested/union/cycle, validate(), lruSchemaCache default-on / false)
 - **Query Param Optimisation (2.2.6)**:
-  - **QueryParseCache** — bounded LRU кэш разобранных query-строк (default 512, O(1) eviction через Map delete+set): повторяющиеся query-строки (pagination `?page=2&limit=50`, фильтры) не парсятся заново. Возвращается **shallow copy** — мутации `ctx.query` в одном запросе не портят кэш для остальных.
-  - **Safe decode** — `safeDecode()`: malformed percent-encoding (`%E0%A4%A`) больше не бросает URIError, а возвращает сырую строку (поведение URLSearchParams). Раньше `decodeURIComponent` в query-парсере бросал исключение на кривой URL.
-  - **`queryCache` по дефолту** — включён (`@default true`, `false` отключает, число задаёт max). Inline single-pass парсер без URL объекта уже был (2.5× быстрее URLSearchParams) — подтверждено бенчмарком.
-  - **Результат бенчмарка** (query-heavy request path, 10 повторяющихся query-строк): **64k → 76.2k req/s (+19%)**, цель плана +10-15%.
-  - **12 новых тестов** (cache hit/miss/evict/clear, shallow-copy изоляция от мутаций, decode, malformed %, ключи без значений, queryCache: false/число, pooled contexts, cached==uncached)
+  - **QueryParseCache** — bounded LRU cache of parsed query strings (default 512, O(1) eviction via Map delete+set): repeated query strings (pagination `?page=2&limit=50`, filters) are not re-parsed. Returns a **shallow copy** — `ctx.query` mutations in one request don't poison the cache for others.
+  - **Safe decode** — `safeDecode()`: malformed percent-encoding (`%E0%A4%A`) no longer throws URIError but returns the raw string (URLSearchParams behavior). Previously `decodeURIComponent` in the query parser threw on malformed URLs.
+  - **`queryCache` by default** — on (`@default true`, `false` disables, a number sets max). The inline single-pass parser without a URL object already existed (2.5× faster than URLSearchParams) — confirmed by benchmark.
+  - **Benchmark result** (query-heavy request path, 10 repeated query strings): **64k → 76.2k req/s (+19%)**, plan target +10–15%.
+  - **12 new tests** (cache hit/miss/evict/clear, shallow-copy isolation from mutations, decode, malformed %, keys without values, queryCache: false/number, pooled contexts, cached==uncached)
 - **Static Files: In-Memory Cache (2.2.7)**:
-  - **`preload`** — `staticFiles(root, { preload: true })` загружает matching файлы (glob `**&#47;*.{html,css,js,svg}` по умолчанию; строка/массив — явные паттерны) в память при старте через `Bun.Glob`; файлы больше `cacheMaxFileSize` пропускаются; `allowedExtensions` уважается. Работает независимо от `cacheSmallFiles`.
-  - **`cacheTtl`** — TTL кэша в секундах (MemoryCache-совместимая семантика): после истечения файл перечитывается с диска; ловит изменения, невидимые size/mtime.
-  - **Memory-first fast path** — найдено профилированием: `Bun.file().exists()` стоит ~150µs на запрос и был главным bottleneck (кэш проверялся ПОСЛЕ fs-операций). Теперь при `preload`/`cacheTtl` запрос отдаётся из памяти вообще **без fs-вызовов** (нулевой stat/read). Без этих опций сохранена прежняя семантика: `cacheSmallFiles` валидирует size/mtime с диска.
-  - **Общий путь кэширования** — `cacheFile()` (чтение буфера, bun-ETag, byte-accounting, eviction) используется и preload'ом, и запросами; lazy TTL cleanup.
-  - **Результат бенчмарка**: middleware 4.8k → **26.4k req/s (5.5×)**; полный request path 4.3k → **23.2k req/s (5.4×)** (цель плана +20-30%)
-  - **8 новых тестов** (preload default-glob/явные паттерны/size cap/allowedExtensions, поведение без опций, path traversal, TTL с same-size+same-mtime изменением, mtime-инвалидация без TTL)
+  - **`preload`** — `staticFiles(root, { preload: true })` loads matching files (glob `**&#47;*.{html,css,js,svg}` by default; a string/array is explicit patterns) into memory at startup via `Bun.Glob`; files larger than `cacheMaxFileSize` are skipped; `allowedExtensions` is respected. Works independently of `cacheSmallFiles`.
+  - **`cacheTtl`** — cache TTL in seconds (MemoryCache-compatible semantics): after expiry the file is re-read from disk; catches changes invisible to size/mtime.
+  - **Memory-first fast path** — found by profiling: `Bun.file().exists()` costs ~150µs per request and was the main bottleneck (the cache was checked AFTER fs operations). Now with `preload`/`cacheTtl` a request is served from memory with **no fs calls at all** (zero stat/read). Without those options the previous semantics are kept: `cacheSmallFiles` validates size/mtime from disk.
+  - **Shared caching path** — `cacheFile()` (buffer read, bun-ETag, byte accounting, eviction) is used by both preload and requests; lazy TTL cleanup.
+  - **Benchmark result**: middleware 4.8k → **26.4k req/s (5.5×)**; full request path 4.3k → **23.2k req/s (5.4×)** (plan target +20–30%)
+  - **8 new tests** (preload default-glob/explicit patterns/size cap/allowedExtensions, behavior without options, path traversal, TTL with same-size+same-mtime change, mtime invalidation without TTL)
 
 ### 2.3 — Database Layer
-- **`Database` класс** (`src/db/database.ts`) — zero-dep доступ к БД: SQLite через `bun:sqlite` (built-in, WAL), PostgreSQL через lazy `import("postgres")` с понятной ошибкой установки. `query`/`queryAsync`/`execute`/`executeAsync`/`first`/`exec`/`transaction`/`transactionAsync`/`listTables`/`tableInfo`/`close`.
-- **`Migrator`** (`src/db/migrator.ts`) — file-based миграции: `NNN_name.sql` (up-only) и `NNN_name.up.sql` + `NNN_name.down.sql` (reversible). Таблица `__migrations`, `up()` идемпотентный, `down()` (с .down.sql или untrack), `status()`, `create()` — скаффолдинг следующего номера. Двухпроходное чтение корректно ассоциирует .down.sql с .up.sql (readdir порядок).
-- **`runSeed` / `findSeedFile`** (`src/db/seed.ts`) — сидирование: `.sql` файлы (multi-statement exec) и `.ts`/`.js` модули (default export `(db) => void`).
-- **Db Studio** (`src/db/studio.ts`) — embedded GUI (аналог Prisma Studio): список таблиц, просмотр строк с пагинацией, SQL query runner, HTML-страница в тёмной теме. `studioHandler(db)` для монтирования в Asi-app, `serveDbStudio(db, { port })` — standalone сервер.
-- **`AsiConfig.database` + autoMigrate** — `app.db` lazy-геттер: подключение создаётся при первом обращении; `autoMigrate: true` прогоняет pending-миграции (один раз, при первом доступе), `autoSeed` запускает seed-файл. `DatabaseConfig` — комбинированный тип (существующий ORM-конфиг из `src/database.ts` + новые поля migrationsDir/autoMigrate/seedFile/autoSeed).
-- **`asi db` CLI** — `db migrate` (apply / `--create "name"` / `--down` / `--status`), `db seed [file]`, `db studio [--port 5500]`. Конфиг: `--url` / `--migrations-dir` флаги → `asi.config.(ts|js)` `database` секция → `DATABASE_URL` env → defaults (`file:./app.db`, `./migrations`).
-- **21 тест** (Database: CRUD/transaction/close/file-url/postgres-ошибка; Migrator: up/status/down/create/идемпотентность; Seed: sql/ts/not-found; Asi: app.db lazy + autoMigrate, listen(); Studio: HTML/API tables/table/query/error/server)
+- **`Database` class** (`src/db/database.ts`) — zero-dep database access: SQLite via `bun:sqlite` (built-in, WAL), PostgreSQL via lazy `import("postgres")` with a clear install error. `query`/`queryAsync`/`execute`/`executeAsync`/`first`/`exec`/`transaction`/`transactionAsync`/`listTables`/`tableInfo`/`close`.
+- **`Migrator`** (`src/db/migrator.ts`) — file-based migrations: `NNN_name.sql` (up-only) and `NNN_name.up.sql` + `NNN_name.down.sql` (reversible). `__migrations` table, `up()` idempotent, `down()` (with .down.sql or untrack), `status()`, `create()` — scaffolds the next number. Two-pass reading correctly associates .down.sql with .up.sql (readdir order).
+- **`runSeed` / `findSeedFile`** (`src/db/seed.ts`) — seeding: `.sql` files (multi-statement exec) and `.ts`/`.js` modules (default export `(db) => void`).
+- **Db Studio** (`src/db/studio.ts`) — embedded GUI (like Prisma Studio): table list, row browser with pagination, SQL query runner, dark-themed HTML page. `studioHandler(db)` to mount in an Asi app, `serveDbStudio(db, { port })` — standalone server.
+- **`AsiConfig.database` + autoMigrate** — `app.db` lazy getter: the connection is created on first access; `autoMigrate: true` runs pending migrations (once, on first access), `autoSeed` runs the seed file. `DatabaseConfig` — combined type (existing ORM config from `src/database.ts` + new fields migrationsDir/autoMigrate/seedFile/autoSeed).
+- **`asi db` CLI** — `db migrate` (apply / `--create "name"` / `--down` / `--status`), `db seed [file]`, `db studio [--port 5500]`. Config: `--url` / `--migrations-dir` flags → `asi.config.(ts|js)` `database` section → `DATABASE_URL` env → defaults (`file:./app.db`, `./migrations`).
+- **21 tests** (Database: CRUD/transaction/close/file-url/postgres-error; Migrator: up/status/down/create/idempotency; Seed: sql/ts/not-found; Asi: app.db lazy + autoMigrate, listen(); Studio: HTML/API tables/table/query/error/server)
 
 #### AI & MCP
-- **MCP v2 — AI-Native Protocol** (`asijs-mcp`) — новый выделенный пакет:
-  - **Pluggable transports**: `stdio` (основной, для Claude Desktop / Cursor / Zed / Continue.dev), `http` (JSON-RPC over POST), `sse` (streaming: endpoint discovery + notifications)
+- **MCP v2 — AI-Native Protocol** (`asijs-mcp`) — a new dedicated package:
+  - **Pluggable transports**: `stdio` (primary, for Claude Desktop / Cursor / Zed / Continue.dev), `http` (JSON-RPC over POST), `sse` (streaming: endpoint discovery + notifications)
   - **Protocol v2025-06-18**: prompts (analyze-route, generate-crud, debug-request, security-audit, architecture-review, optimize-routes), sampling (LLM-to-LLM), roots, progress, cursor pagination, streaming content types (image/audio/blob/resource), logging, completion
   - **Deep AsiJS runtime integration**: routes, circuit breakers (OPEN/CLOSED/HALF_OPEN + reset), WebSocket rooms/presence, hot reload, SSG paths, serverless cold-start stats, plugin dependency graph, rate limiter metrics
-  - **Dynamic documentation** — `docsDir` сканирует `.md` файлы в `docs://<slug>` ресурсы (вместо hard-coded ASIJS_DOCS)
-  - **Auth** — Bearer token + token-bucket rate limiting через AsiJS middleware на HTTP/SSE транспорте
-  - **Custom workflows** — декларативные воркфлоу (http/code/delay/log/result steps) + встроенные (`asijs/http-request`, `asijs/chain-requests`, `asijs/app-snapshot`)
-  - **67 тестов** (stdio, protocol, pagination, resources, prompts, workflows, asi-bridge)
+  - **Dynamic documentation** — `docsDir` scans `.md` files into `docs://<slug>` resources (instead of hard-coded ASIJS_DOCS)
+  - **Auth** — Bearer token + token-bucket rate limiting via AsiJS middleware on the HTTP/SSE transports
+  - **Custom workflows** — declarative workflows (http/code/delay/log/result steps) + built-ins (`asijs/http-request`, `asijs/chain-requests`, `asijs/app-snapshot`)
+  - **67 tests** (stdio, protocol, pagination, resources, prompts, workflows, asi-bridge)
 
 ## [1.3.0] - 2026-07-27
 
 ### 🚀 New Features
 
 #### Developer Experience
-- **Hot Reload 2.0** — `HotReloader` with `fs.watch`, 200ms debounce, module-level hot swap (handler/middleware → hot reload, routes/config → full reload). `HMRServer` with WebSocket browser push, typed events, exponential backoff reconnect. 23 теста.
-- **Interactive REPL** — `asi repl`. Создание роутов на лету, тестирование запросов (`GET /path`, `POST /path {"key":"val"}`), просмотр состояния (`.routes`, `.plugins`, `.state`, `.history`). Sandbox с import-line stripping и parameter shadowing. 32 теста.
-- **Web Playground** — `playgroundPlugin()` — полноценная IDE в браузере. Редактор кода, панель Output/Routes, request bar, 5 примеров (Hello World, REST API, JSX SSR, WebSocket Echo, Auth JWT). Rate-limited execution (10 req/min).
+- **Hot Reload 2.0** — `HotReloader` with `fs.watch`, 200ms debounce, module-level hot swap (handler/middleware → hot reload, routes/config → full reload). `HMRServer` with WebSocket browser push, typed events, exponential backoff reconnect. 23 tests.
+- **Interactive REPL** — `asi repl`. Create routes on the fly, test requests (`GET /path`, `POST /path {"key":"val"}`), inspect state (`.routes`, `.plugins`, `.state`, `.history`). Sandbox with import-line stripping and parameter shadowing. 32 tests.
+- **Web Playground** — `playgroundPlugin()` — a full IDE in the browser. Code editor, Output/Routes panel, request bar, 5 examples (Hello World, REST API, JSX SSR, WebSocket Echo, Auth JWT). Rate-limited execution (10 req/min).
 - **CLI v2** — `asi repl`, `asi build --ssg`, `asi build --target <platform>`, `asi plugin search/install/create/list`, `asi integrate <file>`
 
 #### AI & MCP
-- **MCP Server** остаётся стабильным (HTTP transport, 7 built-in tools, 4 resources). MCP v2 с stdio транспортом запланирован на v1.4.0.
+- **MCP Server** stays stable (HTTP transport, 7 built-in tools, 4 resources). MCP v2 with stdio transport planned for v1.4.0.
 
 #### Static Site Generation
-- **SSG / Static Export** — `buildSSG(app, options)` сканирует GET-маршруты, рендерит через `app.handle()`, сохраняет HTML в dist. Pretty URLs (`/about` → `about/index.html`) + Flat format. JSON export с `--export-api`. CLI: `asi build --ssg`. 11 тестов.
+- **SSG / Static Export** — `buildSSG(app, options)` scans GET routes, renders via `app.handle()`, saves HTML to dist. Pretty URLs (`/about` → `about/index.html`) + Flat format. JSON export with `--export-api`. CLI: `asi build --ssg`. 11 tests.
 
 #### WebSocket
-- **WebSocket Pub-Sub** — `RoomManager` с комнатами (`ws.join()`, `ws.leave()`, `ws.rooms()`), broadcast с exclude, presence tracking, typed events. `RedisPubSubBridge` для кросс-инстансной коммуникации. 25 тестов.
+- **WebSocket Pub-Sub** — `RoomManager` with rooms (`ws.join()`, `ws.leave()`, `ws.rooms()`), broadcast with exclude, presence tracking, typed events. `RedisPubSubBridge` for cross-instance communication. 25 tests.
 
 #### API Versioning
-- **API Versioning middleware** — URL/Header/Combined strategies, fallback (latest/stable/default/error), deprecation headers (`Sunset`, `Deprecation`, `Deprecation-Migration`), `versionPath()` helper. 23 теста.
+- **API Versioning middleware** — URL/Header/Combined strategies, fallback (latest/stable/default/error), deprecation headers (`Sunset`, `Deprecation`, `Deprecation-Migration`), `versionPath()` helper. 23 tests.
 
 #### Resilience & Performance
-- **Circuit Breaker** — `circuitBreaker()` middleware с CLOSED/OPEN/HALF_OPEN, sliding window, timeout, fallback, healthcheck integration. `ctx.circuitBreaker!("name", () => fetch(...))`. Пресеты: apiCircuitBreaker, dbCircuitBreaker, criticalCircuitBreaker. 45 тестов.
-- **Request Dedup & Cache Stampede Protection** — `deduplicate()` middleware, `InflightManager`, XFetch Algorithm (`P(refresh) = beta * (age / ttl)`), `xfetchWrap()`, MemoryCache/Redis интеграция. Пресеты: simple/cached/expensiveQuery. 29 тестов.
-- **Serverless Cold Start Optimisation** — `ServerlessOptimizer.warmUp()`, lazyImport, bundleConfig для 6 платформ (Cloudflare, Lambda@Edge, Deno Deploy, Vercel Edge, Netlify Edge, Bun). CLI: `asi build --target cloudflare`. 37 тестов.
+- **Circuit Breaker** — `circuitBreaker()` middleware with CLOSED/OPEN/HALF_OPEN, sliding window, timeout, fallback, healthcheck integration. `ctx.circuitBreaker!("name", () => fetch(...))`. Presets: apiCircuitBreaker, dbCircuitBreaker, criticalCircuitBreaker. 45 tests.
+- **Request Dedup & Cache Stampede Protection** — `deduplicate()` middleware, `InflightManager`, XFetch Algorithm (`P(refresh) = beta * (age / ttl)`), `xfetchWrap()`, MemoryCache/Redis integration. Presets: simple/cached/expensiveQuery. 29 tests.
+- **Serverless Cold Start Optimisation** — `ServerlessOptimizer.warmUp()`, lazyImport, bundleConfig for 6 platforms (Cloudflare, Lambda@Edge, Deno Deploy, Vercel Edge, Netlify Edge, Bun). CLI: `asi build --target cloudflare`. 37 tests.
 
 #### Security
-- **Built-in Security Module** — `AsiConfig.security` с autoEscape (XSS), maxBodySize, autoNonce (CSP nonce), strictContentType, OWASP headers. Zero-config sensible defaults. Пресеты: maxSecurity, apiSecurity, devSecurity. 37 тестов.
+- **Built-in Security Module** — `AsiConfig.security` with autoEscape (XSS), maxBodySize, autoNonce (CSP nonce), strictContentType, OWASP headers. Zero-config sensible defaults. Presets: maxSecurity, apiSecurity, devSecurity. 37 tests.
 
 #### Framework Adapters
-- **`@asijs/next`** — 10 тестов. App Router (`createNextHandler` → GET/POST/..., basePath, 404, params), Pages Router (`createPagesHandler`), Edge Runtime (`createEdgeHandler`)
-- **`@asijs/astro`** — 7 тестов. Astro server endpoints (`createAstroHandler`), method-specific (`createEndpoint`), Astro middleware
-- **`@asijs/remix`** — 8 тестов. Remix resource routes (`createRemixHandler` → loader + action), `createLoader`, `createAction`
-- **`@asijs/sveltekit`** — 8 тестов. SvelteKit handle hook (`createSvelteKitHook`), `createServerHandler`, `createUniversalHandler`
+- **`@asijs/next`** — 10 tests. App Router (`createNextHandler` → GET/POST/..., basePath, 404, params), Pages Router (`createPagesHandler`), Edge Runtime (`createEdgeHandler`)
+- **`@asijs/astro`** — 7 tests. Astro server endpoints (`createAstroHandler`), method-specific (`createEndpoint`), Astro middleware
+- **`@asijs/remix`** — 8 tests. Remix resource routes (`createRemixHandler` → loader + action), `createLoader`, `createAction`
+- **`@asijs/sveltekit`** — 8 tests. SvelteKit handle hook (`createSvelteKitHook`), `createServerHandler`, `createUniversalHandler`
 
 ### 🧩 Ecosystem
 
 #### Plugin System
-- **Plugin Dependency Manager** — граф зависимостей, DFS cycle detection (CyclicDependencyError), Kahn's topological sort, lazy init, hooks (onBeforeInit/onAfterInit/onBeforeRoute), `getGraphInfo()`, `toDot()`. 390 строк.
-- **Plugin Registry** — `asi plugin search/install/create/list/remove/awesome`. AWESOME_PLUGINS (40+ curated плагинов, 8 категорий). Scaffold нового плагина. CONTRIBUTING.md + PLUGIN_DEV_GUIDE.md. 18 тестов.
+- **Plugin Dependency Manager** — dependency graph, DFS cycle detection (CyclicDependencyError), Kahn's topological sort, lazy init, hooks (onBeforeInit/onAfterInit/onBeforeRoute), `getGraphInfo()`, `toDot()`. 390 lines.
+- **Plugin Registry** — `asi plugin search/install/create/list/remove/awesome`. AWESOME_PLUGINS (40+ curated plugins, 8 categories). New plugin scaffold. CONTRIBUTING.md + PLUGIN_DEV_GUIDE.md. 18 tests.
 
 #### Migration
-- **Express/Koa Migration** — `expressPlugin.wrap(mw)`, `koaPlugin.wrap(mw)`, `expressPlugin.handler()`, `koaPlugin.handler()`, EXPRESS_CODEMOD_RULES (22 правила), KOA_CODEMOD_RULES (22 правила). CLI: `asi integrate ./app.js`. 30 тестов.
+- **Express/Koa Migration** — `expressPlugin.wrap(mw)`, `koaPlugin.wrap(mw)`, `expressPlugin.handler()`, `koaPlugin.handler()`, EXPRESS_CODEMOD_RULES (22 rules), KOA_CODEMOD_RULES (22 rules). CLI: `asi integrate ./app.js`. 30 tests.
 
 #### OpenTelemetry
-- **`@asijs/opentelemetry`** — full OTel instrumentation. `TracerManager` (spans, W3C TraceContext, 5 exporters: Console/OTLP/Jaeger/Zipkin), `MetricsManager`, `LogsManager`, `otelPlugin()`. 22 теста.
+- **`@asijs/opentelemetry`** — full OTel instrumentation. `TracerManager` (spans, W3C TraceContext, 5 exporters: Console/OTLP/Jaeger/Zipkin), `MetricsManager`, `LogsManager`, `otelPlugin()`. 22 tests.
 
 #### VS Code Extension v0.2.0
-- **Debug Configuration Provider** — 4 конфига (Launch, Launch verbose, Attach, Launch Workspace). Source maps, auto-detection entry file.
-- **Template Explorer** — 9 шаблонов в 4 категориях. Поиск, preview файлов, Create Project.
-- **Create AsiJS Project Wizard** — 4-шаговый GUI wizard.
-- **Inline Diagnostics** — 6 проверок (missing asijs dep, missing app instance, async/await, TODO/FIXME). Code Actions.
-- 38 тестов.
+- **Debug Configuration Provider** — 4 configs (Launch, Launch verbose, Attach, Launch Workspace). Source maps, entry file auto-detection.
+- **Template Explorer** — 9 templates in 4 categories. Search, file preview, Create Project.
+- **Create AsiJS Project Wizard** — 4-step GUI wizard.
+- **Inline Diagnostics** — 6 checks (missing asijs dep, missing app instance, async/await, TODO/FIXME). Code Actions.
+- 38 tests.
 
 #### API Documentation Portal
-- **`apiDocsPlugin()`** — полноценный портал документации. Sidebar с поиском, code samples (4 языка: curl/Python/JS/Go), try-it-out proxy с SSRF защитой, светлая/тёмная тема.
-- **`ApiChangelog`** — snapshot/diff/toChangelogMarkdown между версиями API.
-- **`exportToMarkdown()` / `exportToHTML()`** — CI/CD экспорт.
-- 25 тестов.
+- **`apiDocsPlugin()`** — a full documentation portal. Searchable sidebar, code samples (4 languages: curl/Python/JS/Go), try-it-out proxy with SSRF protection, light/dark theme.
+- **`ApiChangelog`** — snapshot/diff/toChangelogMarkdown between API versions.
+- **`exportToMarkdown()` / `exportToHTML()`** — CI/CD export.
+- 25 tests.
 
 #### Load Testing Suite
-- 4 k6 сценария: auth-flow, CRUD, WebSocket, file-upload.
+- 4 k6 scenarios: auth-flow, CRUD, WebSocket, file-upload.
 - Docker orchestration (`docker run k6`).
-- `extractMetricsFromOutput()` — parsing p50/p90/p95/p99.
-- 28 тестов.
+- `extractMetricsFromOutput()` — p50/p90/p95/p99 parsing.
+- 28 tests.
 
 ### 📦 New Packages
 - `packages/opentelemetry-asijs/` — OpenTelemetry integration
@@ -225,7 +281,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧪 Testing & Quality
 
-- **Integration & E2E Tests** — Docker-based (PostgreSQL 5433, Redis 6380, MinIO 9001/9002). `test/integration/auto-api.test.ts` (19 тестов), `test/e2e/full-cycle.test.ts` (17 тестов: auth→register→login→JWT→CRUD→upload→WS), `test/e2e/redis-queue.test.ts` (7 тестов), `test/e2e/node-adapter.test.ts` (8 тестов). 52 теста total.
+- **Integration & E2E Tests** — Docker-based (PostgreSQL 5433, Redis 6380, MinIO 9001/9002). `test/integration/auto-api.test.ts` (19 tests), `test/e2e/full-cycle.test.ts` (17 tests: auth→register→login→JWT→CRUD→upload→WS), `test/e2e/redis-queue.test.ts` (7 tests), `test/e2e/node-adapter.test.ts` (8 tests). 52 tests total.
 - **Total: 1373 tests** (up from 700)
 - **TypeScript: 0 type errors** (`tsc --noEmit`)
 - **Pre-release Security Audit** — Reviewed all v1.3.0 modules. Found and fixed: 3 CRITICAL (sandbox escape, type errors), 2 HIGH (race condition, XSS), 3 MEDIUM (silent catches, rate limiting), 1 LOW. Two accepted trade-offs documented.
@@ -240,7 +296,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔬 Benchmark
 
-- **Benchmark Dashboard** — HTML dashboard с Chart.js, bar charts и trend lines. Интегрирован в vitepress docs. GitHub Actions CI pipeline.
+- **Benchmark Dashboard** — HTML dashboard with Chart.js, bar charts and trend lines. Integrated into the vitepress docs. GitHub Actions CI pipeline.
 - **Fullstack Benchmark Suite** — AsiJS vs Elysia+plugins vs Hono+plugins
 
 ---
@@ -675,8 +731,8 @@ Benchmarks on Windows 10, 8 CPU cores, 24GB RAM:
 ## [Unreleased]
 
 ### Planned
-- GraphQL plugin/adapter
-- Edge/serverless export (Cloudflare, Vercel)
-- Workspace / Multi-app support
-- SPA + Hydration mode
-- i18n plugin
+- **Derive Pattern (TODO 4.6)** — per-request memoized context (`ctx.derive`) + compile-time inlining
+- **Next.js / Remix in SSR benchmarks** — requires a Node toolchain (`next build` / `remix build`) in the Bun-only CI
+- **k6 load testing for the SSR category** — stable absolute numbers instead of the fetch benchmark
+- **`asi fmt`** — deterministic formatter (dprint/Biome wrapper)
+- **TOON in the core MCP layer** — `Accept: application/toon` for LLM endpoints

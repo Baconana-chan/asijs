@@ -38,6 +38,7 @@
 // Types
 // ============================================================================
 
+/** Options for streaming a single JSON value. */
 export interface StreamJsonOptions {
   /** Custom replacer passed to JSON.stringify */
   replacer?: (this: unknown, key: string, value: unknown) => unknown;
@@ -49,6 +50,7 @@ export interface StreamJsonOptions {
   headers?: Record<string, string>;
 }
 
+/** Options for NDJSON (newline-delimited JSON) streaming. */
 export interface StreamNDJsonOptions {
   /** Custom replacer passed to JSON.stringify */
   replacer?: (this: unknown, key: string, value: unknown) => unknown;

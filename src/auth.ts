@@ -38,6 +38,7 @@ import type { Context } from "./context";
 
 // ===== Types =====
 
+/** Options for JWT signing/verification (secret, algorithm, expiry, issuer/audience). */
 export interface JWTOptions {
   /** Secret key for HS256/HS384/HS512 */
   secret?: string;
@@ -58,6 +59,7 @@ export interface JWTOptions {
   clockTolerance?: number;
 }
 
+/** JWT payload claims (`sub`, `iss`, `aud`, `exp`, …) plus custom claims. */
 export interface JWTPayload {
   /** Subject (usually user ID) */
   sub?: string;
@@ -77,11 +79,13 @@ export interface JWTPayload {
   [key: string]: unknown;
 }
 
+/** JWT header — algorithm and token type. */
 export interface JWTHeader {
   alg: string;
   typ: "JWT";
 }
 
+/** JWT helper created by `jwt()` — sign, verify and decode tokens. */
 export interface JWTHelper {
   /** Sign a payload and return a JWT token */
   sign(payload: JWTPayload): Promise<string>;
@@ -93,6 +97,7 @@ export interface JWTHelper {
   decode(token: string): { header: JWTHeader; payload: JWTPayload } | null;
 }
 
+/** Options for bearer-token authentication middleware. */
 export interface BearerOptions {
   /** JWT helper instance */
   jwt: JWTHelper;
@@ -483,6 +488,15 @@ export function bearerMiddleware(options: BearerOptions): Middleware {
  *   expiresIn: "7d",
  *   exclude: ["/login", "/register", "/public/*"],
  * }));
+ * ```
+ */
+/**
+ * Auth plugin — JWT sign/verify + bearer protection in one `AsiPlugin`.
+ * Protects all routes except `exclude` paths.
+ *
+ * @example
+ * ```ts
+ * app.plugin(auth({ secret: process.env.JWT_SECRET!, expiresIn: "7d" }));
  * ```
  */
 export function auth(

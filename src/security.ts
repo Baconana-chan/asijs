@@ -32,6 +32,7 @@ import type { Middleware } from "./types";
 
 // ===== Types =====
 
+/** Content-Security-Policy header options (directives, report-only mode). */
 export interface ContentSecurityPolicyOptions {
   /** Use report-only mode (doesn't block, just reports) */
   reportOnly?: boolean;
@@ -60,6 +61,7 @@ export interface ContentSecurityPolicyOptions {
   };
 }
 
+/** Strict-Transport-Security header options (maxAge, subdomains, preload). */
 export interface HstsOptions {
   /** Max age in seconds */
   maxAge?: number;
@@ -69,6 +71,7 @@ export interface HstsOptions {
   preload?: boolean;
 }
 
+/** Referrer-Policy header options. */
 export interface ReferrerPolicyOptions {
   policy?:
     | "no-referrer"
@@ -81,6 +84,7 @@ export interface ReferrerPolicyOptions {
     | "unsafe-url";
 }
 
+/** Permissions-Policy header options (feature allowlists). */
 export interface PermissionsPolicyOptions {
   /** Feature permissions */
   features?: {
@@ -107,6 +111,7 @@ export interface PermissionsPolicyOptions {
   };
 }
 
+/** Security headers bundle — CSP, HSTS, referrer policy, permissions policy and more. */
 export interface SecurityOptions {
   /**
    * Content-Security-Policy header

@@ -1,10 +1,20 @@
+/**
+ * Error pages — automatic HTML 404/500 pages for browser requests.
+ *
+ * Detects HTML-capable requests (Accept / Sec-Fetch-Dest), discovers custom
+ * error-page files (404.tsx / error.tsx / not-found.tsx …) and falls back to
+ * a built-in XSS-safe page with route suggestions and dev-mode error details.
+ */
+
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
 import { html, type JSXNode } from "./jsx";
 
+/** Status codes that can have a dedicated error page. */
 export type ErrorPageKind = 404 | 500;
 
+/** Context passed to error-page renderers (custom files and the built-in page). */
 export interface ErrorPageContext {
   status: ErrorPageKind;
   path: string;
@@ -15,6 +25,7 @@ export interface ErrorPageContext {
   error?: unknown;
 }
 
+/** Options for error-page discovery and rendering. */
 export interface ErrorPagesOptions {
   enabled?: boolean;
   autoDiscover?: boolean;
@@ -94,6 +105,10 @@ function isJsxElementLike(value: unknown): boolean {
   );
 }
 
+/**
+ * Whether a request should receive an HTML error page — GET/HEAD from an
+ * HTML-accepting client (Accept header or Sec-Fetch-Dest: document).
+ */
 export function shouldRenderHtmlErrorPage(request: Request): boolean {
   const method = request.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD") {
@@ -113,10 +128,12 @@ export function shouldRenderHtmlErrorPage(request: Request): boolean {
   );
 }
 
+/** Resolve the directory that error-page files are searched from (rootDir or cwd). */
 export function getErrorPageSearchRoot(options?: ErrorPagesOptions): string {
   return resolve(options?.rootDir ?? process.cwd());
 }
 
+/** Find the first matching error-page file for the kind, or null when disabled/none found. */
 export function discoverErrorPagePath(
   kind: ErrorPageKind,
   options?: ErrorPagesOptions,
@@ -225,6 +242,7 @@ async function renderModuleResult(
   );
 }
 
+/** Import + render a discovered error-page module into a Response, or null. */
 export async function renderDiscoveredErrorPage(
   kind: ErrorPageKind,
   ctx: ErrorPageContext,
@@ -254,6 +272,7 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+/** Render the built-in XSS-safe HTML error page (with suggestions and dev error details). */
 export function renderDefaultErrorPage(ctx: ErrorPageContext): Response {
   const title =
     ctx.status === 404 ? "Page not found" : "Something went wrong";

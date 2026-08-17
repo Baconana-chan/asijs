@@ -41,6 +41,7 @@ import { createPlugin, type AsiPlugin } from "./plugin";
 // Types
 // ============================================================================
 
+/** Options for the auto-API plugin (prefix, tables, CRUD toggles, pagination). */
 export interface AutoAPIOptions {
   /** API prefix (default: /api) */
   prefix?: string;
@@ -67,6 +68,7 @@ export interface AutoAPIOptions {
   beforeOperation?: (operation: AutoAPIOperation) => Promise<void>;
 }
 
+/** One CRUD operation descriptor (method, table, id, query, body). */
 export interface AutoAPIOperation {
   method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   table: string;
@@ -75,6 +77,7 @@ export interface AutoAPIOperation {
   body?: unknown;
 }
 
+/** Introspected column metadata (type, nullability, keys, references). */
 export interface ColumnSchema {
   name: string;
   type: string;
@@ -84,6 +87,7 @@ export interface ColumnSchema {
   references?: { table: string; column: string };
 }
 
+/** Introspected table metadata (columns + primary key). */
 export interface TableSchema {
   name: string;
   columns: ColumnSchema[];
@@ -169,6 +173,7 @@ interface QueryParams {
   offset: number;
 }
 
+/** Parse query params into filters/order/limit/offset (with cap and defaults). */
 export function parseQueryParams(
   query: Record<string, string>,
   options: AutoAPIOptions,
@@ -226,6 +231,7 @@ export function parseQueryParams(
   return params;
 }
 
+/** Build a parameterized SELECT statement from parsed query params. */
 export function buildSelectSQL(
   table: string,
   params: QueryParams,

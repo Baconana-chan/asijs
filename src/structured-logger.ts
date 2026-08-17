@@ -44,8 +44,10 @@ import type { Middleware } from "./types";
 // Types
 // ============================================================================
 
+/** Log severity levels. */
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+/** Options for the structured logger (level, transport, fields). */
 export interface StructuredLoggerOptions {
   /**
    * Service name (appears in all log entries)
@@ -104,6 +106,7 @@ export interface StructuredLoggerOptions {
   includeSize?: boolean;
 }
 
+/** One structured log entry (timestamp, level, message, fields). */
 export interface StructuredLogEntry {
   /** ISO 8601 timestamp */
   timestamp: string;

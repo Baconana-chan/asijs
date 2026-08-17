@@ -23,8 +23,10 @@ import { join } from "path";
 // Types
 // ============================================================================
 
+/** Result status of one doctor check. */
 export type CheckStatus = "pass" | "warn" | "fail" | "skip" | "info";
 
+/** One project check performed by `asi doctor`. */
 export interface DoctorCheck {
   /** Unique check name */
   name: string;
@@ -39,6 +41,7 @@ export interface DoctorCheck {
   suggestion?: string;
 }
 
+/** Full doctor report (checks + summary). */
 export interface DoctorReport {
   /** Project root that was analyzed */
   cwd: string;
@@ -49,6 +52,7 @@ export interface DoctorReport {
   healthy: boolean;
 }
 
+/** Options for the doctor run (working directory). */
 export interface DoctorOptions {
   cwd?: string;
   /** Skip network checks (npm registry version lookup). Default: true (offline) */

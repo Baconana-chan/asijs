@@ -12,7 +12,7 @@ app.get("/hello/:name", (ctx) => {
   ctx.params;      // { name: "world" }
   ctx.query;       // { page: "1" } (parsed from URL)
   ctx.headers;     // Headers object
-  ctx.body();      // Parse JSON body (async)
+  ctx.parseBody(); // Parse body by Content-Type (async, JSON/YAML/…)
 
   // Response helpers
   ctx.status(201);                      // Set status code

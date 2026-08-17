@@ -19,6 +19,7 @@ import type { JSXElement } from "./jsx";
 // Types
 // ============================================================================
 
+/** Options for the SPA plugin (static root, fallback, asset caching). */
 export interface SPAOptions {
   /** Client entry point (relative to project root) */
   clientEntry?: string;
@@ -34,6 +35,7 @@ export interface SPAOptions {
   islands?: Record<string, string>;
 }
 
+/** A hydration island (client component mounted by id). */
 export interface IslandDefinition {
   /** Component name/identifier */
   name: string;
@@ -45,6 +47,7 @@ export interface IslandDefinition {
   id: string;
 }
 
+/** Result of the SPA/SSG build (pages, assets, timings). */
 export interface BuildResult {
   /** Output directory */
   outDir: string;

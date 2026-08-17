@@ -15,7 +15,8 @@
  *
  * AsiJS has ALL of these built-in.
  * Elysia needs: @elysiajs/cors, @elysiajs/jwt, @elysiajs/bearer,
- *               @elysiajs/swagger, elysia-rate-limit
+ *               @elysiajs/swagger (+ inline rate limiter — elysia-rate-limit
+ *               is incompatible with elysia 1.4.x, see elysiaInlineRateLimit)
  * Hono needs:   hono/cors, hono/jwt, hono/bearer-auth,
  *               hono/secure-headers, hono/etag, hono-rate-limiter
  *
@@ -42,7 +43,6 @@ import { cors as elysiaCors } from "@elysiajs/cors";
 import { jwt as elysiaJwt } from "@elysiajs/jwt";
 import { bearer as elysiaBearer } from "@elysiajs/bearer";
 import { swagger } from "@elysiajs/swagger";
-import { rateLimit as elysiaRateLimit } from "elysia-rate-limit";
 import { Hono } from "hono";
 
 // CI-aware iteration counts (override with BENCH_ITERATIONS / BENCH_WARMUP)
@@ -60,6 +60,29 @@ interface BenchResult {
   avgMs: number;
   totalMs: number;
   errors: number;
+}
+
+/**
+ * Minimal in-memory rate limiter for Elysia.
+ *
+ * Replaces `elysia-rate-limit@5.1.0`, which is incompatible with elysia
+ * 1.4.x — it calls the removed internal `plugin.beforeHandle(...)` and throws
+ * at plugin construction. Uses the public `onBeforeHandle` API instead, so the
+ * fully-loaded comparison stays fair: same CORS + rate-limit work per request.
+ */
+function elysiaInlineRateLimit(max = 100_000, durationMs = 60_000) {
+  const hits = new Map<string, { count: number; reset: number }>();
+  return new Elysia({ name: "bench-inline-rate-limit" }).onBeforeHandle(() => {
+    const now = Date.now();
+    const key = "global";
+    let entry = hits.get(key);
+    if (!entry || entry.reset < now) {
+      entry = { count: 0, reset: now + durationMs };
+      hits.set(key, entry);
+    }
+    entry.count++;
+    if (entry.count > max) throw new Error("Rate limit exceeded");
+  });
 }
 
 type RequestFactory = () => Request;
@@ -247,13 +270,7 @@ function createFullGetAsiApp(opts: { minimal: boolean }) {
 function createFullGetElysiaApp() {
   return new Elysia()
     .use(elysiaCors())
-    .use(
-      elysiaRateLimit({
-        duration: 60_000,
-        max: 100_000,
-        generator: () => "global",
-      }),
-    )
+    .use(elysiaInlineRateLimit())
     .get("/api/data", () => ({
       id: 1,
       name: "Test Item",
@@ -575,7 +592,7 @@ function createGatewayAsiApp() {
 function createGatewayElysiaApp() {
   return new Elysia()
     .use(elysiaCors({ origin: "https://app.example.com", credentials: true }))
-    .use(elysiaRateLimit({ duration: 60_000, max: 100_000, generator: () => "global" }))
+    .use(elysiaInlineRateLimit())
     .use(elysiaJwt({ name: "jwt", secret: JWT_SECRET }))
     .use(elysiaBearer())
     .get(
@@ -1282,7 +1299,7 @@ async function main() {
   console.log("📝 Notes:");
   console.log("   - AsiJS: ALL features built-in (zero external dependencies)");
   console.log("   - Elysia: @elysiajs/cors, @elysiajs/jwt, @elysiajs/bearer,");
-  console.log("             @elysiajs/swagger, elysia-rate-limit");
+  console.log("             @elysiajs/swagger + inline rate limiter");
   console.log("   - Hono:   hono/cors, hono/jwt, hono/secure-headers,");
   console.log("             hono/etag, hono-rate-limiter");
   console.log("   - Each framework configured with equivalent middleware stacks");

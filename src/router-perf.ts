@@ -84,6 +84,7 @@ export class SchemaCacheLRU {
 // Singleton default LRU cache (used by compiler.ts when enabled)
 let defaultLRU: SchemaCacheLRU | null = null;
 
+/** Get the shared LRU cache for compiled validation schemas. */
 export function getDefaultSchemaCache(max?: number): SchemaCacheLRU {
   if (!defaultLRU) {
     defaultLRU = new SchemaCacheLRU(max ?? 10000);
@@ -91,6 +92,7 @@ export function getDefaultSchemaCache(max?: number): SchemaCacheLRU {
   return defaultLRU;
 }
 
+/** Clear the shared schema cache (useful in tests). */
 export function resetDefaultSchemaCache(): void {
   defaultLRU = null;
 }
@@ -99,6 +101,7 @@ export function resetDefaultSchemaCache(): void {
 // 2. MiddlewareChainFlattener — Compile-Time Chain Optimisation
 // ============================================================================
 
+/** One flattened middleware entry in the pre-computed chain. */
 export interface FlattenedMiddleware {
   /** Pre-flattened async function that runs all middlewares + handler */
   execute: (ctx: Context) => Promise<Response>;
@@ -400,6 +403,7 @@ export class PathSegmentsCache {
 // functions of the path string, so sharing is safe and memory is bounded)
 let defaultPathCache: PathSegmentsCache | null = null;
 
+/** Get the shared cache of parsed path segments. */
 export function getDefaultPathCache(max?: number): PathSegmentsCache {
   if (!defaultPathCache) {
     defaultPathCache = new PathSegmentsCache(max ?? 512);
@@ -407,6 +411,7 @@ export function getDefaultPathCache(max?: number): PathSegmentsCache {
   return defaultPathCache;
 }
 
+/** Clear the shared path cache (useful in tests). */
 export function resetDefaultPathCache(): void {
   defaultPathCache = null;
 }

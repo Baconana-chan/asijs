@@ -1,0 +1,14 @@
+{
+  "name": "test_c",
+  "lang": "c",
+  "functions": [
+    {
+      "name": "add",
+      "params": {
+        "a": "number",
+        "b": "number"
+      },
+      "returns": "number"
+    }
+  ]
+}

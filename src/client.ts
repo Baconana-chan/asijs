@@ -26,6 +26,7 @@
 
 // ===== Types =====
 
+/** HTTP methods supported by the generated client. */
 export type HTTPMethod =
   | "get"
   | "post"
@@ -35,6 +36,7 @@ export type HTTPMethod =
   | "options"
   | "head";
 
+/** Per-request options: body, query, params, headers, timeout and abort. */
 export interface RequestOptions<
   TBody = unknown,
   TQuery = unknown,
@@ -52,6 +54,7 @@ export interface RequestOptions<
   fetch?: RequestInit;
 }
 
+/** Successful client response: parsed data + status + headers. */
 export interface ClientResponse<T> {
   data: T;
   status: number;
@@ -59,6 +62,7 @@ export interface ClientResponse<T> {
   response: Response;
 }
 
+/** Failed client response: error + status + headers. */
 export interface ClientError {
   error: unknown;
   status: number;
@@ -66,6 +70,7 @@ export interface ClientError {
   response: Response;
 }
 
+/** Client configuration (base URL, default headers, fetch overrides). */
 export interface ClientConfig {
   /** Base URL for all requests */
   baseUrl: string;
@@ -463,6 +468,7 @@ export function treaty<TApp = unknown>(
 
 // ===== Batch Requests =====
 
+/** One request in a `batchRequest` call. */
 export interface BatchRequest {
   method: HTTPMethod;
   path: string;
@@ -471,6 +477,7 @@ export interface BatchRequest {
   params?: Record<string, unknown>;
 }
 
+/** Result of `batchRequest`: per-request results + success/failure counts. */
 export interface BatchResponse<T = unknown> {
   results: Array<ClientResponse<T> | ClientError>;
   successful: number;
@@ -516,6 +523,7 @@ export async function batchRequest<T = unknown>(
 
 // ===== Retry Logic =====
 
+/** Retry policy for `withRetry` (attempts, backoff, jitter, retryable statuses). */
 export interface RetryOptions {
   /** Maximum number of retries */
   maxRetries?: number;

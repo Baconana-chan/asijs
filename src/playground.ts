@@ -20,6 +20,7 @@ import { Asi } from "./asi";
 // Playground Options
 // ============================================================================
 
+/** Options for the web playground (examples, rate limit, execution). */
 export interface PlaygroundOptions {
   /** Path to mount the playground (default: /play) */
   path?: string;
@@ -31,6 +32,7 @@ export interface PlaygroundOptions {
   timeout?: number;
 }
 
+/** One runnable example in the playground. */
 export interface PlaygroundExample {
   name: string;
   description: string;

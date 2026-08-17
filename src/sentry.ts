@@ -45,6 +45,7 @@ import type { Middleware } from "./types";
 // Types
 // ============================================================================
 
+/** Options for the Sentry reporter (DSN, env, release, capture config). */
 export interface SentryOptions {
   /**
    * Sentry DSN (Data Source Name).
@@ -127,6 +128,7 @@ export interface SentryOptions {
   maxBreadcrumbs?: number;
 }
 
+/** A Sentry event envelope (exception, message, breadcrumbs). */
 export interface SentryEvent {
   event_id: string;
   timestamp: string;
@@ -170,6 +172,7 @@ export interface SentryEvent {
   contexts?: Record<string, unknown>;
 }
 
+/** One stack frame in a Sentry event. */
 export interface SentryStackFrame {
   filename?: string;
   function?: string;

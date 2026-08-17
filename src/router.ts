@@ -1,3 +1,11 @@
+/**
+ * Router — trie-based router with `:param` and `*` wildcard support.
+ *
+ * Static paths resolve through a direct map bypass (no segment walk),
+ * dynamic segments walk a trie, and path parsing is cached via
+ * `PathSegmentsCache`. Used internally by the `Asi` application.
+ */
+
 import type {
   Route,
   RouteMatch,
@@ -11,12 +19,6 @@ import {
   parsePathCached,
   type PathSegmentsCache,
 } from "./router-perf";
-
-/**
- * Router — простой роутер с поддержкой параметров :id и wildcard *
- *
- * Использует Trie-структуру для быстрого поиска
- */
 
 interface TrieNode {
   handlers: Map<
@@ -41,6 +43,11 @@ function createNode(): TrieNode {
   };
 }
 
+/**
+ * Router — simple router with `:id` params and `*` wildcards.
+ *
+ * Uses a trie structure for fast lookup (see module header).
+ */
 export class Router {
   private root: TrieNode = createNode();
   private pathCache: PathSegmentsCache | null;

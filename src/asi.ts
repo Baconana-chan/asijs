@@ -1,3 +1,19 @@
+/**
+ * AsiJS core framework — the `Asi` application class.
+ *
+ * Routes, middleware, hooks, TypeBox validation, WebSockets, plugins,
+ * error pages, the database layer (2.3) and the compiled router.
+ *
+ * @example
+ * ```ts
+ * import { Asi } from "asijs";
+ *
+ * const app = new Asi();
+ * app.get("/", () => "Hello, world!");
+ * app.listen(3000);
+ * ```
+ */
+
 import type { Server, ServerWebSocket } from "bun";
 import type { ServerAdapter, ServerHandle } from "./runtime/types";
 import type { RoomManager, PubSubWebSocket } from "./ws-pubsub";
@@ -35,10 +51,18 @@ import {
   enableLRUSchemaCache,
   type CompiledRoute,
 } from "./compiler";
+import { wrapWithResponseSerializer } from "./serialize";
 import {
   RadixTreeRouter,
   MiddlewareChainFlattener,
 } from "./router-perf";
+import {
+  registerYamlFormat,
+  getFormat as getRegisteredFormat,
+  jsonFormat,
+  pickResponseFormat,
+  makeFormatResponse,
+} from "./formats";
 import {
   isFormDataSchema,
   validateFormData,
@@ -96,6 +120,13 @@ export interface WebSocketRoute<T = unknown> {
   beforeUpgrade?: (request: Request) => boolean | Promise<boolean>;
 }
 
+/**
+ * AsiJS application configuration — passed to `new Asi(config)`.
+ *
+ * Toggles the context pool, security presets, error-page discovery, the
+ * database layer, development mode and more. All fields are optional;
+ * each documented field is described inline below.
+ */
 export interface AsiConfig {
   port?: number;
   hostname?: string;
@@ -205,6 +236,19 @@ export interface AsiConfig {
    * @default true
    */
   queryCache?: boolean | number;
+
+  /**
+   * Default response format (formats layer) — "json" (default), "yaml",
+   * or a custom `DataFormat`. Object results, errors and 404 bodies are
+   * serialized in this format unless the Accept header asks for a
+   * registered alternative. Request bodies are parsed by Content-Type via
+   * `ctx.parseBody()` regardless.
+   *
+   * ```ts
+   * const app = new Asi({ format: "yaml" });
+   * ```
+   */
+  format?: string | import("./formats").DataFormat;
 
     /**
    * Плагин для HTTP-сервера (например, nodeAdapter для Node.js)
@@ -508,6 +552,9 @@ export class Asi {
   // Context pool — Recycler for zero-allocation request cycles
   private contextPool: ContextPool | null = null;
 
+  // Default response/request format (formats) — null = JSON
+  private _format: import("./formats").DataFormat | null = null;
+
   // Route metadata for compilation
   private routeMetadata: Array<{
     method: RouteMethod;
@@ -645,6 +692,11 @@ export class Asi {
           ? this.config.queryCache
           : undefined,
       );
+    }
+
+    // Default format (formats) — null = JSON
+    if (this.config.format) {
+      this.setFormat(this.config.format);
     }
 
     // Built-in security — auto-register middleware chain
@@ -885,8 +937,9 @@ export class Asi {
     const schema = options?.schema;
     const hasValidation = schema?.body || schema?.query || schema?.params;
     const hasHooks = options?.beforeHandle || options?.afterHandle;
+    const hasResponseSerializer = !!(schema?.response || options?.serializers);
 
-    if (!hasValidation && !hasHooks) {
+    if (!hasValidation && !hasHooks && !hasResponseSerializer) {
       return handler;
     }
 
@@ -901,7 +954,7 @@ export class Asi {
         : [options.afterHandle]
       : [];
 
-    return async (ctx: Context) => {
+    const wrapped = async (ctx: Context) => {
       // === Валидация ===
       if (hasValidation) {
         const validationErrors: ValidationError[] = [];
@@ -936,9 +989,10 @@ export class Asi {
               });
             }
           } else {
-            // Regular JSON body
+            // Regular body — format-aware: parses by Content-Type via the
+            // formats layer (JSON native, YAML/TOON/... when registered).
             try {
-              const rawBody = await ctx.json();
+              const rawBody = await ctx.parseBody();
               const result = validateAndCoerce(schema.body, rawBody);
               if (!result.success) {
                 validationErrors.push(
@@ -1019,6 +1073,14 @@ export class Asi {
 
       return result;
     };
+
+    // === Response serialization (3.2): status-keyed schema + content-type ===
+    // Object results are serialized with the compiled response serializer
+    // before the default JSON path. Non-matching results flow through.
+    return wrapWithResponseSerializer(wrapped, {
+      response: schema?.response,
+      serializers: options?.serializers,
+    });
   }
 
   // ===== Middleware =====
@@ -1287,6 +1349,10 @@ export class Asi {
         this.all(path, handler as any, options as any);
         return host;
       },
+      ws: (path, handlers, options) => {
+        this.ws(path, handlers as any, options as any);
+        return host;
+      },
       use: (pathOrMw: string | Middleware, mw?: Middleware) => {
         this.use(pathOrMw as any, mw as any);
         return host;
@@ -1439,6 +1505,50 @@ export class Asi {
   decorate<T = unknown>(key: string, value: T): this {
     this._decorators.set(key, value);
     return this;
+  }
+
+  /**
+   * Set the default response format (formats layer).
+   *
+   * Accepts a format name ("json" | "yaml") or a custom `DataFormat`.
+   * Object results, errors and 404 bodies are serialized in this format
+   * unless the Accept header asks for a registered alternative.
+   *
+   * ```ts
+   * app.setFormat("yaml");
+   * // or with a custom format:
+   * app.setFormat({ name: "toml", contentTypes: [...], ... });
+   * ```
+   */
+  setFormat(format: string | import("./formats").DataFormat): this {
+    if (typeof format === "string") {
+      if (format === "json") {
+        this._format = null;
+        return this;
+      }
+      if (format === "yaml") {
+        this._format = registerYamlFormat();
+        return this;
+      }
+      const fmt = getRegisteredFormat(format);
+      if (!fmt) {
+        throw new Error(
+          `[Asi] Unknown format "${format}" — register it with registerFormat() first.`,
+        );
+      }
+      this._format = fmt;
+      return this;
+    }
+    this._format = format;
+    return this;
+  }
+
+  /**
+   * Get the current default response format (formats layer).
+   * Returns the JSON format when none was set.
+   */
+  getFormat(): import("./formats").DataFormat {
+    return this._format ?? jsonFormat;
   }
 
   /**
@@ -1644,14 +1754,17 @@ export class Asi {
         meta.handler,
         meta.middlewares,
         meta.schemas,
+        this._format,
       );
 
-      // Static response precompute (safe subset)
+      // Static response precompute (safe subset) — skip when a non-JSON
+      // default format is set (the precomputed Response would be JSON).
       if (
         analysis.isStatic &&
         meta.middlewares.length === 0 &&
         !meta.schemas &&
-        meta.handler.length === 0
+        meta.handler.length === 0 &&
+        (!this._format || this._format.name === "json")
       ) {
         try {
           const result = (meta.handler as () => unknown)();
@@ -2077,6 +2190,17 @@ export class Asi {
       if (result instanceof Blob) {
         return new Response(result);
       }
+      // Formats layer: non-JSON default format or Accept-negotiated format
+      const fmt = pickResponseFormat(ctx, this._format);
+      if (fmt) {
+        return makeFormatResponse(
+          fmt.serialize(result),
+          fmt,
+          ctx,
+          status,
+          setCookies,
+        );
+      }
       // JSON response — fast path без cookies
       if (!setCookies || setCookies.length === 0) {
         return status === 200
@@ -2198,7 +2322,7 @@ export class Asi {
       }
     }
 
-    return ctx.status(404).jsonResponse(response);
+    return this._formatResponse(response, ctx, 404);
   }
 
   /** Find similar routes for 404 suggestions */
@@ -2238,14 +2362,25 @@ export class Asi {
     return suggestions.slice(0, 5);
   }
 
+  /** Serialize an error/404 object in the default (or negotiated) format. */
+  private _formatResponse(data: unknown, ctx: Context, status: number): Response {
+    const fmt = pickResponseFormat(ctx, this._format);
+    if (fmt) {
+      const setCookies = (ctx as any)._setCookies as string[] | undefined;
+      return makeFormatResponse(fmt.serialize(data), fmt, ctx, status, setCookies);
+    }
+    return ctx.status(status).jsonResponse(data);
+  }
+
   private async handleError(ctx: Context, error: unknown): Promise<Response> {
     const silent = this.config.silent ?? false;
     // Обработка ошибок валидации
     if (error instanceof ValidationException) {
-      return ctx.status(400).jsonResponse({
-        error: "Validation Error",
-        details: error.errors,
-      });
+      return this._formatResponse(
+        { error: "Validation Error", details: error.errors },
+        ctx,
+        400,
+      );
     }
 
     if (this.customErrorHandler) {
@@ -2317,10 +2452,11 @@ export class Asi {
       }
     }
 
-    return ctx.status(500).jsonResponse({
-      error: message,
-      ...(stack && { stack }),
-    });
+    return this._formatResponse(
+      { error: message, ...(stack && { stack }) },
+      ctx,
+      500,
+    );
   }
 
   // ===== Server =====

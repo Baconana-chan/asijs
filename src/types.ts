@@ -1,6 +1,15 @@
+/**
+ * Core shared types — routes, handlers, middleware and validation schemas.
+ *
+ * Everything here is framework-wide: `Handler` / `Middleware` are the shapes
+ * every route and plugin works with, `RouteOptions` / `RouteSchema` configure
+ * validation, and `InferSchema` derives TypeScript types from TypeBox schemas.
+ */
+
 import type { TSchema, Static } from "@sinclair/typebox";
 import type { Context, TypedContext } from "./context";
 
+/** HTTP methods supported by the router. `"ALL"` matches every method. */
 export type RouteMethod =
   | "GET"
   | "POST"
@@ -11,6 +20,10 @@ export type RouteMethod =
   | "OPTIONS"
   | "ALL";
 
+/**
+ * Route handler — receives the request context and returns a value.
+ * Objects are serialized to JSON, strings to text, `Response` is used as-is.
+ */
 export type Handler<T = unknown> = (ctx: Context) => T | Promise<T>;
 
 /** Типизированный handler с выводом типов из схемы */
@@ -23,6 +36,10 @@ export type TypedHandler<
   ctx: TypedContext<TBody, TQuery, TParams>,
 ) => TResponse | Promise<TResponse>;
 
+/**
+ * Middleware — runs before the handler. May short-circuit the request by
+ * returning a `Response`, or delegate to `next()` and post-process its result.
+ */
 export type Middleware = (
   ctx: Context,
   next: () => Promise<Response>,
@@ -48,6 +65,7 @@ export type ErrorHandler = (
 /** Кастомный обработчик 404 */
 export type NotFoundHandler = (ctx: Context) => Response | Promise<Response>;
 
+/** An internal route registration (method + path + handler + middlewares). */
 export interface Route {
   method: RouteMethod;
   path: string;
@@ -55,6 +73,7 @@ export interface Route {
   middlewares: Middleware[];
 }
 
+/** Result of matching a request path against the route table (params extracted). */
 export interface RouteMatch {
   path: string;
   handler: Handler;
@@ -78,8 +97,12 @@ export interface RouteSchema<
   params?: TParams;
   /** Схема заголовков */
   headers?: THeaders;
-  /** Схема ответа (для документации и клиента) */
-  response?: TResponse;
+  /**
+   * Схема ответа: одиночная TypeBox-схема (сериализация по умолчанию),
+   * либо статусно-ключевая map `{ 200: schema, "2xx": schema, default: schema }`
+   * для сериализации по статусу (3.2).
+   */
+  response?: TResponse | Record<string | number, TSchema>;
 }
 
 /** Опции для регистрации роута */
@@ -96,6 +119,12 @@ export interface RouteOptions<
   beforeHandle?: BeforeHandler | BeforeHandler[];
   /** Хук после handler */
   afterHandle?: AfterHandler | AfterHandler[];
+  /**
+   * Per-content-type response serializers (3.2):
+   * content-type → TypeBox schema or serializer fn. Picked via the
+   * request's Accept header; falls back to `schema.response` / JSON.
+   */
+  serializers?: Record<string, TSchema | ((value: unknown) => string)>;
 }
 
 /** Вывод типа из TSchema или fallback */
