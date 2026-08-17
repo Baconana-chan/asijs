@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawnSync } from "child_process";
@@ -33,8 +33,14 @@ import {
 import { handleNative } from "../src/native/cli";
 
 function toolchainAvailable(cmd: string, args: string[]): boolean {
-  const r = spawnSync(cmd, args, { encoding: "utf-8" });
-  return r.status === 0;
+  try {
+    const r = spawnSync(cmd, args, { encoding: "utf-8" });
+    return r.status === 0;
+  } catch {
+    // Toolchain not installed (ENOENT on spawn) — treat as unavailable so
+    // tests skip instead of crashing the file.
+    return false;
+  }
 }
 
 // ============================================================================
@@ -330,8 +336,13 @@ describe("native runtime (1.4)", () => {
       expect(isStale(nativeRoot, validManifest)).toBe(true);
       markBuilt(nativeRoot);
       expect(isStale(nativeRoot, validManifest)).toBe(false);
-      // Touching the manifest makes it stale again
-      writeFileSync(join(nativeRoot, "manifest.json"), "{}", "utf-8");
+      // Touching the manifest makes it stale again. Force the mtime forward:
+      // CI filesystems (overlayfs) can have coarse mtime granularity, and two
+      // writes in the same tick would leave manifest mtime == marker mtime,
+      // making isStale() return false (flaky CI failure).
+      const manifestPath = join(nativeRoot, "manifest.json");
+      writeFileSync(manifestPath, "{}", "utf-8");
+      utimesSync(manifestPath, new Date(), new Date(Date.now() + 60_000));
       expect(isStale(nativeRoot, validManifest)).toBe(true);
     } finally {
       cleanup();

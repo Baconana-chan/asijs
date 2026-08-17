@@ -95,6 +95,16 @@ function luaLibDirs(): string[] {
  * system lib dirs on POSIX) → a bare name for dlopen to resolve via the
  * loader's own search path. Returns null when nothing is found.
  */
+/** Whether a liblua path is actually loadable by the current process. */
+function luaLibLoadable(path: string): boolean {
+  try {
+    dlopenDefault(path, { luaL_newstate: { args: [], returns: "ptr" } });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function findLuaLib(): string | null {
   const env = process.env.ASI_LUA_LIB;
   if (env) {
@@ -108,7 +118,12 @@ export function findLuaLib(): string | null {
     }
   }
   // Bare name: dlopen will search the OS loader paths (LD_LIBRARY_PATH, …).
-  return luaLibCandidates()[0] ?? null;
+  // Verify it actually resolves before returning it — otherwise callers (and
+  // skipIf(!findLuaLib()) guards in tests) would believe liblua exists when
+  // it does not (e.g. CI without Lua installed).
+  const bare = luaLibCandidates()[0];
+  if (bare && luaLibLoadable(bare)) return bare;
+  return null;
 }
 
 // ============================================================================

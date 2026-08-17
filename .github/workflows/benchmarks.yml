@@ -14,9 +14,9 @@ on:
         required: false
         default: '1000'
       run_ssr_frameworks:
-        description: 'Build & benchmark Node SSR frameworks (SvelteKit/Astro/Nuxt — adds ~1-2 min)'
+        description: 'Build & benchmark Node SSR frameworks (SvelteKit/Astro/Nuxt — adds ~1-2 min). Set to false to skip (e.g. for a quick run).'
         required: false
-        default: 'false'
+        default: 'true'
       run_load_tests:
         description: 'Run k6 load tests (needs Docker)'
         required: false
@@ -63,7 +63,10 @@ jobs:
         run: bun install
 
       - name: Build SSR benchmark frameworks
-        if: github.event.inputs.run_ssr_frameworks == 'true'
+        # Run by default (push events have no inputs → undefined != 'false' is
+        # true) so the dashboard always includes the SSR category. Opt out with
+        # run_ssr_frameworks=false in a manual run.
+        if: github.event.inputs.run_ssr_frameworks != 'false'
         run: bun run bench:ssr:build
         env:
           CI: 'true'

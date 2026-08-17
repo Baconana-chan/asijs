@@ -303,8 +303,14 @@ describe("native Zig generation (2.1)", () => {
 // ============================================================================
 
 function toolchainAvailable(cmd: string, args: string[]): boolean {
-  const r = spawnSync(cmd, args, { encoding: "utf-8" });
-  return r.status === 0;
+  try {
+    const r = spawnSync(cmd, args, { encoding: "utf-8" });
+    return r.status === 0;
+  } catch {
+    // Toolchain not installed (ENOENT on spawn) — treat as unavailable so
+    // tests skip instead of crashing the file.
+    return false;
+  }
 }
 
 describe("native compile checks (2.1)", () => {
@@ -613,6 +619,10 @@ describe("native compile checks (2.1)", () => {
         if (process.platform === "win32") {
           writeFileSync(join(dir, "lib.def"), generateHaskellDef(), "utf-8");
           args.push("-static", "-optl", join(dir, "lib.def"), `-optl-Wl,--out-implib,${out}.a`);
+        } else {
+          // -dynamic: link against the shared RTS (distro GHC ships static,
+          // non-PIC package archives — without it the link fails on Linux).
+          args.push("-dynamic");
         }
         const r = spawnSync("ghc", args, { encoding: "utf-8" });
         expect(r.status).toBe(0);
@@ -645,6 +655,10 @@ describe("native compile checks (2.1)", () => {
         if (process.platform === "win32") {
           writeFileSync(join(dir, "lib.def"), generateHaskellDef(), "utf-8");
           args.push("-static", "-optl", join(dir, "lib.def"), `-optl-Wl,--out-implib,${libPath}.a`);
+        } else {
+          // -dynamic: link against the shared RTS (distro GHC ships static,
+          // non-PIC package archives — without it the link fails on Linux).
+          args.push("-dynamic");
         }
         const r = spawnSync("ghc", args, { encoding: "utf-8" });
         expect(r.status).toBe(0);

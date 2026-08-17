@@ -40,6 +40,11 @@ jobs:
       - name: Type check
         run: bun run typecheck
       
+      - name: Build core (dist for package tests)
+        # Package tests import "asijs" directly; dist/ is gitignored, so build it
+        # before running tests or those packages fail with Cannot find package.
+        run: bun run build
+      
       - name: Run tests
         # Native e2e tests compile real Rust/C/C++ modules — give them room
         run: bun test --timeout=120000

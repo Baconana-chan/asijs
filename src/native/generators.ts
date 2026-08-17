@@ -214,6 +214,12 @@ const haskellGenerator: NativeGenerator = {
     const args = ["-shared", "-fPIC", "-package", "text", "lib.hs", "-o", out];
     if (ext === ".dll") {
       args.push("-static", "-optl", "lib.def", `-optl-Wl,--out-implib,${out}.a`);
+    } else {
+      // -dynamic: link against the shared RTS. Distro GHC (e.g. Ubuntu's
+      // apt ghc) ships static, non-PIC package archives, so without this
+      // the linker fails with "relocation ... can not be used when making a
+      // shared object; recompile with -fPIC".
+      args.push("-dynamic");
     }
     return { cmd: "ghc", args };
   },
