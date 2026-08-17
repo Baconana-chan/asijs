@@ -623,6 +623,10 @@ describe("native compile checks (2.1)", () => {
           // -dynamic: link against the shared RTS (distro GHC ships static,
           // non-PIC package archives — without it the link fails on Linux).
           args.push("-dynamic");
+          // Embed an rpath to GHC's lib dir so dlopen can find the shared
+          // RTS/package .so files (they are not on ldconfig's default paths).
+          const libdir = spawnSync("ghc", ["--print-libdir"], { encoding: "utf-8" }).stdout.trim();
+          if (libdir) args.push(`-optl-Wl,-rpath,${libdir}`);
         }
         const r = spawnSync("ghc", args, { encoding: "utf-8" });
         expect(r.status).toBe(0);
@@ -659,6 +663,10 @@ describe("native compile checks (2.1)", () => {
           // -dynamic: link against the shared RTS (distro GHC ships static,
           // non-PIC package archives — without it the link fails on Linux).
           args.push("-dynamic");
+          // Embed an rpath to GHC's lib dir so dlopen can find the shared
+          // RTS/package .so files (they are not on ldconfig's default paths).
+          const libdir = spawnSync("ghc", ["--print-libdir"], { encoding: "utf-8" }).stdout.trim();
+          if (libdir) args.push(`-optl-Wl,-rpath,${libdir}`);
         }
         const r = spawnSync("ghc", args, { encoding: "utf-8" });
         expect(r.status).toBe(0);

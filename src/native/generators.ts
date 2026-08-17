@@ -8,6 +8,7 @@
  * work uniformly for rust / go / c / cpp / zig / nim / haskell.
  */
 
+import { spawnSync } from "child_process";
 import type { NativeLanguage, NativeManifest } from "./manifest";
 import { generateCargoToml, generateLibRs } from "./generate-rust";
 import { generateGoMod, generateMainGo } from "./generate-go";
@@ -220,6 +221,14 @@ const haskellGenerator: NativeGenerator = {
       // the linker fails with "relocation ... can not be used when making a
       // shared object; recompile with -fPIC".
       args.push("-dynamic");
+      // Embed an rpath to GHC's lib dir so dlopen can find the shared
+      // RTS/package .so files — they are not on the loader's default paths.
+      try {
+        const libdir = spawnSync("ghc", ["--print-libdir"], { encoding: "utf-8" }).stdout.trim();
+        if (libdir) args.push(`-optl-Wl,-rpath,${libdir}`);
+      } catch {
+        // no ghc → the build itself will fail later with a clear message
+      }
     }
     return { cmd: "ghc", args };
   },
