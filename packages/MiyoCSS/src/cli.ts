@@ -132,7 +132,7 @@ export function countUtilitySurface(config: ResolvedConfig): number {
   const spacing = Object.keys(t.spacing);
   const colors = Object.keys(t.colors);
 
-  let count = staticUtilityNames().length;
+  let count = staticUtilityNames(config).length;
 
   // colors × (text/bg/border)
   count += colors.length * 3;
@@ -233,7 +233,7 @@ export async function collectInfo(options: {
         count: Object.keys(resolved.theme.breakpoints).length,
         names: Object.keys(resolved.theme.breakpoints),
       },
-      staticUtilities: staticUtilityNames().length,
+      staticUtilities: staticUtilityNames(resolved).length,
       utilitySurface: countUtilitySurface(resolved),
     },
   };

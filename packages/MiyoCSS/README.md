@@ -104,6 +104,36 @@ Coverage (0.3): layout, flex/grid, spacing with negatives, typography, colors wi
 
 Variants (0.4): pseudo-classes (`hover:`, `focus:`, `active:`, `focus-visible:`, `disabled:`, `placeholder:` …), breakpoints (`sm:`–`2xl:` + custom), `dark:` (`media` or `class` strategy from `options.darkMode`). Composition — `hover:md:bg-red-500` renders as `@media (min-width: 768px) { .hover\:md\:bg-red-500:hover { … } }`. `generateCSS` sorts by cascade: base → pseudo → dark → breakpoints ascending, so `md:p-4` always overrides `p-4`.
 
+Engine extensions (1.1): `group-*` / `peer-*` variants (`group-hover:`, `peer-checked:`, …), `before:` / `after:` pseudo-elements (with `content-*` utilities), dynamic values from tokens inside arbitrary values (`w-[calc(100%_-_token(spacing.4))]`), shortcuts (`center`, `inline-center`).
+
+### Custom utilities (`defineUtility`)
+
+```ts
+import { defineConfig, defineUtility } from "miyocss";
+
+const config = defineConfig({
+  utilities: [
+    defineUtility({
+      name: "brand",
+      // exact class → declarations
+      static: { "brand-card": { background: "#6d28d9", borderRadius: "8px" } },
+      // regex matchers, first hit wins
+      match: [
+        {
+          pattern: /^brand-padding-(.+)$/,
+          apply: (m, cfg) =>
+            cfg.theme.spacing[m[1]] ? { padding: String(cfg.theme.spacing[m[1]]) } : null,
+        },
+      ],
+    }),
+  ],
+});
+
+const css = generateCSS(["brand-card", "hover:brand-padding-4"], resolveConfig(config));
+```
+
+Custom utilities resolve **before** built-ins (a user `flex` overrides the built-in one — documented contract), work with all variants, and are included in `staticUtilityNames()` / `generateFullCSS()` (`collect: false`).
+
 ## SSR build (0.5 — the key feature)
 
 ```tsx

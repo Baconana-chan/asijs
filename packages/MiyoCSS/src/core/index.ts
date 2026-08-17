@@ -21,6 +21,7 @@ export {
   resolveDefaultConfig,
   deepMerge,
   flattenColors,
+  defineUtility,
 } from "./config";
 
 export type {
@@ -33,6 +34,8 @@ export type {
   MiyoConfig,
   FullTheme,
   ResolvedConfig,
+  CustomUtility,
+  CustomUtilityMatcher,
 } from "./config";
 
 export { defaultTheme, defaultOptions } from "./defaults";
@@ -51,6 +54,8 @@ export {
   generateCSS,
   parseVariants,
   PSEUDO_VARIANTS,
+  PSEUDO_ELEMENTS,
+  GROUPABLE_PSEUDOS,
 } from "./variants";
 
 export {

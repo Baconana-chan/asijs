@@ -135,6 +135,8 @@
     .badge-green { background: rgba(63, 185, 80, 0.15); color: var(--green); }
     .badge-yellow { background: rgba(210, 153, 34, 0.15); color: var(--orange); }
     .badge-red { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+    .badge-blue { background: rgba(88, 166, 255, 0.18); color: var(--accent); }
+    .table-note { color: var(--muted); font-size: 0.78rem; margin-top: 0.75rem; line-height: 1.5; }
     .trend-up { color: var(--green); }
     .trend-down { color: var(--red); }
     .footer {
@@ -164,9 +166,18 @@
 
   <h2>📈 Historical Trends</h2>
   <div class="chart-card">
-    <h3>RPS Over Time (Top 5 Frameworks)</h3>
+    <h3>Avg Score vs Best — all categories (%)</h3>
     <div class="chart-container">
       <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+  <div class="chart-card">
+    <h3>RPS by Category
+      <select id="trendGroupSelect"
+        style="background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:4px 8px;margin-left:8px;font-size:13px;"></select>
+    </h3>
+    <div class="chart-container">
+      <canvas id="groupTrendChart"></canvas>
     </div>
   </div>
 
@@ -176,8 +187,8 @@
   </div>
 
   <script>
-    const LATEST = {"timestamp":"2026-08-15T12:00:52.661Z","commit":"9c03afc","branch":"main","groups":[{"name":"GET / (simple JSON)","results":[]},{"name":"GET /user/:id (path params)","results":[]},{"name":"GET /search?q=... (query params)","results":[]},{"name":"POST /users (JSON body, explicit parsing)","results":[]},{"name":"POST /users (with validation)","results":[]},{"name":"1. Middleware Overhead (5 middleware chain)","results":[]},{"name":"2. Complex Validation (4-level nested object)","results":[]},{"name":"3a. File Upload (1MB multipart)","results":[{"name":"AsiJS (1MB)","rps":894,"avgMs":1.1182,"errors":0},{"name":"Elysia (1MB)","rps":879,"avgMs":1.1373,"errors":0},{"name":"Hono (1MB)","rps":571,"avgMs":1.7527,"errors":0}]},{"name":"3b. File Upload (5MB multipart)","results":[{"name":"AsiJS (5MB)","rps":108,"avgMs":9.2321,"errors":0},{"name":"Hono (5MB)","rps":94,"avgMs":10.6724,"errors":0},{"name":"Elysia (5MB)","rps":83,"avgMs":12.0359,"errors":0}]},{"name":"4a. Static File Serving (small file)","results":[]},{"name":"4b. Static File Serving (2MB file)","results":[]},{"name":"5. JSX / HTML Rendering (100-row table)","results":[]},{"name":"6a. Blog API - GET /posts (list + pagination)","results":[]},{"name":"6b. Blog API - GET /posts/:id (single post)","results":[]},{"name":"6c. Blog API - POST /posts (auth + validation)","results":[]},{"name":"1. Fully-Loaded GET /api/data","results":[]},{"name":"2. Auth POST /api/posts (JWT + Validation + CORS + Security)","results":[]},{"name":"3. API Gateway GET /api/users/:id/profile (max middleware)","results":[]},{"name":"4a. CRUD API - GET /api/products (list + filter + pagination)","results":[]},{"name":"4b. CRUD API - GET /api/products/:id","results":[]},{"name":"4c. CRUD API - POST /api/products (auth + validation)","results":[]},{"name":"4d. CRUD API - PUT /api/products/:id (auth + partial update)","results":[]},{"name":"5. CORS Preflight OPTIONS /api/data","results":[]},{"name":"6. Security Headers Overhead (bare vs helmet)","results":[]}]};
-    const HISTORY = [{"timestamp":"2026-08-15T12:00:52.661Z","commit":"9c03afc","branch":"main","groups":[{"name":"GET / (simple JSON)","results":[]},{"name":"GET /user/:id (path params)","results":[]},{"name":"GET /search?q=... (query params)","results":[]},{"name":"POST /users (JSON body, explicit parsing)","results":[]},{"name":"POST /users (with validation)","results":[]},{"name":"1. Middleware Overhead (5 middleware chain)","results":[]},{"name":"2. Complex Validation (4-level nested object)","results":[]},{"name":"3a. File Upload (1MB multipart)","results":[{"name":"AsiJS (1MB)","rps":894,"avgMs":1.1182,"errors":0},{"name":"Elysia (1MB)","rps":879,"avgMs":1.1373,"errors":0},{"name":"Hono (1MB)","rps":571,"avgMs":1.7527,"errors":0}]},{"name":"3b. File Upload (5MB multipart)","results":[{"name":"AsiJS (5MB)","rps":108,"avgMs":9.2321,"errors":0},{"name":"Hono (5MB)","rps":94,"avgMs":10.6724,"errors":0},{"name":"Elysia (5MB)","rps":83,"avgMs":12.0359,"errors":0}]},{"name":"4a. Static File Serving (small file)","results":[]},{"name":"4b. Static File Serving (2MB file)","results":[]},{"name":"5. JSX / HTML Rendering (100-row table)","results":[]},{"name":"6a. Blog API - GET /posts (list + pagination)","results":[]},{"name":"6b. Blog API - GET /posts/:id (single post)","results":[]},{"name":"6c. Blog API - POST /posts (auth + validation)","results":[]},{"name":"1. Fully-Loaded GET /api/data","results":[]},{"name":"2. Auth POST /api/posts (JWT + Validation + CORS + Security)","results":[]},{"name":"3. API Gateway GET /api/users/:id/profile (max middleware)","results":[]},{"name":"4a. CRUD API - GET /api/products (list + filter + pagination)","results":[]},{"name":"4b. CRUD API - GET /api/products/:id","results":[]},{"name":"4c. CRUD API - POST /api/products (auth + validation)","results":[]},{"name":"4d. CRUD API - PUT /api/products/:id (auth + partial update)","results":[]},{"name":"5. CORS Preflight OPTIONS /api/data","results":[]},{"name":"6. Security Headers Overhead (bare vs helmet)","results":[]}]}];
+    const LATEST = {"timestamp":"2026-08-17T11:38:12.028Z","commit":"aff3460","branch":"main","groups":[{"name":"GET / (simple JSON)","results":[{"name":"Elysia","rps":148732,"avgMs":0.0067,"errors":0},{"name":"Raw Bun","rps":138765,"avgMs":0.0072,"errors":0},{"name":"AsiJS (compiled)","rps":90036,"avgMs":0.0111,"errors":0},{"name":"AsiJS","rps":87554,"avgMs":0.0114,"errors":0},{"name":"Hono","rps":83727,"avgMs":0.0119,"errors":0}]},{"name":"GET /user/:id (path params)","results":[{"name":"Elysia","rps":138255,"avgMs":0.0072,"errors":0},{"name":"Raw Bun","rps":115364,"avgMs":0.0087,"errors":0},{"name":"AsiJS","rps":84218,"avgMs":0.0119,"errors":0},{"name":"AsiJS (compiled)","rps":79919,"avgMs":0.0125,"errors":0},{"name":"Hono","rps":72627,"avgMs":0.0138,"errors":0}]},{"name":"GET /search?q=... (query params)","results":[{"name":"Elysia","rps":131278,"avgMs":0.0076,"errors":0},{"name":"Raw Bun","rps":113698,"avgMs":0.0088,"errors":0},{"name":"AsiJS (compiled)","rps":104243,"avgMs":0.0096,"errors":0},{"name":"AsiJS","rps":87098,"avgMs":0.0115,"errors":0},{"name":"Hono","rps":60862,"avgMs":0.0164,"errors":0}]},{"name":"POST /users (JSON body, explicit parsing)","results":[{"name":"Raw Bun","rps":81990,"avgMs":0.0122,"errors":0},{"name":"Elysia","rps":64299,"avgMs":0.0156,"errors":0},{"name":"AsiJS","rps":55937,"avgMs":0.0179,"errors":0},{"name":"AsiJS (compiled)","rps":55166,"avgMs":0.0181,"errors":0},{"name":"Hono","rps":37068,"avgMs":0.027,"errors":0}]},{"name":"POST /users (with validation)","results":[{"name":"Elysia + validation","rps":50300,"avgMs":0.0199,"errors":0},{"name":"AsiJS compiled + val","rps":47953,"avgMs":0.0209,"errors":0},{"name":"AsiJS + validation","rps":38623,"avgMs":0.0259,"errors":0}]},{"name":"1. Middleware Overhead (AsiJS/Hono: real chain; Elysia: flat derive map)","results":[{"name":"Elysia (5 derive, flat map)","rps":96679,"avgMs":0.0103,"errors":0},{"name":"AsiJS (5 middleware)","rps":64711,"avgMs":0.0155,"errors":0},{"name":"Hono (5 middleware)","rps":24790,"avgMs":0.0403,"errors":0}]},{"name":"2. Complex Validation (4-level nested object)","results":[{"name":"Elysia (complex validation)","rps":27242,"avgMs":0.0367,"errors":0},{"name":"AsiJS (complex validation)","rps":21368,"avgMs":0.0468,"errors":0}]},{"name":"3a. File Upload (1MB multipart)","results":[{"name":"Elysia (1MB)","rps":641,"avgMs":1.5602,"errors":0},{"name":"AsiJS (1MB)","rps":583,"avgMs":1.7157,"errors":0},{"name":"Hono (1MB)","rps":536,"avgMs":1.8653,"errors":0}]},{"name":"3b. File Upload (5MB multipart)","results":[{"name":"Elysia (5MB)","rps":103,"avgMs":9.7201,"errors":0},{"name":"Hono (5MB)","rps":103,"avgMs":9.7072,"errors":0},{"name":"AsiJS (5MB)","rps":99,"avgMs":10.1337,"errors":0}]},{"name":"3c. File Upload + Save to Disk (256KB)","results":[{"name":"AsiJS streaming (saveStream)","rps":417,"avgMs":2.3953,"errors":0},{"name":"AsiJS buffered (arrayBuffer)","rps":394,"avgMs":2.5365,"errors":0}]},{"name":"4a. Static File Serving (small file)","results":[{"name":"Hono (small)","rps":7732,"avgMs":0.1293,"errors":0},{"name":"AsiJS (small)","rps":6215,"avgMs":0.1609,"errors":0}]},{"name":"4b. Static File Serving (2MB file)","results":[{"name":"Hono (2MB)","rps":8607,"avgMs":0.1162,"errors":0},{"name":"AsiJS (2MB)","rps":4633,"avgMs":0.2158,"errors":0}]},{"name":"5. JSX / HTML Rendering (100-row table)","results":[{"name":"AsiJS (JSX + renderToString)","rps":14143,"avgMs":0.0707,"errors":0},{"name":"Hono (string template)","rps":8021,"avgMs":0.1247,"errors":0},{"name":"AsiJS (string template)","rps":7813,"avgMs":0.128,"errors":0}]},{"name":"6a. Blog API - GET /posts (list + pagination)","results":[{"name":"Elysia (GET /posts)","rps":63248,"avgMs":0.0158,"errors":0},{"name":"Hono (GET /posts)","rps":44020,"avgMs":0.0227,"errors":0},{"name":"AsiJS (GET /posts)","rps":36858,"avgMs":0.0271,"errors":0}]},{"name":"6b. Blog API - GET /posts/:id (single post)","results":[{"name":"Elysia (GET /posts/:id)","rps":101551,"avgMs":0.0098,"errors":0},{"name":"Hono (GET /posts/:id)","rps":67498,"avgMs":0.0148,"errors":0},{"name":"AsiJS (GET /posts/:id)","rps":41427,"avgMs":0.0241,"errors":0}]},{"name":"6c. Blog API - POST /posts (auth + validation)","results":[{"name":"Elysia (POST /posts)","rps":42727,"avgMs":0.0234,"errors":0},{"name":"AsiJS (POST /posts)","rps":37555,"avgMs":0.0266,"errors":0},{"name":"Hono (POST /posts)","rps":37375,"avgMs":0.0268,"errors":0}]},{"name":"1a. Fully-Loaded GET — same middleware set (cors+rateLimit)","results":[{"name":"Elysia (cors+rateLimit)","rps":61422,"avgMs":0.0163,"errors":0},{"name":"AsiJS (cors+rateLimit)","rps":45563,"avgMs":0.0219,"errors":0}]},{"name":"1b. Fully-Loaded GET — full built-in stack (5 vs 4 layers)","results":[{"name":"AsiJS (cors+sec+etag+cache+rl)","rps":5253,"avgMs":0.1904,"errors":0},{"name":"Hono (cors+sec+etag+rl)","rps":3055,"avgMs":0.3274,"errors":0}]},{"name":"2. Auth POST /api/posts (JWT + Validation + CORS + Security)","results":[{"name":"AsiJS (cors+sec+jwt+val)","rps":28586,"avgMs":0.035,"errors":0},{"name":"Elysia (cors+jwt+bearer+val)","rps":3982,"avgMs":0.2511,"errors":0},{"name":"Hono (cors+sec+jwt+val)","rps":3928,"avgMs":0.2546,"errors":0}]},{"name":"3. API Gateway GET /api/users/:id/profile (max middleware)","results":[{"name":"Elysia (5-plugin stack)","rps":4848,"avgMs":0.2063,"errors":0},{"name":"AsiJS (7-layer stack)","rps":2856,"avgMs":0.3502,"errors":0},{"name":"Hono (6-layer stack)","rps":1489,"avgMs":0.6715,"errors":0}]},{"name":"4a. CRUD API - GET /api/products (list + filter + pagination)","results":[{"name":"Elysia (GET list)","rps":31207,"avgMs":0.032,"errors":0},{"name":"AsiJS (GET list)","rps":27788,"avgMs":0.036,"errors":0},{"name":"Hono (GET list)","rps":3159,"avgMs":0.3166,"errors":0}]},{"name":"4b. CRUD API - GET /api/products/:id","results":[{"name":"Elysia (GET single)","rps":56925,"avgMs":0.0176,"errors":0},{"name":"AsiJS (GET single)","rps":37411,"avgMs":0.0267,"errors":0},{"name":"Hono (GET single)","rps":3066,"avgMs":0.3262,"errors":0}]},{"name":"4c. CRUD API - POST /api/products (auth + validation)","results":[{"name":"AsiJS (POST create)","rps":23133,"avgMs":0.0432,"errors":0},{"name":"Elysia (POST create)","rps":4642,"avgMs":0.2154,"errors":0},{"name":"Hono (POST create)","rps":3750,"avgMs":0.2667,"errors":0}]},{"name":"4d. CRUD API - PUT /api/products/:id (auth + partial update)","results":[{"name":"Elysia (PUT update)","rps":4644,"avgMs":0.2153,"errors":0},{"name":"AsiJS (PUT update)","rps":4478,"avgMs":0.2233,"errors":0},{"name":"Hono (PUT update)","rps":3799,"avgMs":0.2632,"errors":0}]},{"name":"5. CORS Preflight OPTIONS /api/data","results":[{"name":"AsiJS (preflight)","rps":41743,"avgMs":0.024,"errors":0},{"name":"Elysia (preflight)","rps":38699,"avgMs":0.0258,"errors":0},{"name":"Hono (preflight)","rps":23411,"avgMs":0.0427,"errors":0}]},{"name":"6. Security Headers Overhead (bare vs helmet)","results":[{"name":"Elysia (bare, no helmet)","rps":196296,"avgMs":0.0051,"errors":0},{"name":"AsiJS (bare)","rps":98895,"avgMs":0.0101,"errors":0},{"name":"Hono (bare)","rps":84477,"avgMs":0.0118,"errors":0},{"name":"AsiJS + securityHeaders","rps":61892,"avgMs":0.0162,"errors":0},{"name":"Hono + secureHeaders","rps":42152,"avgMs":0.0237,"errors":0}]},{"name":"Concurrency (C=10 in-flight)","results":[{"name":"Elysia","rps":157412,"avgMs":0.0064,"errors":0},{"name":"AsiJS","rps":94405,"avgMs":0.0106,"errors":0},{"name":"Hono","rps":77111,"avgMs":0.013,"errors":0}]},{"name":"Concurrency (C=100 in-flight)","results":[{"name":"Elysia","rps":232992,"avgMs":0.0043,"errors":0},{"name":"AsiJS","rps":166326,"avgMs":0.006,"errors":0},{"name":"Hono","rps":96094,"avgMs":0.0104,"errors":0}]},{"name":"Concurrency (C=1000 in-flight)","results":[{"name":"Elysia","rps":304934,"avgMs":0.0033,"errors":0},{"name":"AsiJS","rps":146550,"avgMs":0.0068,"errors":0},{"name":"Hono","rps":105443,"avgMs":0.0095,"errors":0}]},{"name":"Route Table Scaling (N=10)","results":[{"name":"radix (N=10)","rps":105588,"avgMs":0.0095,"errors":0},{"name":"trie  (N=10)","rps":78213,"avgMs":0.0128,"errors":0}]},{"name":"Route Table Scaling (N=100)","results":[{"name":"trie  (N=100)","rps":107944,"avgMs":0.0093,"errors":0},{"name":"radix (N=100)","rps":104876,"avgMs":0.0095,"errors":0}]},{"name":"Route Table Scaling (N=1000)","results":[{"name":"trie  (N=1000)","rps":89049,"avgMs":0.0112,"errors":0},{"name":"radix (N=1000)","rps":77764,"avgMs":0.0129,"errors":0}]},{"name":"Route Table Scaling (N=10000)","results":[{"name":"trie  (N=10000)","rps":116459,"avgMs":0.0086,"errors":0},{"name":"radix (N=10000)","rps":107136,"avgMs":0.0093,"errors":0}]},{"name":"Static File Serving (preload vs disk)","results":[{"name":"AsiJS (preload)","rps":12476,"avgMs":0.0802,"errors":0},{"name":"AsiJS (disk)","rps":3704,"avgMs":0.27,"errors":0}]},{"name":"Array Validation (100 items, valid)","results":[{"name":"Elysia (array 100, valid)","rps":7197,"avgMs":0.1389,"errors":0},{"name":"AsiJS (array 100, valid)","rps":6944,"avgMs":0.144,"errors":0}]},{"name":"Validation Error Path (100-item array, invalid)","results":[{"name":"AsiJS (array 100, invalid)","rps":1756,"avgMs":0.5693,"errors":0},{"name":"Elysia (array 100, invalid)","rps":1035,"avgMs":0.9664,"errors":0}]},{"name":"Query Cache (repeated query — hit)","results":[{"name":"Elysia","rps":86246,"avgMs":0.0116,"errors":0},{"name":"AsiJS (cache on)","rps":78575,"avgMs":0.0127,"errors":0},{"name":"Hono","rps":63363,"avgMs":0.0158,"errors":0}]},{"name":"Query Cache (unique query — miss)","results":[{"name":"Elysia","rps":106646,"avgMs":0.0094,"errors":0},{"name":"Hono","rps":67212,"avgMs":0.0149,"errors":0},{"name":"AsiJS (cache on)","rps":58201,"avgMs":0.0172,"errors":0}]},{"name":"Query Cache (disabled — repeated query)","results":[{"name":"AsiJS (queryCache: false)","rps":65112,"avgMs":0.0154,"errors":0}]},{"name":"404 Fast Path (no route match)","results":[{"name":"Elysia","rps":249361,"avgMs":0.004,"errors":0},{"name":"Hono","rps":78649,"avgMs":0.0127,"errors":0},{"name":"AsiJS","rps":70708,"avgMs":0.0141,"errors":0}]},{"name":"Error Path (handler throws → 500)","results":[{"name":"Hono","rps":62787,"avgMs":0.0159,"errors":0},{"name":"Elysia","rps":62160,"avgMs":0.0161,"errors":0},{"name":"AsiJS","rps":53650,"avgMs":0.0186,"errors":0}]},{"name":"Large JSON Body (10KB, validated)","results":[{"name":"Elysia (+validation)","rps":6563,"avgMs":0.1524,"errors":0},{"name":"AsiJS (compiled+val)","rps":5865,"avgMs":0.1705,"errors":0}]},{"name":"Large JSON Body (100KB, validated)","results":[{"name":"AsiJS (compiled+val)","rps":811,"avgMs":1.233,"errors":0},{"name":"Elysia (+validation)","rps":727,"avgMs":1.3757,"errors":0}]},{"name":"WebSocket Pub/Sub — broadcast to 1 client(s)","results":[{"name":"broadcast (1 clients)","rps":423989,"avgMs":0.0024,"errors":0}]},{"name":"WebSocket Pub/Sub — broadcast to 10 client(s)","results":[{"name":"broadcast (10 clients)","rps":523670,"avgMs":0.0019,"errors":0}]},{"name":"WebSocket Pub/Sub — broadcast to 100 client(s)","results":[{"name":"broadcast (100 clients)","rps":430126,"avgMs":0.0023,"errors":0}]},{"name":"MemoryCache — set/get ops","results":[{"name":"MemoryCache.get","rps":2920561,"avgMs":0.0003,"errors":0},{"name":"MemoryCache.set","rps":760774,"avgMs":0.0013,"errors":0}]},{"name":"ETag middleware — 200 vs 304 fast-path","results":[{"name":"ETag match (304)","rps":21348,"avgMs":0.0468,"errors":0},{"name":"ETag gen (200)","rps":13514,"avgMs":0.074,"errors":0}]},{"name":"Response cache middleware — HIT vs MISS","results":[{"name":"response cache (HIT)","rps":70155,"avgMs":0.0143,"errors":0},{"name":"response cache (MISS)","rps":17679,"avgMs":0.0566,"errors":0}]},{"name":"Database Layer (sqlite in-memory) — CRUD ops","results":[{"name":"delete row","rps":67546,"avgMs":0.0148,"errors":0},{"name":"update row","rps":45246,"avgMs":0.0221,"errors":0},{"name":"select by id","rps":22788,"avgMs":0.0439,"errors":0},{"name":"insert (single row)","rps":20232,"avgMs":0.0494,"errors":0},{"name":"transaction (3 stmts)","rps":3935,"avgMs":0.2541,"errors":0}]},{"name":"Allocations — RSS growth per request (lower = better)","results":[{"name":"bare GET","rps":2701,"avgMs":0,"errors":0},{"name":"GET + 2 middleware","rps":3782,"avgMs":0,"errors":0}]},{"name":"SSR — 100-row table (production server, C=32)","results":[{"name":"AsiJS (JSX + renderToString)","rps":727,"avgMs":1.3748,"errors":0},{"name":"AsiJS (string template)","rps":645,"avgMs":1.5504,"errors":0},{"name":"Hono (string template)","rps":645,"avgMs":1.5498,"errors":0},{"name":"SvelteKit (adapter-node)","rps":638,"avgMs":1.5668,"errors":0},{"name":"Astro (standalone)","rps":447,"avgMs":2.2359,"errors":0},{"name":"Nuxt (nitro bun)","rps":309,"avgMs":3.2373,"errors":0}]}]};
+    const HISTORY = [{"timestamp":"2026-08-15T12:00:52.661Z","commit":"9c03afc","branch":"main","groups":[{"name":"GET / (simple JSON)","results":[]},{"name":"GET /user/:id (path params)","results":[]},{"name":"GET /search?q=... (query params)","results":[]},{"name":"POST /users (JSON body, explicit parsing)","results":[]},{"name":"POST /users (with validation)","results":[]},{"name":"1. Middleware Overhead (5 middleware chain)","results":[]},{"name":"2. Complex Validation (4-level nested object)","results":[]},{"name":"3a. File Upload (1MB multipart)","results":[{"name":"AsiJS (1MB)","rps":894,"avgMs":1.1182,"errors":0},{"name":"Elysia (1MB)","rps":879,"avgMs":1.1373,"errors":0},{"name":"Hono (1MB)","rps":571,"avgMs":1.7527,"errors":0}]},{"name":"3b. File Upload (5MB multipart)","results":[{"name":"AsiJS (5MB)","rps":108,"avgMs":9.2321,"errors":0},{"name":"Hono (5MB)","rps":94,"avgMs":10.6724,"errors":0},{"name":"Elysia (5MB)","rps":83,"avgMs":12.0359,"errors":0}]},{"name":"4a. Static File Serving (small file)","results":[]},{"name":"4b. Static File Serving (2MB file)","results":[]},{"name":"5. JSX / HTML Rendering (100-row table)","results":[]},{"name":"6a. Blog API - GET /posts (list + pagination)","results":[]},{"name":"6b. Blog API - GET /posts/:id (single post)","results":[]},{"name":"6c. Blog API - POST /posts (auth + validation)","results":[]},{"name":"1. Fully-Loaded GET /api/data","results":[]},{"name":"2. Auth POST /api/posts (JWT + Validation + CORS + Security)","results":[]},{"name":"3. API Gateway GET /api/users/:id/profile (max middleware)","results":[]},{"name":"4a. CRUD API - GET /api/products (list + filter + pagination)","results":[]},{"name":"4b. CRUD API - GET /api/products/:id","results":[]},{"name":"4c. CRUD API - POST /api/products (auth + validation)","results":[]},{"name":"4d. CRUD API - PUT /api/products/:id (auth + partial update)","results":[]},{"name":"5. CORS Preflight OPTIONS /api/data","results":[]},{"name":"6. Security Headers Overhead (bare vs helmet)","results":[]}]},{"timestamp":"2026-08-17T11:38:12.028Z","commit":"aff3460","branch":"main","groups":[{"name":"GET / (simple JSON)","results":[{"name":"Elysia","rps":148732,"avgMs":0.0067,"errors":0},{"name":"Raw Bun","rps":138765,"avgMs":0.0072,"errors":0},{"name":"AsiJS (compiled)","rps":90036,"avgMs":0.0111,"errors":0},{"name":"AsiJS","rps":87554,"avgMs":0.0114,"errors":0},{"name":"Hono","rps":83727,"avgMs":0.0119,"errors":0}]},{"name":"GET /user/:id (path params)","results":[{"name":"Elysia","rps":138255,"avgMs":0.0072,"errors":0},{"name":"Raw Bun","rps":115364,"avgMs":0.0087,"errors":0},{"name":"AsiJS","rps":84218,"avgMs":0.0119,"errors":0},{"name":"AsiJS (compiled)","rps":79919,"avgMs":0.0125,"errors":0},{"name":"Hono","rps":72627,"avgMs":0.0138,"errors":0}]},{"name":"GET /search?q=... (query params)","results":[{"name":"Elysia","rps":131278,"avgMs":0.0076,"errors":0},{"name":"Raw Bun","rps":113698,"avgMs":0.0088,"errors":0},{"name":"AsiJS (compiled)","rps":104243,"avgMs":0.0096,"errors":0},{"name":"AsiJS","rps":87098,"avgMs":0.0115,"errors":0},{"name":"Hono","rps":60862,"avgMs":0.0164,"errors":0}]},{"name":"POST /users (JSON body, explicit parsing)","results":[{"name":"Raw Bun","rps":81990,"avgMs":0.0122,"errors":0},{"name":"Elysia","rps":64299,"avgMs":0.0156,"errors":0},{"name":"AsiJS","rps":55937,"avgMs":0.0179,"errors":0},{"name":"AsiJS (compiled)","rps":55166,"avgMs":0.0181,"errors":0},{"name":"Hono","rps":37068,"avgMs":0.027,"errors":0}]},{"name":"POST /users (with validation)","results":[{"name":"Elysia + validation","rps":50300,"avgMs":0.0199,"errors":0},{"name":"AsiJS compiled + val","rps":47953,"avgMs":0.0209,"errors":0},{"name":"AsiJS + validation","rps":38623,"avgMs":0.0259,"errors":0}]},{"name":"1. Middleware Overhead (AsiJS/Hono: real chain; Elysia: flat derive map)","results":[{"name":"Elysia (5 derive, flat map)","rps":96679,"avgMs":0.0103,"errors":0},{"name":"AsiJS (5 middleware)","rps":64711,"avgMs":0.0155,"errors":0},{"name":"Hono (5 middleware)","rps":24790,"avgMs":0.0403,"errors":0}]},{"name":"2. Complex Validation (4-level nested object)","results":[{"name":"Elysia (complex validation)","rps":27242,"avgMs":0.0367,"errors":0},{"name":"AsiJS (complex validation)","rps":21368,"avgMs":0.0468,"errors":0}]},{"name":"3a. File Upload (1MB multipart)","results":[{"name":"Elysia (1MB)","rps":641,"avgMs":1.5602,"errors":0},{"name":"AsiJS (1MB)","rps":583,"avgMs":1.7157,"errors":0},{"name":"Hono (1MB)","rps":536,"avgMs":1.8653,"errors":0}]},{"name":"3b. File Upload (5MB multipart)","results":[{"name":"Elysia (5MB)","rps":103,"avgMs":9.7201,"errors":0},{"name":"Hono (5MB)","rps":103,"avgMs":9.7072,"errors":0},{"name":"AsiJS (5MB)","rps":99,"avgMs":10.1337,"errors":0}]},{"name":"3c. File Upload + Save to Disk (256KB)","results":[{"name":"AsiJS streaming (saveStream)","rps":417,"avgMs":2.3953,"errors":0},{"name":"AsiJS buffered (arrayBuffer)","rps":394,"avgMs":2.5365,"errors":0}]},{"name":"4a. Static File Serving (small file)","results":[{"name":"Hono (small)","rps":7732,"avgMs":0.1293,"errors":0},{"name":"AsiJS (small)","rps":6215,"avgMs":0.1609,"errors":0}]},{"name":"4b. Static File Serving (2MB file)","results":[{"name":"Hono (2MB)","rps":8607,"avgMs":0.1162,"errors":0},{"name":"AsiJS (2MB)","rps":4633,"avgMs":0.2158,"errors":0}]},{"name":"5. JSX / HTML Rendering (100-row table)","results":[{"name":"AsiJS (JSX + renderToString)","rps":14143,"avgMs":0.0707,"errors":0},{"name":"Hono (string template)","rps":8021,"avgMs":0.1247,"errors":0},{"name":"AsiJS (string template)","rps":7813,"avgMs":0.128,"errors":0}]},{"name":"6a. Blog API - GET /posts (list + pagination)","results":[{"name":"Elysia (GET /posts)","rps":63248,"avgMs":0.0158,"errors":0},{"name":"Hono (GET /posts)","rps":44020,"avgMs":0.0227,"errors":0},{"name":"AsiJS (GET /posts)","rps":36858,"avgMs":0.0271,"errors":0}]},{"name":"6b. Blog API - GET /posts/:id (single post)","results":[{"name":"Elysia (GET /posts/:id)","rps":101551,"avgMs":0.0098,"errors":0},{"name":"Hono (GET /posts/:id)","rps":67498,"avgMs":0.0148,"errors":0},{"name":"AsiJS (GET /posts/:id)","rps":41427,"avgMs":0.0241,"errors":0}]},{"name":"6c. Blog API - POST /posts (auth + validation)","results":[{"name":"Elysia (POST /posts)","rps":42727,"avgMs":0.0234,"errors":0},{"name":"AsiJS (POST /posts)","rps":37555,"avgMs":0.0266,"errors":0},{"name":"Hono (POST /posts)","rps":37375,"avgMs":0.0268,"errors":0}]},{"name":"1a. Fully-Loaded GET — same middleware set (cors+rateLimit)","results":[{"name":"Elysia (cors+rateLimit)","rps":61422,"avgMs":0.0163,"errors":0},{"name":"AsiJS (cors+rateLimit)","rps":45563,"avgMs":0.0219,"errors":0}]},{"name":"1b. Fully-Loaded GET — full built-in stack (5 vs 4 layers)","results":[{"name":"AsiJS (cors+sec+etag+cache+rl)","rps":5253,"avgMs":0.1904,"errors":0},{"name":"Hono (cors+sec+etag+rl)","rps":3055,"avgMs":0.3274,"errors":0}]},{"name":"2. Auth POST /api/posts (JWT + Validation + CORS + Security)","results":[{"name":"AsiJS (cors+sec+jwt+val)","rps":28586,"avgMs":0.035,"errors":0},{"name":"Elysia (cors+jwt+bearer+val)","rps":3982,"avgMs":0.2511,"errors":0},{"name":"Hono (cors+sec+jwt+val)","rps":3928,"avgMs":0.2546,"errors":0}]},{"name":"3. API Gateway GET /api/users/:id/profile (max middleware)","results":[{"name":"Elysia (5-plugin stack)","rps":4848,"avgMs":0.2063,"errors":0},{"name":"AsiJS (7-layer stack)","rps":2856,"avgMs":0.3502,"errors":0},{"name":"Hono (6-layer stack)","rps":1489,"avgMs":0.6715,"errors":0}]},{"name":"4a. CRUD API - GET /api/products (list + filter + pagination)","results":[{"name":"Elysia (GET list)","rps":31207,"avgMs":0.032,"errors":0},{"name":"AsiJS (GET list)","rps":27788,"avgMs":0.036,"errors":0},{"name":"Hono (GET list)","rps":3159,"avgMs":0.3166,"errors":0}]},{"name":"4b. CRUD API - GET /api/products/:id","results":[{"name":"Elysia (GET single)","rps":56925,"avgMs":0.0176,"errors":0},{"name":"AsiJS (GET single)","rps":37411,"avgMs":0.0267,"errors":0},{"name":"Hono (GET single)","rps":3066,"avgMs":0.3262,"errors":0}]},{"name":"4c. CRUD API - POST /api/products (auth + validation)","results":[{"name":"AsiJS (POST create)","rps":23133,"avgMs":0.0432,"errors":0},{"name":"Elysia (POST create)","rps":4642,"avgMs":0.2154,"errors":0},{"name":"Hono (POST create)","rps":3750,"avgMs":0.2667,"errors":0}]},{"name":"4d. CRUD API - PUT /api/products/:id (auth + partial update)","results":[{"name":"Elysia (PUT update)","rps":4644,"avgMs":0.2153,"errors":0},{"name":"AsiJS (PUT update)","rps":4478,"avgMs":0.2233,"errors":0},{"name":"Hono (PUT update)","rps":3799,"avgMs":0.2632,"errors":0}]},{"name":"5. CORS Preflight OPTIONS /api/data","results":[{"name":"AsiJS (preflight)","rps":41743,"avgMs":0.024,"errors":0},{"name":"Elysia (preflight)","rps":38699,"avgMs":0.0258,"errors":0},{"name":"Hono (preflight)","rps":23411,"avgMs":0.0427,"errors":0}]},{"name":"6. Security Headers Overhead (bare vs helmet)","results":[{"name":"Elysia (bare, no helmet)","rps":196296,"avgMs":0.0051,"errors":0},{"name":"AsiJS (bare)","rps":98895,"avgMs":0.0101,"errors":0},{"name":"Hono (bare)","rps":84477,"avgMs":0.0118,"errors":0},{"name":"AsiJS + securityHeaders","rps":61892,"avgMs":0.0162,"errors":0},{"name":"Hono + secureHeaders","rps":42152,"avgMs":0.0237,"errors":0}]},{"name":"Concurrency (C=10 in-flight)","results":[{"name":"Elysia","rps":157412,"avgMs":0.0064,"errors":0},{"name":"AsiJS","rps":94405,"avgMs":0.0106,"errors":0},{"name":"Hono","rps":77111,"avgMs":0.013,"errors":0}]},{"name":"Concurrency (C=100 in-flight)","results":[{"name":"Elysia","rps":232992,"avgMs":0.0043,"errors":0},{"name":"AsiJS","rps":166326,"avgMs":0.006,"errors":0},{"name":"Hono","rps":96094,"avgMs":0.0104,"errors":0}]},{"name":"Concurrency (C=1000 in-flight)","results":[{"name":"Elysia","rps":304934,"avgMs":0.0033,"errors":0},{"name":"AsiJS","rps":146550,"avgMs":0.0068,"errors":0},{"name":"Hono","rps":105443,"avgMs":0.0095,"errors":0}]},{"name":"Route Table Scaling (N=10)","results":[{"name":"radix (N=10)","rps":105588,"avgMs":0.0095,"errors":0},{"name":"trie  (N=10)","rps":78213,"avgMs":0.0128,"errors":0}]},{"name":"Route Table Scaling (N=100)","results":[{"name":"trie  (N=100)","rps":107944,"avgMs":0.0093,"errors":0},{"name":"radix (N=100)","rps":104876,"avgMs":0.0095,"errors":0}]},{"name":"Route Table Scaling (N=1000)","results":[{"name":"trie  (N=1000)","rps":89049,"avgMs":0.0112,"errors":0},{"name":"radix (N=1000)","rps":77764,"avgMs":0.0129,"errors":0}]},{"name":"Route Table Scaling (N=10000)","results":[{"name":"trie  (N=10000)","rps":116459,"avgMs":0.0086,"errors":0},{"name":"radix (N=10000)","rps":107136,"avgMs":0.0093,"errors":0}]},{"name":"Static File Serving (preload vs disk)","results":[{"name":"AsiJS (preload)","rps":12476,"avgMs":0.0802,"errors":0},{"name":"AsiJS (disk)","rps":3704,"avgMs":0.27,"errors":0}]},{"name":"Array Validation (100 items, valid)","results":[{"name":"Elysia (array 100, valid)","rps":7197,"avgMs":0.1389,"errors":0},{"name":"AsiJS (array 100, valid)","rps":6944,"avgMs":0.144,"errors":0}]},{"name":"Validation Error Path (100-item array, invalid)","results":[{"name":"AsiJS (array 100, invalid)","rps":1756,"avgMs":0.5693,"errors":0},{"name":"Elysia (array 100, invalid)","rps":1035,"avgMs":0.9664,"errors":0}]},{"name":"Query Cache (repeated query — hit)","results":[{"name":"Elysia","rps":86246,"avgMs":0.0116,"errors":0},{"name":"AsiJS (cache on)","rps":78575,"avgMs":0.0127,"errors":0},{"name":"Hono","rps":63363,"avgMs":0.0158,"errors":0}]},{"name":"Query Cache (unique query — miss)","results":[{"name":"Elysia","rps":106646,"avgMs":0.0094,"errors":0},{"name":"Hono","rps":67212,"avgMs":0.0149,"errors":0},{"name":"AsiJS (cache on)","rps":58201,"avgMs":0.0172,"errors":0}]},{"name":"Query Cache (disabled — repeated query)","results":[{"name":"AsiJS (queryCache: false)","rps":65112,"avgMs":0.0154,"errors":0}]},{"name":"404 Fast Path (no route match)","results":[{"name":"Elysia","rps":249361,"avgMs":0.004,"errors":0},{"name":"Hono","rps":78649,"avgMs":0.0127,"errors":0},{"name":"AsiJS","rps":70708,"avgMs":0.0141,"errors":0}]},{"name":"Error Path (handler throws → 500)","results":[{"name":"Hono","rps":62787,"avgMs":0.0159,"errors":0},{"name":"Elysia","rps":62160,"avgMs":0.0161,"errors":0},{"name":"AsiJS","rps":53650,"avgMs":0.0186,"errors":0}]},{"name":"Large JSON Body (10KB, validated)","results":[{"name":"Elysia (+validation)","rps":6563,"avgMs":0.1524,"errors":0},{"name":"AsiJS (compiled+val)","rps":5865,"avgMs":0.1705,"errors":0}]},{"name":"Large JSON Body (100KB, validated)","results":[{"name":"AsiJS (compiled+val)","rps":811,"avgMs":1.233,"errors":0},{"name":"Elysia (+validation)","rps":727,"avgMs":1.3757,"errors":0}]},{"name":"WebSocket Pub/Sub — broadcast to 1 client(s)","results":[{"name":"broadcast (1 clients)","rps":423989,"avgMs":0.0024,"errors":0}]},{"name":"WebSocket Pub/Sub — broadcast to 10 client(s)","results":[{"name":"broadcast (10 clients)","rps":523670,"avgMs":0.0019,"errors":0}]},{"name":"WebSocket Pub/Sub — broadcast to 100 client(s)","results":[{"name":"broadcast (100 clients)","rps":430126,"avgMs":0.0023,"errors":0}]},{"name":"MemoryCache — set/get ops","results":[{"name":"MemoryCache.get","rps":2920561,"avgMs":0.0003,"errors":0},{"name":"MemoryCache.set","rps":760774,"avgMs":0.0013,"errors":0}]},{"name":"ETag middleware — 200 vs 304 fast-path","results":[{"name":"ETag match (304)","rps":21348,"avgMs":0.0468,"errors":0},{"name":"ETag gen (200)","rps":13514,"avgMs":0.074,"errors":0}]},{"name":"Response cache middleware — HIT vs MISS","results":[{"name":"response cache (HIT)","rps":70155,"avgMs":0.0143,"errors":0},{"name":"response cache (MISS)","rps":17679,"avgMs":0.0566,"errors":0}]},{"name":"Database Layer (sqlite in-memory) — CRUD ops","results":[{"name":"delete row","rps":67546,"avgMs":0.0148,"errors":0},{"name":"update row","rps":45246,"avgMs":0.0221,"errors":0},{"name":"select by id","rps":22788,"avgMs":0.0439,"errors":0},{"name":"insert (single row)","rps":20232,"avgMs":0.0494,"errors":0},{"name":"transaction (3 stmts)","rps":3935,"avgMs":0.2541,"errors":0}]},{"name":"Allocations — RSS growth per request (lower = better)","results":[{"name":"bare GET","rps":2701,"avgMs":0,"errors":0},{"name":"GET + 2 middleware","rps":3782,"avgMs":0,"errors":0}]},{"name":"SSR — 100-row table (production server, C=32)","results":[{"name":"AsiJS (JSX + renderToString)","rps":727,"avgMs":1.3748,"errors":0},{"name":"AsiJS (string template)","rps":645,"avgMs":1.5504,"errors":0},{"name":"Hono (string template)","rps":645,"avgMs":1.5498,"errors":0},{"name":"SvelteKit (adapter-node)","rps":638,"avgMs":1.5668,"errors":0},{"name":"Astro (standalone)","rps":447,"avgMs":2.2359,"errors":0},{"name":"Nuxt (nitro bun)","rps":309,"avgMs":3.2373,"errors":0}]}]}];
 
     const COLORS = [
       '#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff',
@@ -186,7 +197,14 @@
     ];
     const COLOR_MAP = {};
 
+    // Elysia is the reference framework — always rendered in the accent blue
+    // so it reads as the benchmark baseline, never as part of the score scale.
+    function isElysia(name) {
+      return /^Elysia([s(+]|$)/.test(name);
+    }
+
     function getColor(name) {
+      if (isElysia(name)) return '#58a6ff';
       if (!COLOR_MAP[name]) {
         COLOR_MAP[name] = COLORS[Object.keys(COLOR_MAP).length % COLORS.length];
       }
@@ -219,11 +237,13 @@
       ].join('');
     }
 
-    // Charts
+    // Charts — skip groups with no parsed results so a partially-failed run
+    // never renders blank chart cards (the dashboard stays readable).
     if (LATEST) {
       const chartsContainer = document.getElementById('charts');
+      const populated = LATEST.groups.filter(function(g) { return g.results && g.results.length > 0 });
 
-      LATEST.groups.forEach(function(group, gi) {
+      populated.forEach(function(group, gi) {
         const sorted = [...group.results].sort(function(a, b) { return b.rps - a.rps });
         const best = sorted[0] ? sorted[0].rps : 1;
 
@@ -275,35 +295,105 @@
           }
         });
       });
+
+      if (populated.length === 0) {
+        chartsContainer.innerHTML =
+          '<p style="color:var(--muted);text-align:center;padding:2rem">' +
+          'No benchmark results parsed in this run — check the collector output.</p>';
+      }
     }
 
-    // Table
+    // Table — skip empty groups (same guard as the charts).
     if (LATEST) {
       const tableContainer = document.getElementById('table');
+      const populatedGroups = LATEST.groups.filter(function(g) { return g.results && g.results.length > 0 });
       let html = '<table><thead><tr>' +
         '<th>Group</th><th>Framework</th><th class="num">RPS</th><th class="num">Avg (ms)</th>' +
         '<th class="num">vs Best</th><th>Errors</th></tr></thead><tbody>';
 
-      LATEST.groups.forEach(function(group) {
+      populatedGroups.forEach(function(group) {
         const sorted = [...group.results].sort(function(a, b) { return b.rps - a.rps });
         const best = sorted[0] ? sorted[0].rps : 1;
+        // When Elysia leads the group, measure the others against the best
+        // non-Elysia (so 2nd place reads as 100%) and show Elysia's badge as
+        // its margin over 2nd — otherwise every framework looks tiny next to
+        // the reference and the real inter-framework picture is lost.
+        const refLeads = sorted[0] && isElysia(sorted[0].name);
+        const nonRef = sorted.filter(function(r) { return !isElysia(r.name) });
+        const base = refLeads && nonRef.length > 0 ? nonRef[0].rps : best;
 
         sorted.forEach(function(r, i) {
-          const pct = (r.rps / best * 100).toFixed(1);
-          const barW = Math.max(4, (r.rps / best * 100));
+          const pct = r.rps / base * 100;
+          const barW = Math.max(4, Math.min(100, pct));
+          let badge;
+          if (isElysia(r.name)) {
+            if (refLeads && r === sorted[0]) {
+              // Reference leads: blue badge with the margin over 2nd place
+              badge = '<span class="badge badge-blue" title="Margin over the best non-Elysia">' +
+                '+' + (pct - 100).toFixed(1) + '% vs 2nd</span>';
+            } else {
+              badge = '<span class="badge badge-blue">' + pct.toFixed(1) + '%</span>';
+            }
+          } else {
+            badge = '<span class="badge ' + scoreClass(pct) + '">' + pct.toFixed(1) + '%</span>';
+          }
           html += '<tr>' +
             '<td>' + (i === 0 ? group.name : '') + '</td>' +
             '<td><span class="rps-bar" style="width:' + barW + 'px;background:' + getColor(r.name) + '"></span>' + r.name + '</td>' +
             '<td class="num">' + fmt(r.rps) + '</td>' +
             '<td class="num">' + r.avgMs.toFixed(4) + '</td>' +
-            '<td class="num"><span class="badge ' + scoreClass(Number(pct)) + '">' + pct + '%</span></td>' +
+            '<td class="num">' + badge + '</td>' +
             '<td class="num">' + (r.errors > 0 ? '⚠️ ' + r.errors : '—') + '</td>' +
             '</tr>';
         });
       });
 
-      html += '</tbody></table>';
+      html += '</tbody></table>' +
+        '<p class="table-note">' +
+        '• Elysia is the reference framework (blue badges/bars). ' +
+        'When it leads a group, the other frameworks are measured against the best non-Elysia (100%), ' +
+        'and Elysia's badge shows its margin over 2nd place (e.g. <code>+173% vs 2nd</code>). ' +
+        'When Elysia does not lead, all rows use the usual vs-best scale.</p>';
+      if (populatedGroups.length === 0) {
+        html = '<p style="color:var(--muted);text-align:center;padding:2rem">' +
+          'No benchmark results to display.</p>';
+      }
       tableContainer.innerHTML = html;
+    }
+
+    // Trend helpers
+    // Allocation groups measure bytes/req — lower is better
+    function isLowerBetter(groupName) {
+      return /alloc/i.test(groupName);
+    }
+
+    /**
+     * Normalized score for a framework in one snapshot:
+     * average of (rps / groupBest * 100) across ALL groups the framework
+     * appears in. For lower-is-better groups (allocations) the ratio is
+     * inverted (groupBest / rps), so 100% always means "best in category".
+     * Returns null when the framework is absent from every group.
+     */
+    function frameworkScore(snap, name) {
+      let sum = 0, count = 0;
+      snap.groups.forEach(function(g) {
+        if (g.results.length < 2) return; // need a best to compare against
+        const found = g.results.find(function(r) { return r.name === name });
+        if (!found || found.rps <= 0) return;
+        const best = g.results.reduce(function(acc, r) {
+          if (r.rps <= 0) return acc;
+          return isLowerBetter(g.name)
+            ? Math.min(acc, r.rps)
+            : Math.max(acc, r.rps);
+        }, isLowerBetter(g.name) ? Infinity : -Infinity);
+        if (best === Infinity || best === -Infinity || best <= 0) return;
+        const ratio = isLowerBetter(g.name)
+          ? best / found.rps
+          : found.rps / best;
+        sum += ratio * 100;
+        count++;
+      });
+      return count > 0 ? { score: sum / count, categories: count } : null;
     }
 
     // Trend chart
@@ -330,19 +420,16 @@
         .slice(0, 5)
         .map(function(e) { return e[0] });
 
-      // Build datasets: for each framework, RPS over time
-      const datasets = topNames.map(function(name) {
-        const data = [];
-        HISTORY.forEach(function(snap) {
-          // Find first group's result for this name (use simple GET benchmark)
-          let rps = null;
-          for (const g of snap.groups) {
-            const found = g.results.find(function(r) { return r.name === name });
-            if (found) { rps = found.rps; break; }
-          }
-          data.push(rps);
-        });
+      const labels = HISTORY.map(function(snap) {
+        return snap.commit.slice(0, 7);
+      });
 
+      // Dataset 1: normalized score over time (all categories)
+      const scoreDatasets = topNames.map(function(name) {
+        const data = HISTORY.map(function(snap) {
+          const s = frameworkScore(snap, name);
+          return s ? +s.score.toFixed(1) : null;
+        });
         return {
           label: name,
           data: data,
@@ -354,14 +441,10 @@
         };
       });
 
-      const labels = HISTORY.map(function(snap) {
-        return snap.commit.slice(0, 7);
-      });
-
       const trendCtx = document.getElementById('trendChart').getContext('2d');
       new Chart(trendCtx, {
         type: 'line',
-        data: { labels: labels, datasets: datasets },
+        data: { labels: labels, datasets: scoreDatasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -376,13 +459,22 @@
                 title: function(items) {
                   const snap = HISTORY[items[0].dataIndex];
                   return snap.commit.slice(0, 7) + ' — ' + fmtTime(snap.timestamp);
+                },
+                label: function(item) {
+                  const name = item.dataset.label;
+                  const snap = HISTORY[item.dataIndex];
+                  const s = frameworkScore(snap, name);
+                  if (!s) return ' ' + name + ': n/a';
+                  return ' ' + name + ': ' + s.score.toFixed(1) + '%' +
+                    ' (avg of ' + s.categories + ' groups)';
                 }
               }
             }
           },
           scales: {
             y: {
-              beginAtZero: true,
+              min: 0,
+              max: 100,
               ticks: { callback: function(v) { return fmt(v) }, color: '#8b949e' },
               grid: { color: '#21262d' }
             },
@@ -393,11 +485,115 @@
           }
         }
       });
+
+      // Dataset 2: raw RPS for a user-selected category
+      // Collect all group names seen across history for the dropdown
+      const allGroupNames = [];
+      const seenGroups = new Set();
+      HISTORY.forEach(function(snap) {
+        snap.groups.forEach(function(g) {
+          if (!seenGroups.has(g.name)) {
+            seenGroups.add(g.name);
+            allGroupNames.push(g.name);
+          }
+        });
+      });
+
+      // Prefer the simple GET group as the default selection
+      const defaultGroup =
+        allGroupNames.find(function(n) { return n.indexOf('GET / (simple') === 0 }) ||
+        allGroupNames[0] || '';
+
+      const select = document.getElementById('trendGroupSelect');
+      if (select) {
+        allGroupNames.forEach(function(gn) {
+          const opt = document.createElement('option');
+          opt.value = gn;
+          opt.textContent = gn;
+          select.appendChild(opt);
+        });
+        select.value = defaultGroup;
+      }
+
+      function buildGroupTrend(groupName) {
+        return topNames.map(function(name) {
+          const data = HISTORY.map(function(snap) {
+            // Only results within the selected group, not the first match anywhere
+            for (const g of snap.groups) {
+              if (g.name !== groupName) continue;
+              const found = g.results.find(function(r) { return r.name === name });
+              return found ? found.rps : null;
+            }
+            return null;
+          });
+          return {
+            label: name,
+            data: data,
+            borderColor: getColor(name),
+            backgroundColor: getColor(name) + '33',
+            tension: 0.3,
+            fill: false,
+            pointRadius: 3,
+          };
+        });
+      }
+
+      let groupChart = null;
+      function renderGroupTrend() {
+        const groupName = select ? select.value : defaultGroup;
+        const gCtx = document.getElementById('groupTrendChart').getContext('2d');
+        if (groupChart) groupChart.destroy();
+        groupChart = new Chart(gCtx, {
+          type: 'line',
+          data: { labels: labels, datasets: buildGroupTrend(groupName) },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'nearest' },
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: '#8b949e', padding: 16 }
+              },
+              tooltip: {
+                callbacks: {
+                  title: function(items) {
+                    const snap = HISTORY[items[0].dataIndex];
+                    return snap.commit.slice(0, 7) + ' — ' + fmtTime(snap.timestamp);
+                  },
+                  label: function(item) {
+                    const name = item.dataset.label;
+                    if (item.raw === null) return ' ' + name + ': n/a';
+                    return ' ' + name + ': ' + fmt(item.raw) + ' req/s';
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: { callback: function(v) { return fmt(v) }, color: '#8b949e' },
+                grid: { color: '#21262d' }
+              },
+              x: {
+                ticks: { color: '#8b949e' },
+                grid: { display: false }
+              }
+            }
+          }
+        });
+      }
+
+      renderGroupTrend();
+      if (select) select.addEventListener('change', renderGroupTrend);
     } else {
       document.getElementById('trendChart').parentElement.innerHTML =
         '<p style="color:var(--muted);text-align:center;padding:3rem">' +
         'Need at least 2 benchmark runs to show trends. ' +
         'Run <code>bun run bench:collect</code> again after making changes.</p>';
+      document.getElementById('groupTrendChart').parentElement.innerHTML =
+        '<p style="color:var(--muted);text-align:center;padding:3rem">' +
+        'Need at least 2 benchmark runs to show trends.</p>';
     }
 
     document.getElementById('footerTime').textContent = new Date().toLocaleString();

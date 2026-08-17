@@ -198,6 +198,67 @@ describe("render — string path", () => {
   });
 });
 
+describe("MVP — exact collection (0.7)", () => {
+  it("a page with 30 utilities produces exactly 30 rules — no junk", async () => {
+    const classes = [
+      // layout / display / position
+      "flex", "items-center", "justify-between", "relative", "overflow-hidden",
+      // spacing
+      "gap-4", "p-6", "px-4", "mt-2",
+      // sizing
+      "w-full", "h-10",
+      // typography
+      "text-sm", "font-bold", "leading-6", "tracking-wide", "italic", "truncate",
+      // colors
+      "bg-blue-500", "text-white", "border-gray-200",
+      // borders / effects
+      "border", "rounded-lg", "shadow-md",
+      // grid
+      "grid", "grid-cols-3", "col-span-2",
+      // misc
+      "z-10", "opacity-75", "sr-only", "block",
+      // variants ride along (hover / md / dark)
+      "hover:bg-blue-600", "md:flex", "dark:text-white",
+    ];
+    // 30 base utilities + 3 variants = 33 distinct rules
+    expect(classes.length).toBe(33);
+    expect(new Set(classes).size).toBe(33);
+
+    const tree = htmlDoc(el("div", { className: classes.join(" ") }));
+    const html = await render(tree, config, {}, renderer);
+
+    const styleStart = html.indexOf("<style data-miyocss>");
+    expect(styleStart).toBeGreaterThan(-1);
+    const css = html.slice(styleStart + "<style data-miyocss>".length, html.indexOf("</style>"));
+
+    // exactly one rule per utility: count selector lines (media blocks too)
+    const ruleCount = (css.match(/^\s*\./gm) || []).length;
+    expect(ruleCount).toBe(classes.length);
+
+    // variants compiled to the correct selectors
+    expect(css).toContain(".hover\\:bg-blue-600:hover");
+    expect(css).toContain("@media (min-width: 768px)");
+    expect(css).toContain("@media (prefers-color-scheme: dark)");
+    expect(css).toContain(".dark\\:text-white");
+
+    // no junk: utilities never on the page
+    for (const junk of [".hidden", ".grid-cols-4", ".p-8", ".table", ".underline"]) {
+      expect(css).not.toContain(junk);
+    }
+  });
+
+  it("duplicated classes are collected once — no rule duplication", async () => {
+    const classes = "flex p-4 p-4 md:flex hover:p-4 p-4".split(" ");
+    const tree = htmlDoc(el("div", { className: classes.join(" ") }));
+    const html = await render(tree, config, {}, renderer);
+    const css = html.slice(html.indexOf("<style data-miyocss>") + "<style data-miyocss>".length, html.indexOf("</style>"));
+    const ruleCount = (css.match(/^\s*\./gm) || []).length;
+    // flex, p-4, md:flex, hover:p-4 → 4 rules despite repeated input
+    expect(ruleCount).toBe(4);
+    expect((css.match(/\.p-4 {/g) || []).length).toBe(1);
+  });
+});
+
 describe("stream — stream path", () => {
   it("injects style after head and streams the rest", async () => {
     const tree = htmlDoc(

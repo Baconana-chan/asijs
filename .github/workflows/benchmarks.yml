@@ -39,6 +39,9 @@ concurrency:
   group: benchmark-dashboard
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   benchmark:
     name: Run Benchmarks
@@ -111,6 +114,20 @@ jobs:
           # Generate the HTML dashboard into docs/public/benchmarks/
           bun run bench:dashboard
           echo "   ✅ Dashboard generated in docs/public/benchmarks/"
+
+      - name: Commit results and dashboard back to the repo
+        if: steps.collect.outputs.has_results == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bench/results/ docs/public/benchmarks/
+          if git diff --cached --quiet; then
+            echo "   ℹ️  No changes to commit (results unchanged)"
+          else
+            git commit -m "bench: update benchmark results and dashboard [skip ci]"
+            git push
+            echo "   ✅ Committed fresh benchmark results + dashboard"
+          fi
 
       - name: Upload benchmark artifacts
         if: steps.collect.outputs.has_results == 'true'

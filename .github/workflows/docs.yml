@@ -8,6 +8,12 @@ on:
       - "DOCUMENTATION.md"
       - "MIGRATION.md"
       - ".github/workflows/docs.yml"
+  # Rebuild the docs site after benchmarks finish, so the deployed
+  # dashboard always reflects the latest committed results.
+  workflow_run:
+    workflows: ["Benchmarks Dashboard"]
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -30,6 +36,15 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      - name: Regenerate benchmark dashboard from committed results
+        run: |
+          if [ -f bench/results/latest.json ]; then
+            bun run bench:dashboard
+            echo "   ✅ Dashboard regenerated from committed results"
+          else
+            echo "   ℹ️  No benchmark results committed — keeping existing dashboard"
+          fi
 
       - name: Build docs
         run: bun run docs:build

@@ -49,6 +49,20 @@ export const PSEUDO_VARIANTS: Record<string, string> = {
   "out-of-range": ":out-of-range",
 };
 
+/** Pseudo-elements via `before:` / `after:` variants (1.1). */
+export const PSEUDO_ELEMENTS: Record<string, string> = {
+  before: "::before",
+  after: "::after",
+};
+
+/**
+ * Pseudo-classes that work in `group-*` / `peer-*` form (1.1):
+ * `group-hover:`, `group-focus:`, `peer-checked:`, ...
+ */
+export const GROUPABLE_PSEUDOS: Record<string, string> = Object.fromEntries(
+  Object.entries(PSEUDO_VARIANTS).filter(([, suffix]) => !suffix.startsWith("::")),
+);
+
 const DARK_MEDIA = "prefers-color-scheme: dark";
 
 /**
@@ -81,9 +95,43 @@ function applyVariant(
     return true;
   }
 
+  // group-* / peer-* (1.1): `.group:hover .x`, `.peer:checked ~ .x`.
+  // Appended AFTER an existing prefix (e.g. `dark:`), so `dark:group-hover:`
+  // stacks as `.dark .group:hover .x` — matching Tailwind's ordering.
+  const group = name.match(/^group-(.+)$/);
+  if (group) {
+    const suffix = GROUPABLE_PSEUDOS[group[1]];
+    if (suffix === undefined) return false;
+    rule.selectorPrefix = (rule.selectorPrefix ?? "") + `.group${suffix} `;
+    return true;
+  }
+  const peer = name.match(/^peer-(.+)$/);
+  if (peer) {
+    const suffix = GROUPABLE_PSEUDOS[peer[1]];
+    if (suffix === undefined) return false;
+    rule.selectorPrefix = (rule.selectorPrefix ?? "") + `.peer${suffix} ~ `;
+    return true;
+  }
+
+  // Pseudo-classes and pseudo-elements both live in `selectorSuffix`, but
+  // pseudo-elements (`::before`/`::after`) must ALWAYS come last in the
+  // selector, regardless of the order the variants were written in:
+  // `before:hover:` and `hover:before:` both produce `.x:hover::before`.
+  // Split the suffix into `[pseudoClasses][pseudoElement]`.
   const pseudo = PSEUDO_VARIANTS[name];
   if (pseudo !== undefined) {
-    rule.selectorSuffix = (rule.selectorSuffix ?? "") + pseudo;
+    const pseudoElement = (rule.selectorSuffix ?? "").match(/::.*$/)?.[0] ?? "";
+    const pseudoClasses = (rule.selectorSuffix ?? "").replace(/::.*$/, "");
+    rule.selectorSuffix = pseudo.startsWith("::")
+      ? pseudoClasses + pseudo // placeholder: ::placeholder is a pseudo-element
+      : pseudoClasses + pseudo + pseudoElement;
+    return true;
+  }
+
+  const pseudoElement = PSEUDO_ELEMENTS[name];
+  if (pseudoElement !== undefined) {
+    const pseudoClasses = (rule.selectorSuffix ?? "").replace(/::.*$/, "");
+    rule.selectorSuffix = pseudoClasses + pseudoElement;
     return true;
   }
 

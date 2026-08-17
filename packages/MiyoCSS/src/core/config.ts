@@ -77,6 +77,70 @@ const configSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/**
+ * A user-defined utility (MiyoCSS TODO 1.1).
+ *
+ * Two kinds of matching, tried in order:
+ * - `static` — exact class name → declarations (`{ card: { background: "#fff" } }`)
+ * - `match` — regex matchers, first hit wins; the handler receives the
+ *   RegExp match array and the resolved config, and returns declarations or null.
+ *
+ * Custom utilities are resolved BEFORE built-ins, so a user-defined `card`
+ * overrides any future built-in of the same name (documented contract).
+ */
+export interface CustomUtilityMatcher {
+  /** Tested against the full class name (variants already stripped). */
+  pattern: RegExp;
+  /** Return CSS declarations, or null if the class shouldn't match. */
+  apply: (match: RegExpMatchArray, config: ResolvedConfig) => Record<string, string> | null;
+}
+
+export interface CustomUtility {
+  /** Unique name, used in error messages. */
+  name: string;
+  /** Exact class name → declarations. */
+  static?: Record<string, Record<string, string>>;
+  /** Regex matchers, tried in order. */
+  match?: CustomUtilityMatcher[];
+}
+
+/**
+ * Validate + return a custom utility definition. Throws a TypeError for a
+ * malformed definition (bad name, non-declaration statics, non-regex matchers).
+ */
+export function defineUtility(util: CustomUtility): CustomUtility {
+  if (!util || typeof util !== "object") {
+    throw new TypeError("miyocss: defineUtility() expects an object");
+  }
+  if (typeof util.name !== "string" || util.name.length === 0) {
+    throw new TypeError('miyocss: defineUtility() requires a non-empty string "name"');
+  }
+  if (util.static !== undefined) {
+    if (!util.static || typeof util.static !== "object" || Array.isArray(util.static)) {
+      throw new TypeError(`miyocss: utility "${util.name}" — static must be an object of class → declarations`);
+    }
+    for (const [cls, decls] of Object.entries(util.static)) {
+      if (!decls || typeof decls !== "object" || Array.isArray(decls)) {
+        throw new TypeError(`miyocss: utility "${util.name}" — static "${cls}" must map to CSS declarations`);
+      }
+    }
+  }
+  if (util.match !== undefined) {
+    if (!Array.isArray(util.match)) {
+      throw new TypeError(`miyocss: utility "${util.name}" — match must be an array`);
+    }
+    for (const matcher of util.match) {
+      if (!(matcher.pattern instanceof RegExp)) {
+        throw new TypeError(`miyocss: utility "${util.name}" — every matcher needs a RegExp pattern`);
+      }
+      if (typeof matcher.apply !== "function") {
+        throw new TypeError(`miyocss: utility "${util.name}" — every matcher needs an apply() function`);
+      }
+    }
+  }
+  return util;
+}
+
 // ===== Public types =====
 
 /** A single color value: CSS string, or nested map of shades. */
@@ -103,7 +167,10 @@ export interface NormalizedOptions {
 }
 
 /** Full user-facing config. */
-export type MiyoConfig = Static<typeof configSchema>;
+export type MiyoConfig = Static<typeof configSchema> & {
+  /** Custom utilities registered via `defineUtility()` (MiyoCSS TODO 1.1). */
+  utilities?: CustomUtility[];
+};
 
 /** Theme with every group guaranteed present (post-resolve). */
 export type FullTheme = Required<MiyoTheme>;
@@ -126,13 +193,21 @@ export interface ResolvedConfig {
     breakpoints: TokenMap;
   };
   options: NormalizedOptions;
+  /** Custom utilities (0 — built-in only). */
+  utilities: CustomUtility[];
 }
 
 // ===== Validation =====
 
 /** Throw a TypeError with the first validation errors, if config is invalid. */
 function assertValidConfig(config: unknown): asserts config is MiyoConfig {
-  if (Value.Check(configSchema, config)) return;
+  // `utilities` holds functions/regexes — validate shape separately, then strip
+  // before TypeBox checks (functions can't round-trip through a JSON schema).
+  const { utilities, ...rest } = (config ?? {}) as Partial<MiyoConfig>;
+  if (utilities !== undefined) {
+    for (const util of utilities) defineUtility(util);
+  }
+  if (Value.Check(configSchema, rest)) return;
   const errors: string[] = [];
   for (const error of Value.Errors(configSchema, config)) {
     errors.push(`${error.path || "/"}: ${error.message}`);
@@ -183,6 +258,7 @@ export function resolveConfig(config?: MiyoConfig): ResolvedConfig {
       colors: flattenColors(theme.colors),
     },
     options: { ...defaultOptions, ...(config?.options ?? {}) },
+    utilities: config?.utilities ?? [],
   };
 }
 

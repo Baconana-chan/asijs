@@ -280,6 +280,36 @@ describe("arbitrary values", () => {
     expect(decl("w-[1px!important]")).toBeNull();
     expect(decl("bg-[red];")).toBeNull(); // no arbitrary match at all
   });
+
+  test("XSS payloads rejected (script URLs, expressions, at-rules)", () => {
+    // breakout via new declaration / rule / HTML injection
+    expect(decl("w-[1px}body{color:red}]")).toBeNull();
+    expect(decl("w-[</style><script>alert(1)</script>]")).toBeNull();
+    expect(decl("bg-[red></style><script>x</script>]")).toBeNull();
+    // script-URL schemes (case-insensitive)
+    expect(decl("bg-[url(javascript:alert(1))]")).toBeNull();
+    expect(decl("bg-[url(JavaScript:alert(1))]")).toBeNull();
+    expect(decl("w-[javascript:alert(1)]")).toBeNull();
+    expect(decl("bg-[url(vbscript:msgbox(1))]")).toBeNull();
+    // legacy CSS expressions
+    expect(decl("text-[expression(alert(1))]")).toBeNull();
+    expect(decl("w-[Expression(alert(1))]")).toBeNull();
+    // at-rule smuggling
+    expect(decl("w-[@import url(x.css)]")).toBeNull();
+    expect(decl("w-[@charset utf-8]")).toBeNull();
+  });
+
+  test("legitimate arbitrary values still work", () => {
+    // the XSS guard must not reject normal CSS values
+    expect(decl("w-[calc(100%-2rem)]")).toEqual({ width: "calc(100%-2rem)" });
+    expect(decl("w-[var(--sidebar)]")).toEqual({ width: "var(--sidebar)" });
+    expect(decl("bg-[oklch(0.5_0.1_200)]")).toEqual({
+      "background-color": "oklch(0.5 0.1 200)",
+    });
+    expect(decl("grid-cols-[repeat(2,1fr)]")).toEqual({
+      "grid-template-columns": "repeat(2,1fr)",
+    });
+  });
 });
 
 describe("generateCSS / escaping", () => {

@@ -1,10 +1,10 @@
 # TODO.md — MiyoCSS Roadmap
 
-> **Статус**: P0 в работе · **Runtime**: Bun + Node.js · **Версия**: 0.1.0 · **npm**: `miyocss`
+> **Статус**: P0 ✅ · P1 в работе · **Runtime**: Bun + Node.js · **Версия**: 0.1.0 · **npm**: `miyocss`
 >
 > SSR-first CSS + SVG фреймворк. Утилиты собираются **во время рендеринга**, а не сканированием файлов; SVG — first-class, а не «добавка».
 > Имя нейтральное намеренно: пакет применим к любому SSR-фреймворку (AsiJS, Hono, Elysia, Fastify, plain Node) — это не «AsiCSS».
-> Факты на старт: 143 теста (0.1–0.6), репо — `packages/MiyoCSS/`.
+> Факты на текущий момент: 183 теста (0.1–1.1), репо — `packages/MiyoCSS/`.
 
 ---
 
@@ -104,12 +104,14 @@
 
 > **Зафиксировано при реализации:** (1) AsiJS `renderToString` дропает children внутри `<style>` и не обрабатывает `raw()` — поэтому `<StyleSheet />` это placeholder, заменяемый ПОСЛЕ рендера (string-replace для `html()`, буфер-до-placeholder для `stream()`), а не реальный style-элемент. (2) Плагин инжектит `ctx.*` через middleware (decorate в AsiJS — app-level), по образцу i18n-плагина. (3) `jsx()` в AsiJS — `(type, props, key?)`, children живут в `props.children` (в TSX это прозрачно).
 
-### 0.7 — Тесты MVP
-- [ ] Генерация каждой группы утилит (снапшоты)
-- [ ] Варианты: hover/md/dark компилируются в правильные селекторы
-- [ ] SSR-сбор: страница с 30 классами → в `<style>` ровно 30 (+ варианты), без мусора
-- [ ] Конфиг: валидация TypeBox, кастомные токены
-- [ ] Arbitrary values: валидные и невалидные (XSS-попытки в значении)
+### 0.7 — Тесты MVP ✅
+- [x] Генерация каждой группы утилит (снапшоты) — 7 групп в `generator.test.ts` (layout, flex/grid, spacing, typography, colors, borders/effects, sizing)
+- [x] Варианты: hover/md/dark компилируются в правильные селекторы — `variants.test.ts` (25 тестов)
+- [x] SSR-сбор: страница с 30 классами → в `<style>` ровно 30 (+ варианты), без мусора — `ssr.test.ts`: 33 утилиты → ровно 33 правила, дубли не дублируются, отсутствующие утилиты не попадают
+- [x] Конфиг: валидация TypeBox (`config.test.ts`), кастомные токены через extend (`generator.test.ts` + адаптер)
+- [x] Arbitrary values: валидные и невалидные — **XSS-попытки в значении**: breakout (`;{}!<>`), `javascript:`/`vbscript:`/`expression(`/`@import`/`@charset` отвергаются; легитимные `calc()`, `var()`, `oklch()`, `repeat()` работают
+
+> **Хардненинг по ходу:** `sanitizeArbitrary()` теперь отклоняет script-URL схемы (`javascript:`, `vbscript:`), legacy `expression()`, `@import`/`@charset` — раньше блокировались только breakout-символы `;{}!<>`. Покрыто тестами (9 XSS-кейсов + 4 легитимных).
 
 ---
 
@@ -117,14 +119,17 @@
 
 *Цель: реально использовать в проде; SVG-ядро; другие SSR-фреймворки.*
 
-### 1.1 — Расширение движка
-- [ ] `defineUtility()` — кастомные утилиты пользователя
-- [ ] Групповые варианты: `group-hover:`, `group-focus:`, `peer-`
-- [ ] `first:`, `last:`, `odd:`, `even:` (structural)
-- [ ] `before:`/`after:` (pseudo-element утилиты)
-- [ ] Динамические значения: `calc()`, `clamp()`, `min()/max()` из токенов
-- [ ] Статические утилиты без значений (`hidden`, `block`, `sr-only`)
-- [ ] Утилиты-шорткаты: `center` → flex+align+justify
+### 1.1 — Расширение движка ✅
+- [x] `defineUtility()` — кастомные утилиты: `static` (точное имя → декларации) + `match` (regex-матчеры с доступом к `ResolvedConfig`); валидация формы с понятными ошибками; резолвятся ПЕРЕД встроенными (документированный контракт переопределения); работают с вариантами (`hover:my-util`); попадают в `staticUtilityNames()` и `generateFullCSS` (`collect:false`)
+- [x] Групповые варианты: `group-hover:`, `group-focus:`, `group-active:`, `peer-checked:`, `peer-hover:` — любой псевдокласс из `GROUPABLE_PSEUDOS`; `.group:hover .x` / `.peer:checked ~ .x`; стек с `dark:`-классом: `.dark .group:hover .x`; композиция с media
+- [x] `first:`, `last:`, `odd:`, `even:` (structural) — были закрыты ещё в 0.4 (`PSEUDO_VARIANTS`), здесь покрыты регрессионными тестами
+- [x] `before:`/`after:` (псевдоэлементы) — `::before`/`::after` всегда в конце селектора независимо от порядка записи (`before:hover:` ≡ `hover:before:` → `.x:hover::before`); утилиты `content-*` (`content-none`, `content-['']`, `content-[attr(...)]`)
+- [x] Динамические значения из токенов: `token(path)` внутри arbitrary — `w-[calc(100%_-_token(spacing.4))]`, `clamp()`, `min()/max()`, цвета (`token(colors.red-500)`); отсутствующий токен → отказ
+- [x] Статические утилиты без значений (`hidden`, `block`, `sr-only`) — закрыты ещё в 0.3, регрессионные тесты
+- [x] Утилиты-шорткаты: `center` / `inline-center` → flex + align-items + justify-content
+- [x] 36 тестов (`test/engine11.test.ts`); пакет — 183/183, typecheck чистый, build проходит
+
+> **Контракт переопределения (зафиксировано):** кастомные утилиты резолвятся ПЕРЕД встроенными — пользовательский `flex` (static) перекрывает встроенный. Матчеры применяются после статических (всех — и кастомных, и встроенных).
 
 ### 1.2 — purge-to-file (кэш для CDN/файлообменника)
 - [ ] Сборка использованных классов за N запросов → статический `miyocss.css`

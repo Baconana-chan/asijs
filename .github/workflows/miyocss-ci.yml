@@ -56,6 +56,14 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install root dependencies
+        run: bun install
+
+      - name: Build core (asijs dist for type resolution)
+        # src/asi/index.ts and src/core/ssr.ts import "asijs"; its types come
+        # from the root package's dist/index.d.ts, which is gitignored.
+        run: bun run build
+
       - name: Install dependencies
         working-directory: ./packages/MiyoCSS
         run: npm install

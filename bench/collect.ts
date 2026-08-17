@@ -199,13 +199,22 @@ async function main() {
     );
   }
 
-  // Build snapshot
+  // Build snapshot — drop groups with no parsed results so a partially-failed
+  // run never writes blank groups into the dashboard data.
   const snapshot: BenchmarkSnapshot = {
     timestamp: new Date().toISOString(),
     commit,
     branch,
-    groups: allGroups,
+    groups: allGroups.filter((g) => g.results.length > 0),
   };
+
+  // Guard: if nothing parsed at all, don't clobber the previous good results.
+  const totalResults = snapshot.groups.reduce((s, g) => s + g.results.length, 0);
+  if (totalResults === 0) {
+    console.error("  ❌ No benchmark results parsed — keeping previous results, nothing written.");
+    process.exitCode = 1;
+    return;
+  }
 
   // Save latest
   const latestPath = join(RESULTS_DIR, "latest.json");

@@ -73,8 +73,8 @@ export function generateFullCSS(config: ResolvedConfig, options: { minify?: bool
   const colors = Object.keys(t.colors);
   const classes: string[] = [];
 
-  // static utilities (display, position, alignment, ...)
-  classes.push(...staticUtilityNames());
+  // static utilities (display, position, alignment, ...) + custom statics (1.1)
+  classes.push(...staticUtilityNames(config));
 
   // colors × (text/bg/border)
   for (const c of colors) {

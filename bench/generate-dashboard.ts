@@ -281,11 +281,13 @@ function generateDashboard(
       ].join('');
     }
 
-    // Charts
+    // Charts — skip groups with no parsed results so a partially-failed run
+    // never renders blank chart cards (the dashboard stays readable).
     if (LATEST) {
       const chartsContainer = document.getElementById('charts');
+      const populated = LATEST.groups.filter(function(g) { return g.results && g.results.length > 0 });
 
-      LATEST.groups.forEach(function(group, gi) {
+      populated.forEach(function(group, gi) {
         const sorted = [...group.results].sort(function(a, b) { return b.rps - a.rps });
         const best = sorted[0] ? sorted[0].rps : 1;
 
@@ -337,16 +339,23 @@ function generateDashboard(
           }
         });
       });
+
+      if (populated.length === 0) {
+        chartsContainer.innerHTML =
+          '<p style="color:var(--muted);text-align:center;padding:2rem">' +
+          'No benchmark results parsed in this run — check the collector output.</p>';
+      }
     }
 
-    // Table
+    // Table — skip empty groups (same guard as the charts).
     if (LATEST) {
       const tableContainer = document.getElementById('table');
+      const populatedGroups = LATEST.groups.filter(function(g) { return g.results && g.results.length > 0 });
       let html = '<table><thead><tr>' +
         '<th>Group</th><th>Framework</th><th class="num">RPS</th><th class="num">Avg (ms)</th>' +
         '<th class="num">vs Best</th><th>Errors</th></tr></thead><tbody>';
 
-      LATEST.groups.forEach(function(group) {
+      populatedGroups.forEach(function(group) {
         const sorted = [...group.results].sort(function(a, b) { return b.rps - a.rps });
         const best = sorted[0] ? sorted[0].rps : 1;
         // When Elysia leads the group, measure the others against the best
@@ -389,6 +398,10 @@ function generateDashboard(
         'When it leads a group, the other frameworks are measured against the best non-Elysia (100%), ' +
         'and Elysia\'s badge shows its margin over 2nd place (e.g. <code>+173% vs 2nd</code>). ' +
         'When Elysia does not lead, all rows use the usual vs-best scale.</p>';
+      if (populatedGroups.length === 0) {
+        html = '<p style="color:var(--muted);text-align:center;padding:2rem">' +
+          'No benchmark results to display.</p>';
+      }
       tableContainer.innerHTML = html;
     }
 

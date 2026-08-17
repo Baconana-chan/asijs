@@ -13,7 +13,7 @@
  * plain class; the variant layer will strip prefixes and wrap the result.
  */
 
-import type { ResolvedConfig, TokenMap } from "./config";
+import type { ResolvedConfig, TokenMap, CustomUtility } from "./config";
 
 // ===== Result types =====
 
@@ -72,17 +72,53 @@ export function renderRule(result: VariantRule): string {
 }
 
 /** Names of all static utilities (display, position, alignment, ...). */
-export function staticUtilityNames(): string[] {
-  return Object.keys(STATIC_UTILITIES);
+export function staticUtilityNames(config?: ResolvedConfig): string[] {
+  const names = Object.keys(STATIC_UTILITIES);
+  if (config) {
+    for (const util of config.utilities) {
+      if (util.static) names.push(...Object.keys(util.static));
+    }
+  }
+  return names;
 }
 
 // ===== Arbitrary values =====
 
 const ARBITRARY_RE = /^(.*)-\[(.+)\]$/;
 
+/** Resolve `token(path.to.token)` references against the theme (1.1). */
+function resolveTokenRefs(value: string, config: ResolvedConfig): string | null {
+  let out = value;
+  let guard = 0;
+  while (out.includes("token(") && guard++ < 5) {
+    const match = out.match(/token\(([a-zA-Z0-9_.-]+)\)/);
+    if (!match) break;
+    const resolved = themeValueAt(config, match[1]);
+    if (resolved === null) return null;
+    out = out.replace(match[0], resolved);
+  }
+  return out;
+}
+
+/** Look up a dot-path token (`spacing.4`, `colors.red-500`) in the theme. */
+function themeValueAt(config: ResolvedConfig, path: string): string | null {
+  const parts = path.split(".");
+  let node: Record<string, unknown> | string | number = config.theme;
+  for (const part of parts) {
+    if (typeof node !== "object" || node === null || !(part in node)) return null;
+    node = (node as Record<string, unknown>)[part] as Record<string, unknown> | string | number;
+  }
+  return typeof node === "string" || typeof node === "number" ? String(node) : null;
+}
+
 /** Strip dangerous CSS from an arbitrary value; `_` becomes a space. */
 function sanitizeArbitrary(value: string): string | null {
+  // Break-out vectors: declaration/rule terminators and HTML injection.
   if (/[;{}!<>]/.test(value)) return null;
+  // XSS payloads: script-URL schemes, legacy CSS expressions, at-rules.
+  if (/(javascript:|vbscript:|expression\s*\(|@import|@charset)/i.test(value)) {
+    return null;
+  }
   const cleaned = value.replace(/_/g, " ").trim();
   return cleaned.length > 0 ? cleaned : null;
 }
@@ -139,23 +175,26 @@ function arbitraryDeclarations(
 ): Record<string, string> | null {
   const value = sanitizeArbitrary(raw);
   if (value === null) return null;
+  // Dynamic values from tokens: `w-[calc(100%-token(spacing.4))]` (1.1).
+  const dynamic = resolveTokenRefs(value, config);
+  if (dynamic === null) return null;
 
   const negate = (v: string): string =>
     /^0/.test(v) ? v : `-${v}`;
 
   switch (base) {
     case "w":
-      return { width: value };
+      return { width: dynamic };
     case "h":
-      return { height: value };
+      return { height: dynamic };
     case "min-w":
-      return { "min-width": value };
+      return { "min-width": dynamic };
     case "min-h":
-      return { "min-height": value };
+      return { "min-height": dynamic };
     case "max-w":
-      return { "max-width": value };
+      return { "max-width": dynamic };
     case "max-h":
-      return { "max-height": value };
+      return { "max-height": dynamic };
     case "p":
     case "px":
     case "py":
@@ -163,7 +202,7 @@ function arbitraryDeclarations(
     case "pr":
     case "pb":
     case "pl":
-      return spacingDecls(base, value);
+      return spacingDecls(base, dynamic);
     case "m":
     case "mx":
     case "my":
@@ -171,77 +210,79 @@ function arbitraryDeclarations(
     case "mr":
     case "mb":
     case "ml":
-      return spacingDecls(base, value);
+      return spacingDecls(base, dynamic);
     case "gap":
-      return { gap: value };
+      return { gap: dynamic };
     case "gap-x":
-      return { "column-gap": value };
+      return { "column-gap": dynamic };
     case "gap-y":
-      return { "row-gap": value };
+      return { "row-gap": dynamic };
     case "inset":
-      return { inset: value };
+      return { inset: dynamic };
     case "inset-x":
-      return { left: value, right: value };
+      return { left: dynamic, right: dynamic };
     case "inset-y":
-      return { top: value, bottom: value };
+      return { top: dynamic, bottom: dynamic };
     case "top":
-      return { top: value };
+      return { top: dynamic };
     case "right":
-      return { right: value };
+      return { right: dynamic };
     case "bottom":
-      return { bottom: value };
+      return { bottom: dynamic };
     case "left":
-      return { left: value };
+      return { left: dynamic };
     case "text":
-      return isColorValue(value)
-        ? { color: value }
-        : { "font-size": value };
+      return isColorValue(dynamic)
+        ? { color: dynamic }
+        : { "font-size": dynamic };
     case "bg":
-      return { "background-color": value };
+      return { "background-color": dynamic };
     case "border":
-      return isColorValue(value)
-        ? { "border-color": value }
-        : { "border-width": value };
+      return isColorValue(dynamic)
+        ? { "border-color": dynamic }
+        : { "border-width": dynamic };
     case "rounded":
-      return { "border-radius": value };
+      return { "border-radius": dynamic };
     case "rounded-t":
-      return { "border-top-left-radius": value, "border-top-right-radius": value };
+      return { "border-top-left-radius": dynamic, "border-top-right-radius": dynamic };
     case "rounded-r":
-      return { "border-top-right-radius": value, "border-bottom-right-radius": value };
+      return { "border-top-right-radius": dynamic, "border-bottom-right-radius": dynamic };
     case "rounded-b":
-      return { "border-bottom-left-radius": value, "border-bottom-right-radius": value };
+      return { "border-bottom-left-radius": dynamic, "border-bottom-right-radius": dynamic };
     case "rounded-l":
-      return { "border-top-left-radius": value, "border-bottom-left-radius": value };
+      return { "border-top-left-radius": dynamic, "border-bottom-left-radius": dynamic };
     case "rounded-tl":
-      return { "border-top-left-radius": value };
+      return { "border-top-left-radius": dynamic };
     case "rounded-tr":
-      return { "border-top-right-radius": value };
+      return { "border-top-right-radius": dynamic };
     case "rounded-br":
-      return { "border-bottom-right-radius": value };
+      return { "border-bottom-right-radius": dynamic };
     case "rounded-bl":
-      return { "border-bottom-left-radius": value };
+      return { "border-bottom-left-radius": dynamic };
     case "shadow":
-      return { "box-shadow": value };
+      return { "box-shadow": dynamic };
+    case "content":
+      return { content: dynamic };
     case "z":
-      return /^\d+$/.test(value) ? { "z-index": value } : null;
+      return /^\d+$/.test(dynamic) ? { "z-index": dynamic } : null;
     case "opacity":
-      return Number.isFinite(Number(value)) ? { opacity: value } : null;
+      return Number.isFinite(Number(dynamic)) ? { opacity: dynamic } : null;
     case "leading":
-      return { "line-height": value };
+      return { "line-height": dynamic };
     case "tracking":
-      return { "letter-spacing": value };
+      return { "letter-spacing": dynamic };
     case "font":
-      return /^\d+$/.test(value) ? { "font-weight": value } : null;
+      return /^\d+$/.test(dynamic) ? { "font-weight": dynamic } : null;
     case "grid-cols":
-      return { "grid-template-columns": value };
+      return { "grid-template-columns": dynamic };
     case "grid-rows":
-      return { "grid-template-rows": value };
+      return { "grid-template-rows": dynamic };
     case "col-span":
-      return { "grid-column": `span ${value} / span ${value}` };
+      return { "grid-column": `span ${dynamic} / span ${dynamic}` };
     case "row-span":
-      return { "grid-row": `span ${value} / span ${value}` };
+      return { "grid-row": `span ${dynamic} / span ${dynamic}` };
     case "neg-m":
-      return spacingDecls("m", negate(value));
+      return spacingDecls("m", negate(dynamic));
     default:
       return null;
   }
@@ -325,6 +366,19 @@ const STATIC_UTILITIES: Record<string, Record<string, string>> = {
   "float-right": { float: "right" },
   "float-left": { float: "left" },
   "float-none": { float: "none" },
+  // shortcuts (1.1)
+  center: {
+    display: "flex",
+    "align-items": "center",
+    "justify-content": "center",
+  },
+  "inline-center": {
+    display: "inline-flex",
+    "align-items": "center",
+    "justify-content": "center",
+  },
+  // content (for before:/after: pseudo-elements, 1.1)
+  "content-none": { content: "none" },
   // flex container
   "flex-row": { "flex-direction": "row" },
   "flex-row-reverse": { "flex-direction": "row-reverse" },
@@ -477,6 +531,10 @@ export function generateUtility(
   config: ResolvedConfig,
 ): UtilityResult | null {
   if (className === "") return null;
+
+  // 0. Custom utilities (1.1) — resolved first, documented override contract.
+  const custom = resolveCustomUtility(className, config);
+  if (custom) return custom;
 
   // 1. Arbitrary values: any `base-[value]` form.
   const arb = className.match(ARBITRARY_RE);
@@ -788,6 +846,29 @@ export function generateUtility(
   return null;
 }
 
+// ===== Custom utilities (1.1) =====
+
+/** Resolve a class against user-defined utilities (static first, then matchers). */
+function resolveCustomUtility(
+  className: string,
+  config: ResolvedConfig,
+): UtilityResult | null {
+  const utilities: CustomUtility[] = config.utilities;
+  for (const util of utilities) {
+    const decls = util.static?.[className];
+    if (decls) return { className, declarations: { ...decls } };
+  }
+  for (const util of utilities) {
+    for (const matcher of util.match ?? []) {
+      const match = className.match(matcher.pattern);
+      if (!match) continue;
+      const decls = matcher.apply(match, config);
+      if (decls) return { className, declarations: decls };
+    }
+  }
+  return null;
+}
+
 // ===== Helpers =====
 
 const RADIUS_SIDES: Record<string, string[]> = {
@@ -823,5 +904,5 @@ function insetDecls(prefix: string, value: string): Record<string, string> {
   }
 }
 
-// Re-export TokenMap for convenience of generator consumers.
-export type { TokenMap };
+// Re-export TokenMap and CustomUtility for convenience of generator consumers.
+export type { TokenMap, CustomUtility };
