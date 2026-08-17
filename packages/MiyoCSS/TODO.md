@@ -1,10 +1,10 @@
 # TODO.md — MiyoCSS Roadmap
 
-> **Статус**: концепция · **Runtime**: Bun + Node.js · **Версия**: 0.1.0-pre · **npm**: `miyocss`
+> **Статус**: P0 в работе · **Runtime**: Bun + Node.js · **Версия**: 0.1.0 · **npm**: `miyocss`
 >
 > SSR-first CSS + SVG фреймворк. Утилиты собираются **во время рендеринга**, а не сканированием файлов; SVG — first-class, а не «добавка».
 > Имя нейтральное намеренно: пакет применим к любому SSR-фреймворку (AsiJS, Hono, Elysia, Fastify, plain Node) — это не «AsiCSS».
-> Факты на старт: 0 тестов, 0 строк кода, репо — `packages/MiyoCSS/`.
+> Факты на старт: 143 теста (0.1–0.6), репо — `packages/MiyoCSS/`.
 
 ---
 
@@ -31,7 +31,7 @@
 | Движок генерации | 🔴 Нет |
 | SSR-сборка | 🔴 Нет (ключевая фича) |
 | SVG-модуль | 🔴 Нет |
-| Адаптеры | 🔴 Нет |
+| Адаптеры | 🟡 AsiJS ✅ (0.6), Hono/Elysia/Fastify — P1 (1.4) |
 | Тесты | 🔴 0 |
 
 ---
@@ -95,11 +95,14 @@
 
 > **Ограничение tree-walk (как и задумано в решениях):** async-компоненты не раскрываются (их тело неизвестно до рендера) — классы внутри них собираются через escape-hatch `collectClass()` (P2). Синхронные компоненты раскрываются. Тест: `async component` → `async-only` не собирается, sync → собирается.
 
-### 0.6 — Адаптер AsiJS
-- [ ] `miyocss/asi` — плагин: `app.use(miyocss({ tokens, darkMode }))`
-- [ ] `html()`-обёртка: рендер + автоинжект стилей в head
-- [ ] Хелпер `ctx.styles()` / `<StyleSheet />` для ручного контроля
-- [ ] Пример: компонент страницы на утилитах, тест на рендер HTML со стилями
+### 0.6 — Адаптер AsiJS ✅
+- [x] `miyocss/asi` — плагин: `app.plugin(miyocss({ config, collect }))` (в AsiJS плагины регистрируются через `app.plugin()`, `app.use()` — только middleware; зафиксировано при реализации)
+- [x] `html()`-обёртка: рендер + автоинжект стилей в head; `stream()` — стриминговая версия с буферизацией только до placeholder/`</head>`
+- [x] Хелпер `ctx.styles()` (точный CSS по классам или полный каталог) / `<StyleSheet />` (in-tree placeholder: `html()`/`stream()` заменяют его на реальный `<style>`; без него — инжект в `<head>`)
+- [x] `ctx.miyocss` — резолвнутый конфиг на контексте; `app.decorator("miyocss")` / `app.getState("miyocss")` — app-level доступ
+- [x] 14 тестов адаптера (плагин на реальном Asi, автоинжект, zero false positives, кастомные токены, `collect:false`, `<StyleSheet />` в head/body, stream + placeholder, fallback при async-компоненте) + пример-компонент в JSDoc
+
+> **Зафиксировано при реализации:** (1) AsiJS `renderToString` дропает children внутри `<style>` и не обрабатывает `raw()` — поэтому `<StyleSheet />` это placeholder, заменяемый ПОСЛЕ рендера (string-replace для `html()`, буфер-до-placeholder для `stream()`), а не реальный style-элемент. (2) Плагин инжектит `ctx.*` через middleware (decorate в AsiJS — app-level), по образцу i18n-плагина. (3) `jsx()` в AsiJS — `(type, props, key?)`, children живут в `props.children` (в TSX это прозрачно).
 
 ### 0.7 — Тесты MVP
 - [ ] Генерация каждой группы утилит (снапшоты)

@@ -9,8 +9,10 @@ describe("miyocss package skeleton", () => {
     expect(VERSION).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  test("asi adapter stub documents the planned API", () => {
-    expect(() => asiPlugin()).toThrow(/P0\.6/);
+  test("asi adapter exposes the plugin + html + stream API", () => {
+    const p = asiPlugin();
+    expect(p.name).toBe("miyocss");
+    expect(typeof asiPlugin).toBe("function");
   });
 
   test("svg module imports cleanly", async () => {

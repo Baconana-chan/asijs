@@ -43,6 +43,26 @@ function toolchainAvailable(cmd: string, args: string[]): boolean {
   }
 }
 
+/**
+ * Call the native CLI and restore `process.exitCode` afterwards.
+ *
+ * `handleNative` is a real CLI entry: on error paths it sets
+ * `process.exitCode = 1` (so the binary exits non-zero). When tests exercise
+ * those paths, the exit code leaks into the bun test process and makes
+ * `bun test` exit 1 even though every test passed — this wrapper keeps the
+ * suite's exit code clean.
+ */
+async function runNative(args: string[]): Promise<void> {
+  const prevExitCode = process.exitCode;
+  try {
+    await handleNative(args);
+  } finally {
+    // Bun quirk: assigning `undefined` does NOT clear a previously-set exit
+    // code (it stays 1), so restore explicitly to 0 when nothing was set.
+    process.exitCode = prevExitCode === undefined ? 0 : prevExitCode;
+  }
+}
+
 // ============================================================================
 // Fixtures
 // ============================================================================
@@ -362,7 +382,7 @@ describe("native CLI (1.5)", () => {
       process.chdir(dir);
       // Avoid writing into the existing native/ dir from fixture; remove it first
       rmSync(nativeRoot, { recursive: true, force: true });
-      await handleNative(["scaffold", "rust", "test_crypto"]);
+      await runNative(["scaffold", "rust", "test_crypto"]);
       expect(require("fs").existsSync(join(nativeRoot, "manifest.json"))).toBe(true);
       expect(require("fs").existsSync(join(nativeRoot, "Cargo.toml"))).toBe(true);
       expect(require("fs").existsSync(join(nativeRoot, "src", "lib.rs"))).toBe(true);
@@ -384,7 +404,7 @@ describe("native CLI (1.5)", () => {
     try {
       await writeManifest(nativeRoot, validManifest);
       process.chdir(dir);
-      await handleNative(["scaffold", "rust", "other"]);
+      await runNative(["scaffold", "rust", "other"]);
       // Original manifest untouched
       const manifest = await loadManifest(nativeRoot);
       expect(manifest.name).toBe("my_crypto");
@@ -400,7 +420,7 @@ describe("native CLI (1.5)", () => {
     try {
       await writeManifest(nativeRoot, validManifest);
       process.chdir(dir);
-      await handleNative(["list"]);
+      await runNative(["list"]);
     } finally {
       process.chdir(prevCwd);
       cleanup();
@@ -413,7 +433,7 @@ describe("native CLI (1.5)", () => {
     try {
       await writeManifest(nativeRoot, validManifest);
       process.chdir(dir);
-      await handleNative(["build"]);
+      await runNative(["build"]);
     } finally {
       process.chdir(prevCwd);
       cleanup();
@@ -429,7 +449,7 @@ describe("native CLI (1.5)", () => {
       try {
         // Scaffold a rust module
         process.chdir(dir);
-        await handleNative(["scaffold", "rust", "e2e_crypto"]);
+        await runNative(["scaffold", "rust", "e2e_crypto"]);
 
         // Implement sha256 (needs the sha2 crate) + reverse/add bodies
         const libRsPath = join(nativeRoot, "src", "lib.rs");
@@ -464,7 +484,7 @@ describe("native CLI (1.5)", () => {
         );
 
         // Build (real cargo)
-        await handleNative(["build"]);
+        await runNative(["build"]);
 
         // Load and call through bun:ffi
         const manifest = await loadManifest(nativeRoot);
@@ -494,7 +514,7 @@ describe("native CLI (1.5)", () => {
     const prevCwd = process.cwd();
     try {
       process.chdir(dir);
-      await handleNative(["info"]);
+      await runNative(["info"]);
     } finally {
       process.chdir(prevCwd);
       cleanup();

@@ -30,25 +30,35 @@ miyocss info --config path --cwd dir
 
 `info` is a quick smoke over the config: finds `miyocss.config.{ts,js,mjs,cjs,json}`, validates it with the same TypeBox schemas (invalid → errors with a path, exit 1, fallback to defaults) and prints token stats plus an approximate utility surface (on defaults — **2354 classes**).
 
-## Usage
+## Usage (AsiJS adapter)
 
-Adapters are under development (P0). Expected API:
-
-```ts
+```tsx
 import { Asi } from "asijs";
-import { asiPlugin } from "miyocss/asi";
+import { asiPlugin, html, StyleSheet } from "miyocss/asi";
 
 const app = new Asi();
-app.use(asiPlugin({ collect: "auto" }));
+app.plugin(asiPlugin({ config })); // or: app.plugin(miyocss({ config }))
 
-app.get("/", () => (
-  <div className="flex items-center gap-4 p-6 md:p-8">
-    <span className="text-lg font-bold text-blue-600">Hello</span>
-  </div>
-));
+app.get("/", () =>
+  html(
+    <html>
+      <head>
+        <title>Home</title>
+        <StyleSheet />
+      </head>
+      <body>
+        <div className="flex items-center gap-4 p-6 md:p-8">
+          <span className="text-lg font-bold text-blue-600">Hello</span>
+        </div>
+      </body>
+    </html>,
+  ),
+);
 ```
 
-Classes are collected at render, CSS is injected into `<head>` — no separate build step, no false positives.
+`html()` renders the page, collects the utility classes actually used (tree-walk before render), generates the exact CSS and injects a `<style>` into `<head>` — or at the `<StyleSheet />` placeholder if you place one. No separate build step, zero false positives; `stream()` is the streaming variant.
+
+The plugin also decorates the context: `ctx.miyocss` (resolved config) and `ctx.styles(classes?)` (a `<style>` tag for exact classes, or the full static catalog when called without arguments).
 
 ## Design tokens
 

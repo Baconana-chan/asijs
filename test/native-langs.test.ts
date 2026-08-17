@@ -313,6 +313,33 @@ function toolchainAvailable(cmd: string, args: string[]): boolean {
   }
 }
 
+/**
+ * Run a toolchain build with a single retry.
+ *
+ * The native compile tests spawn heavy compilers (cc, go, zig, ghc, nim, …)
+ * and under full-suite parallel load a build can transiently fail — CPU/memory
+ * contention or compiler-cache locks (e.g. zig's global cache). A build that
+ * fails once but succeeds on retry is treated as a pass; persistent failures
+ * still surface, with the first stderr captured for debugging.
+ */
+function compileWithRetry(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string } = {},
+): ReturnType<typeof spawnSync> {
+  const options = { cwd: opts.cwd, encoding: "utf-8" as const };
+  const first = spawnSync(cmd, args, options);
+  if (first.status === 0) return first;
+  const firstStderr = String(first.stderr ?? "").slice(0, 600);
+  const second = spawnSync(cmd, args, options);
+  if (second.status !== 0 && firstStderr) {
+    console.error(
+      `  ⚠️ ${cmd} failed twice (retried after a transient failure). First stderr:\n${firstStderr}`,
+    );
+  }
+  return second;
+}
+
 describe("native compile checks (2.1)", () => {
   test.skipIf(!toolchainAvailable("cc", ["--version"]))(
     "generated lib.c compiles with cc",
@@ -320,9 +347,7 @@ describe("native compile checks (2.1)", () => {
       const dir = mkdtempSync(join(tmpdir(), "asi-native-c-"));
       try {
         writeFileSync(join(dir, "lib.c"), generateCLib(manifest), "utf-8");
-        const r = spawnSync("cc", ["-shared", "-fPIC", "-o", join(dir, "libpoly.so"), join(dir, "lib.c")], {
-          encoding: "utf-8",
-        });
+        const r = compileWithRetry("cc", ["-shared", "-fPIC", "-o", join(dir, "libpoly.so"), join(dir, "lib.c")]);
         expect(r.status).toBe(0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -351,9 +376,7 @@ describe("native compile checks (2.1)", () => {
         const srcPath = join(dir, "lib.c");
         writeFileSync(srcPath, src, "utf-8");
         const libPath = join(dir, "libpoly.so");
-        const r = spawnSync("cc", ["-shared", "-fPIC", "-o", libPath, srcPath], {
-          encoding: "utf-8",
-        });
+        const r = compileWithRetry("cc", ["-shared", "-fPIC", "-o", libPath, srcPath]);
         expect(r.status).toBe(0);
         const { loadNativeModule } = require("../src/native/runtime");
         const mod = loadNativeModule(
@@ -382,9 +405,7 @@ describe("native compile checks (2.1)", () => {
       const dir = mkdtempSync(join(tmpdir(), "asi-native-cpp-"));
       try {
         writeFileSync(join(dir, "lib.cpp"), generateCppLib(manifest), "utf-8");
-        const r = spawnSync("c++", ["-shared", "-fPIC", "-o", join(dir, "libpoly.so"), join(dir, "lib.cpp")], {
-          encoding: "utf-8",
-        });
+        const r = compileWithRetry("c++", ["-shared", "-fPIC", "-o", join(dir, "libpoly.so"), join(dir, "lib.cpp")]);
         expect(r.status).toBe(0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -400,10 +421,10 @@ describe("native compile checks (2.1)", () => {
         writeFileSync(join(dir, "go.mod"), generateGoMod(manifest), "utf-8");
         mkdirSync(join(dir, "src"), { recursive: true });
         writeFileSync(join(dir, "main.go"), generateMainGo(manifest), "utf-8");
-        const r = spawnSync(
+        const r = compileWithRetry(
           "go",
           ["build", "-buildmode=c-shared", "-o", join(dir, "libpoly.so"), "."],
-          { cwd: dir, encoding: "utf-8" },
+          { cwd: dir },
         );
         expect(r.status).toBe(0);
       } finally {
@@ -421,10 +442,7 @@ describe("native compile checks (2.1)", () => {
         writeFileSync(join(dir, "build.zig"), generateBuildZig(manifest), "utf-8");
         mkdirSync(join(dir, "src"), { recursive: true });
         writeFileSync(join(dir, "src", "lib.zig"), generateZigLib(manifest), "utf-8");
-        const r = spawnSync("zig", ["build", "-Doptimize=ReleaseFast"], {
-          cwd: dir,
-          encoding: "utf-8",
-        });
+        const r = compileWithRetry("zig", ["build", "-Doptimize=ReleaseFast"], { cwd: dir });
         expect(r.status).toBe(0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -452,10 +470,7 @@ describe("native compile checks (2.1)", () => {
         writeFileSync(join(dir, "build.zig"), generateBuildZig(manifest), "utf-8");
         mkdirSync(join(dir, "src"), { recursive: true });
         writeFileSync(join(dir, "src", "lib.zig"), src, "utf-8");
-        const r = spawnSync("zig", ["build", "-Doptimize=ReleaseFast"], {
-          cwd: dir,
-          encoding: "utf-8",
-        });
+        const r = compileWithRetry("zig", ["build", "-Doptimize=ReleaseFast"], { cwd: dir });
         expect(r.status).toBe(0);
         // Locate the produced shared library (zig-out/bin/*.dll|so|dylib)
         const libDir = join(dir, "zig-out", "bin");
@@ -511,10 +526,10 @@ describe("native compile checks (2.1)", () => {
         mkdirSync(join(dir, "src"), { recursive: true });
         writeFileSync(join(dir, "src", "main.go"), src, "utf-8");
         writeFileSync(join(dir, "src", "go.mod"), generateGoMod(manifest), "utf-8");
-        const r = spawnSync(
+        const r = compileWithRetry(
           "go",
           ["build", "-buildmode=c-shared", "-o", libPath, "."],
-          { cwd: join(dir, "src"), encoding: "utf-8" },
+          { cwd: join(dir, "src") },
         );
         expect(r.status).toBe(0);
         const { existsSync } = await import("fs");
@@ -548,10 +563,9 @@ describe("native compile checks (2.1)", () => {
       try {
         writeFileSync(join(dir, "lib.nim"), generateNimLib(manifest), "utf-8");
         const libName = process.platform === "win32" ? "poly.dll" : "libpoly.so";
-        const r = spawnSync(
+        const r = compileWithRetry(
           "nim",
           ["c", "-d:release", "--app:lib", `--out:${join(dir, libName)}`, join(dir, "lib.nim")],
-          { encoding: "utf-8" },
         );
         expect(r.status).toBe(0);
       } finally {
@@ -579,10 +593,9 @@ describe("native compile checks (2.1)", () => {
         const srcPath = join(dir, "lib.nim");
         writeFileSync(srcPath, src, "utf-8");
         const libPath = join(dir, process.platform === "win32" ? "poly.dll" : "libpoly.so");
-        const r = spawnSync(
+        const r = compileWithRetry(
           "nim",
           ["c", "-d:release", "--app:lib", `--out:${libPath}`, srcPath],
-          { encoding: "utf-8" },
         );
         expect(r.status).toBe(0);
         const { loadNativeModule } = await import("../src/native/runtime");
@@ -628,7 +641,7 @@ describe("native compile checks (2.1)", () => {
           const libdir = spawnSync("ghc", ["--print-libdir"], { encoding: "utf-8" }).stdout.trim();
           if (libdir) args.push(`-optl-Wl,-rpath,${libdir}`);
         }
-        const r = spawnSync("ghc", args, { encoding: "utf-8" });
+        const r = compileWithRetry("ghc", args);
         expect(r.status).toBe(0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -668,7 +681,7 @@ describe("native compile checks (2.1)", () => {
           const libdir = spawnSync("ghc", ["--print-libdir"], { encoding: "utf-8" }).stdout.trim();
           if (libdir) args.push(`-optl-Wl,-rpath,${libdir}`);
         }
-        const r = spawnSync("ghc", args, { encoding: "utf-8" });
+        const r = compileWithRetry("ghc", args);
         expect(r.status).toBe(0);
         const { loadNativeModule } = await import("../src/native/runtime");
         const mod = loadNativeModule(

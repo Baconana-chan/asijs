@@ -179,6 +179,8 @@ function generateDashboard(
     .badge-green { background: rgba(63, 185, 80, 0.15); color: var(--green); }
     .badge-yellow { background: rgba(210, 153, 34, 0.15); color: var(--orange); }
     .badge-red { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+    .badge-blue { background: rgba(88, 166, 255, 0.18); color: var(--accent); }
+    .table-note { color: var(--muted); font-size: 0.78rem; margin-top: 0.75rem; line-height: 1.5; }
     .trend-up { color: var(--green); }
     .trend-down { color: var(--red); }
     .footer {
@@ -239,7 +241,14 @@ function generateDashboard(
     ];
     const COLOR_MAP = {};
 
+    // Elysia is the reference framework — always rendered in the accent blue
+    // so it reads as the benchmark baseline, never as part of the score scale.
+    function isElysia(name) {
+      return /^Elysia([\s(+]|$)/.test(name);
+    }
+
     function getColor(name) {
+      if (isElysia(name)) return '#58a6ff';
       if (!COLOR_MAP[name]) {
         COLOR_MAP[name] = COLORS[Object.keys(COLOR_MAP).length % COLORS.length];
       }
@@ -340,22 +349,46 @@ function generateDashboard(
       LATEST.groups.forEach(function(group) {
         const sorted = [...group.results].sort(function(a, b) { return b.rps - a.rps });
         const best = sorted[0] ? sorted[0].rps : 1;
+        // When Elysia leads the group, measure the others against the best
+        // non-Elysia (so 2nd place reads as 100%) and show Elysia's badge as
+        // its margin over 2nd — otherwise every framework looks tiny next to
+        // the reference and the real inter-framework picture is lost.
+        const refLeads = sorted[0] && isElysia(sorted[0].name);
+        const nonRef = sorted.filter(function(r) { return !isElysia(r.name) });
+        const base = refLeads && nonRef.length > 0 ? nonRef[0].rps : best;
 
         sorted.forEach(function(r, i) {
-          const pct = (r.rps / best * 100).toFixed(1);
-          const barW = Math.max(4, (r.rps / best * 100));
+          const pct = r.rps / base * 100;
+          const barW = Math.max(4, Math.min(100, pct));
+          let badge;
+          if (isElysia(r.name)) {
+            if (refLeads && r === sorted[0]) {
+              // Reference leads: blue badge with the margin over 2nd place
+              badge = '<span class="badge badge-blue" title="Margin over the best non-Elysia">' +
+                '+' + (pct - 100).toFixed(1) + '% vs 2nd</span>';
+            } else {
+              badge = '<span class="badge badge-blue">' + pct.toFixed(1) + '%</span>';
+            }
+          } else {
+            badge = '<span class="badge ' + scoreClass(pct) + '">' + pct.toFixed(1) + '%</span>';
+          }
           html += '<tr>' +
             '<td>' + (i === 0 ? group.name : '') + '</td>' +
             '<td><span class="rps-bar" style="width:' + barW + 'px;background:' + getColor(r.name) + '"></span>' + r.name + '</td>' +
             '<td class="num">' + fmt(r.rps) + '</td>' +
             '<td class="num">' + r.avgMs.toFixed(4) + '</td>' +
-            '<td class="num"><span class="badge ' + scoreClass(Number(pct)) + '">' + pct + '%</span></td>' +
+            '<td class="num">' + badge + '</td>' +
             '<td class="num">' + (r.errors > 0 ? '⚠️ ' + r.errors : '—') + '</td>' +
             '</tr>';
         });
       });
 
-      html += '</tbody></table>';
+      html += '</tbody></table>' +
+        '<p class="table-note">' +
+        '• Elysia is the reference framework (blue badges/bars). ' +
+        'When it leads a group, the other frameworks are measured against the best non-Elysia (100%), ' +
+        'and Elysia\'s badge shows its margin over 2nd place (e.g. <code>+173% vs 2nd</code>). ' +
+        'When Elysia does not lead, all rows use the usual vs-best scale.</p>';
       tableContainer.innerHTML = html;
     }
 
